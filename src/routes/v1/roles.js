@@ -26,7 +26,8 @@ const permissions = Joi.array().items(Joi.string().valid(...PERMISSION_IDS)).uni
  * /roles/sod-check:
  *   post: { tags: [Roles], summary: Live segregation-of-duties check for the matrix, security: [{ bearer: [] }], responses: { 200: { description: Result } } }
  */
-router.get('/permissions', requireAny('admin.roles', 'admin.users'), asyncHandler(RoleController.catalogue));
+// The catalogue is not sensitive; every signed-in user reads it for "My roles and permissions" (FR-52).
+router.get('/permissions', asyncHandler(RoleController.catalogue));
 router.get('/roles', requireAny('admin.roles', 'admin.users'), asyncHandler(RoleController.list));
 router.post(
   '/roles',

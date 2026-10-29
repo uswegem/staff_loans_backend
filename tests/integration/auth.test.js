@@ -46,7 +46,7 @@ describe('sign-in with staff number and password', () => {
   it('validates the LFB0000 format', async () => {
     const res = await login({ staffNo: 'LFB412', password: PASSWORD });
     expect(res.status).toBe(400);
-    expect(res.body.details.staffNo[0]).toMatch(/LFB followed by 4 digits/);
+    expect(res.body.details.staffNo[0]).toBe('Staff numbers look like LFB0412.');
   });
 
   it('[ESS] rejects invalid credentials and shows remaining attempts', async () => {
@@ -59,7 +59,7 @@ describe('sign-in with staff number and password', () => {
   it('refuses an unknown staff number with the same message', async () => {
     const res = await login({ staffNo: 'LFB9999', password: PASSWORD });
     expect(res.status).toBe(401);
-    expect(res.body.message).toBe('Staff number or password is incorrect.');
+    expect(res.body.message).toBe('The staff number or password is not right.');
   });
 
   it('counts down and locks the account at the 5th failure', async () => {

@@ -27,7 +27,7 @@ const RT_COOKIE = 'slas_rt';
 const CSRF_COOKIE = 'XSRF-TOKEN';
 const RT_PATH = '/api/v1/auth';
 
-const INVALID = 'Staff number or password is incorrect.';
+const INVALID = 'The staff number or password is not right.';
 const LOCKED = 'Your account is locked after too many failed attempts. Contact the IT Service Desk to unlock it.';
 const INACTIVE = 'Your account is not active. Contact the IT Service Desk.';
 
@@ -46,9 +46,9 @@ function clearSessionCookies(res) {
 }
 
 async function profileFor(user) {
-  const staff = await Staff.findById(user.staffId).lean({ virtuals: true });
-  const eff = await rbac.effectiveFor(user._id);
+  const [staff, eff, settings] = await Promise.all([Staff.findById(user.staffId).lean(), rbac.effectiveFor(user._id), Settings.get()]);
   return {
+    session: { inactivityTimeoutMin: settings.inactivityTimeoutMin },
     user: {
       id: String(user._id),
       staffNo: user.staffNo,

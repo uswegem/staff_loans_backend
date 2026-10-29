@@ -18,7 +18,7 @@ const { asyncHandler } = require('../../utils/errors');
 const router = express.Router();
 
 const staffNo = Joi.string().trim().uppercase().pattern(/^LFB\d{4}$/).required().messages({
-  'string.pattern.base': 'Enter your staff number as LFB followed by 4 digits, for example LFB0412.',
+  'string.pattern.base': 'Staff numbers look like LFB0412.',
   'string.empty': 'Enter your staff number.',
   'any.required': 'Enter your staff number.',
 });
