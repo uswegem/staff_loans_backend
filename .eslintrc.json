@@ -1,0 +1,12 @@
+{
+  "root": true,
+  "env": { "node": true, "es2023": true, "jest": true },
+  "parserOptions": { "ecmaVersion": 2023, "sourceType": "script" },
+  "extends": ["eslint:recommended"],
+  "rules": {
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_|^next$|^req$|^res$" }],
+    "no-await-in-loop": "warn",
+    "eqeqeq": ["error", "smart"],
+    "no-console": "warn"
+  }
+}
