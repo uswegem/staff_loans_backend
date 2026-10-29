@@ -34,7 +34,7 @@ const PRODUCTS = [
     maxTenor: 3,
     topUpAllowed: false,
     optionalDocuments: ['Latest salary slip'],
-    fields: [{ key: 'reason', label: 'Reason for the advance', type: 'textarea', mandatory: true }],
+    fields: [], // the purpose field carries the reason for the advance (DECISIONS D-50)
     disbursementConditions: [],
   },
   {

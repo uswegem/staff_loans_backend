@@ -14,6 +14,7 @@ router.use('/users', require('./users'));
 router.use('/notifications', require('./notifications'));
 router.use('/', require('./products'));
 router.use('/', require('./staff'));
+router.use('/', require('./applications'));
 router.use('/', require('./roles'));
 router.use('/', require('./admin'));
 

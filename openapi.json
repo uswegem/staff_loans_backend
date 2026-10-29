@@ -1177,6 +1177,227 @@
         }
       }
     },
+    "/applications": {
+      "get": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "My applications (FR-11)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Start a draft for a product; refused with the reason when not eligible (FR-05, BR-01, BR-02, BR-07, BR-08, NS-02)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Draft with checks and calculator inputs"
+          }
+        }
+      }
+    },
+    "/applications/{id}": {
+      "get": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "My application with route, history, checks and quote",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Application"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Change the request while a draft or returned (FR-06)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Application with fresh checks"
+          }
+        }
+      }
+    },
+    "/applications/{id}/agreement/preview": {
+      "get": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "The Swahili agreement for these terms, with schedule and text fingerprint (FR-33)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocks and SHA-256"
+          },
+          "400": {
+            "description": "Hard rules fail"
+          }
+        }
+      }
+    },
+    "/applications/{id}/sign-and-submit": {
+      "post": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Consents, acceptance tick, password and the fingerprint read; signing submits (FR-10, FR-34, FR-35, FR-37)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Submitted"
+          },
+          "401": {
+            "description": "Wrong password"
+          },
+          "409": {
+            "description": "Agreement changed"
+          }
+        }
+      }
+    },
+    "/applications/{id}/withdraw": {
+      "post": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Withdraw before final approval; voids the agreement (FR-11)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawn"
+          }
+        }
+      }
+    },
+    "/applications/{id}/documents": {
+      "post": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Attach an optional document: PDF, JPG or PNG (FR-09)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Document"
+          }
+        }
+      }
+    },
+    "/applications/{id}/documents/{fileId}": {
+      "delete": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Remove a document from a draft or returned application",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed"
+          }
+        }
+      }
+    },
+    "/files/{id}": {
+      "get": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Download my document or agreement PDF (audited)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File"
+          }
+        }
+      }
+    },
+    "/agreements/{id}": {
+      "get": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "My signed agreement: text, schedule and acceptance evidence (FR-25)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agreement"
+          }
+        }
+      }
+    },
+    "/agreements/{id}/pdf": {
+      "get": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "The locked PDF (FR-37)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF"
+          }
+        }
+      }
+    },
     "/admin/settings": {
       "get": {
         "tags": [

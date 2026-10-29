@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 – Milestone 4: Apply (29 Oct 2026)
+
+- One pure loan calculator (BRD 10, BR-14, BR-15) in integer shillings and basis points, tested against the prototype worked example; the web app uses a generated copy (npm run calc:sync, calc:check).
+- Application rules: BR-01 to BR-09 and BR-12 with the prototype's messages, product fields, probation applications with a reason (NS-01) and the reapply wait (NS-02).
+- Application API: drafts, live checks and quote, documents (PDF, JPG, PNG checked by content; size limit setting; malware-scan hook), withdraw.
+- Agreement: versioned Swahili template (2026.11 sample), renderer with filled values, amounts in Swahili words, Jedwali schedule, SHA-256 of the exact text.
+- Sign and submit is the only way to submit: consents, acceptance, read to the end, password and the text fingerprint; stores the evidence, locks a PDF with an evidence page, pins versions, snapshots salary, fixes the route and enters the first stage with notifications (prompt 4.3).
+- Append-only decision history per application.
+
 ## 0.3.0 – Milestone 3: Staff records (29 Oct 2026)
 
 - Own profile API in the prototype's sections (personal, bank, next of kin, pay and deductions with the confirmation tick); employment, salary and approval route shown read-only. Every save is audited.

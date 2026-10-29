@@ -39,6 +39,7 @@ router.put(
       approvalSlaDays: Joi.number().integer().min(1).max(365),
       probationMonths: Joi.number().integer().min(0).max(24),
       maxUploadMb: Joi.number().integer().min(1).max(50),
+      firstDueDay: Joi.number().integer().min(1).max(31),
       inactivityTimeoutMin: Joi.number().integer().min(1).max(240),
       lockoutThreshold: Joi.number().integer().min(3).max(10),
     }).min(1),

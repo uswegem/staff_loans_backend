@@ -13,6 +13,7 @@ process.env.MFA_ENC_KEY = process.env.MFA_ENC_KEY || 'a'.repeat(64);
 process.env.BCRYPT_ROUNDS = '4';
 process.env.LOGIN_RATE_LIMIT_PER_MIN = '1000';
 process.env.MONGODB_URI = process.env.SLAS_TEST_MONGO_URI;
+process.env.UPLOAD_DIR = require('path').join(require('os').tmpdir(), 'slas-test-uploads');
 
 beforeAll(async () => {
   const dbName = `slas_test_${crypto.randomBytes(4).toString('hex')}`;

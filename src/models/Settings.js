@@ -18,6 +18,7 @@ const settingsSchema = new mongoose.Schema(
     approvalSlaDays: { type: Number, default: 30, min: 1 }, // BR-13 flag only (Q3)
     probationMonths: { type: Number, default: 6, min: 0 }, // NS-01
     maxUploadMb: { type: Number, default: 10, min: 1, max: 50 },
+    firstDueDay: { type: Number, default: 25, min: 1, max: 31 }, // instalments fall on this day of the month (D-48)
     inactivityTimeoutMin: { type: Number, default: 15, min: 1 },
     lockoutThreshold: { type: Number, default: 5, min: 3, max: 10 },
     // Profile fields that must be filled before applying (decision 7, FR-05); keys from PROFILE_FIELDS.

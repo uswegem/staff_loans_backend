@@ -1,0 +1,389 @@
+'use strict';
+
+// Apply (BRD 9.2: FR-05 to FR-12; BRD 8: FR-33 to FR-37; BRD 10: BR-01 to BR-15;
+// NS-01, NS-02). Agreement signed before submission (prompt 4.3).
+
+const crypto = require('crypto');
+const { app, seed, signIn, authed, PASSWORD, request } = require('../helpers');
+const { seedProducts } = require('../../seed/products');
+const { seedAgreementTemplate } = require('../../seed/agreementTemplate');
+const Application = require('../../src/models/Application');
+const Agreement = require('../../src/models/Agreement');
+const Decision = require('../../src/models/Decision');
+const Notification = require('../../src/models/Notification');
+const Staff = require('../../src/models/Staff');
+const Settings = require('../../src/models/Settings');
+const StoredFile = require('../../src/models/StoredFile');
+const User = require('../../src/models/User');
+const AuditLog = require('../../src/models/AuditLog');
+const fileStore = require('../../src/services/files/fileStore');
+const { localDay } = require('../../src/utils/dates');
+
+let products;
+const api = (token) => ({
+  get: (url) => request(app()).get(`/api/v1${url}`).set(authed(token)),
+  post: (url, body = {}) => request(app()).post(`/api/v1${url}`).set(authed(token)).send(body),
+  patch: (url, body) => request(app()).patch(`/api/v1${url}`).set(authed(token)).send(body),
+});
+
+const CONSENTS = { truth: true, deduct: true, crb: true, sms: true };
+const PL = () => String(products.PL._id);
+const HE = () => String(products.HE._id);
+
+async function draft(person, productId, terms) {
+  const a = api(person.token);
+  const created = await a.post('/applications', { productId });
+  if (created.status !== 201) throw new Error(`create failed ${JSON.stringify(created.body)}`);
+  const id = created.body.data.id;
+  const res = terms ? await a.patch(`/applications/${id}`, terms) : created;
+  return { id, res };
+}
+
+async function signAndSubmit(person, id, over = {}) {
+  const a = api(person.token);
+  const preview = await a.get(`/applications/${id}/agreement/preview`);
+  if (preview.status !== 200) throw new Error(`preview failed ${JSON.stringify(preview.body)}`);
+  return a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, password: PASSWORD, textSha256: preview.body.data.textSha256, ...over });
+}
+
+const NEEMA_TERMS = { amount: 4500000, tenor: 36, purpose: 'Home furniture and appliances', repaymentMethod: 'payroll' };
+
+beforeEach(async () => {
+  const { users } = await seed();
+  products = await seedProducts(users);
+  await seedAgreementTemplate(users);
+});
+
+describe('starting an application (FR-05)', () => {
+  it('an incomplete profile blocks it, with the missing details', async () => {
+    const rehema = await signIn('LFB0596');
+    const res = await api(rehema.token).post('/applications', { productId: PL() });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('NOT_ELIGIBLE');
+    expect(res.body.message).toMatch(/^You can apply once your profile is complete\. Missing: .*NIDA number/);
+  });
+
+  it('a draft gets a reference and shows the calculator inputs from the profile', async () => {
+    const neema = await signIn('LFB0412');
+    const { res } = await draft(neema, PL());
+    expect(res.body.data.ref).toMatch(/^SL-\d{4}-00001$/);
+    expect(res.body.data.status).toBe('draft');
+    expect(res.body.data.payInputs).toMatchObject({ basic: 1850000, allowances: 220000 });
+    expect(res.body.data.checks.fieldErrors).toMatchObject({ amount: 'Enter the amount you want to borrow.', tenor: 'Enter the tenor in months.', purpose: 'Say what the loan is for.' });
+    expect(res.body.data.route.key).toBe('nonmgmt');
+  });
+
+  it('only one open application per product (BR-08)', async () => {
+    const neema = await signIn('LFB0412');
+    const { res } = await draft(neema, PL());
+    const again = await api(neema.token).post('/applications', { productId: PL() });
+    expect(again.status).toBe(400);
+    expect(again.body.message).toBe(`You already have an open Personal Loan application (${res.body.data.ref}). Finish or withdraw it first.`);
+    expect((await api(neema.token).post('/applications', { productId: HE() })).status).toBe(201);
+  });
+
+  it('the reapply wait applies to the same product only (NS-02)', async () => {
+    const appliedAt = new Date(Date.now() - 20 * 24 * 3600 * 1000);
+    await Staff.updateOne({ staffNo: 'LFB0412' }, { $set: { loanHistory: [{ productId: products.PL._id, appliedAt, approvedAt: appliedAt, ref: 'SL-2026-00015' }] } });
+    const neema = await signIn('LFB0412');
+    const res = await api(neema.token).post('/applications', { productId: PL() });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/^You applied for a Personal Loan on .+\. You can apply for this product again from .+ \(\d+ days\)\.$/);
+    expect((await api(neema.token).post('/applications', { productId: HE() })).status).toBe(201);
+  });
+});
+
+describe('live checks (BR-03 to BR-06, BR-14, BR-15)', () => {
+  it('the worked example passes with the prototype figures', async () => {
+    const neema = await signIn('LFB0412');
+    const { res } = await draft(neema, PL(), NEEMA_TERMS);
+    expect(res.body.data.quote).toMatchObject({ instalment: 136900, maxInstalment: 668750, totalInterest: 428351, processingFee: 45000, insuranceFee: 81000, pass: true });
+    expect(res.body.data.checks.canSubmit).toBe(true);
+  });
+
+  it.each([
+    [{ amount: 400000, tenor: 12 }, 'The minimum for Personal Loan is TZS 500,000.'],
+    [{ amount: 15000000, tenor: 60 }, 'You can borrow up to 8× your basic salary: TZS 14,800,000.'],
+    [{ amount: 2000000, tenor: 72 }, 'Choose a tenor between 6 and 60 months.'],
+    [{ amount: 14000000, tenor: 6 }, /^The instalment of TZS 2,3\d\d,\d00 is above your limit of TZS 668,750 \(50% of adjusted net pay\)\. Lower the amount or lengthen the tenor\.$/],
+  ])('%j → %s', async (terms, message) => {
+    const neema = await signIn('LFB0412');
+    const { res } = await draft(neema, PL(), { ...terms, purpose: 'Test' });
+    expect(res.body.data.checks.canSubmit).toBe(false);
+    expect(res.body.data.checks.checks).toEqual(expect.arrayContaining([typeof message === 'string' ? message : expect.stringMatching(message)]));
+  });
+
+  it('the loan must end before retirement (BR-05)', async () => {
+    const joseph = await signIn('LFB0002'); // retires 2036-04-18
+    const { res } = await draft(joseph, HE(), { amount: 50000000, tenor: 120, purpose: 'House', productFields: { kind: 'Construction', place: 'Mbweni' } });
+    expect(res.body.data.checks.checks).toContain('The loan must be repaid before your retirement date. Shorten the tenor.');
+  });
+
+  it('product fields are checked (FR-06)', async () => {
+    const neema = await signIn('LFB0412');
+    const { res } = await draft(neema, HE(), { amount: 3200000, tenor: 12, purpose: 'Tuition' });
+    expect(res.body.data.checks.fieldErrors).toMatchObject({ 'productFields.kind': 'Enter what is the loan for.', 'productFields.place': 'Enter property location or institution name.' });
+    const ok = await api(neema.token).patch(`/applications/${res.body.data.id}`, { productFields: { kind: 'Tuition: dependant', place: 'St. Augustine University' } });
+    expect(ok.body.data.checks.fieldErrors).toEqual({});
+  });
+
+  it('account debit uses the profile bank details (BR-12)', async () => {
+    const neema = await signIn('LFB0412');
+    const { res } = await draft(neema, PL(), { ...NEEMA_TERMS, repaymentMethod: 'account' });
+    expect(res.body.data.repayment).toMatchObject({ method: 'account', bank: 'Letshego Faidika Bank', accountNo: '4010 2283 1170' });
+  });
+
+  it('a top-up adds back the old instalment and charges 0.5% (BR-09)', async () => {
+    await Staff.updateOne({ staffNo: 'LFB0412' }, { $set: { existingLfbLoans: [{ description: 'Personal loan 2024', instalment: 90000 }] } });
+    const neema = await signIn('LFB0412');
+    const { res } = await draft(neema, PL(), { ...NEEMA_TERMS, topUp: { on: true, loanRef: 'Personal loan 2024', instalment: 90000 } });
+    expect(res.body.data.quote).toMatchObject({ addBack: 90000, maxInstalment: 668750, processingFee: 22500 });
+  });
+});
+
+describe('agreement preview (FR-33, BRD 8)', () => {
+  it('shows the Swahili agreement pre-filled with the terms, words and schedule', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    const res = await api(neema.token).get(`/applications/${id}/agreement/preview`);
+    expect(res.status).toBe(200);
+    const text = JSON.stringify(res.body.data.blocks);
+    expect(text).toMatch(/MKATABA WA MKOPO WA MWAJIRIWA/);
+    expect(text).toMatch(/Tshs 4,500,000/);
+    expect(text).toMatch(/Shilingi milioni nne na elfu mia tano tu/);
+    expect(text).toMatch(/Neema Mushi/);
+    const table = res.body.data.blocks.find((b) => b.type === 'table');
+    expect(table.rows).toHaveLength(36);
+    expect(table.rows[0][2]).toBe('136,900');
+    expect(res.body.data.terms).toMatchObject({ instalment: 136900, fees: 126000, totalRepayable: 4928351 });
+    expect(res.body.data.template).toMatchObject({ version: '2026.11', sample: true });
+  });
+
+  it('is refused while a hard rule fails', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), { amount: 400000, tenor: 12, purpose: 'x' });
+    const res = await api(neema.token).get(`/applications/${id}/agreement/preview`);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('NOT_READY');
+  });
+});
+
+describe('sign agreement and submit (FR-10, FR-34 to FR-37)', () => {
+  it('cannot submit without every consent, the tick, reading to the end and the password', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    expect((await signAndSubmit(neema, id, { consents: { ...CONSENTS, crb: false } })).body.code).toBe('CONSENTS_REQUIRED');
+    expect((await signAndSubmit(neema, id, { accepted: false })).body.code).toBe('CONSENTS_REQUIRED');
+    expect((await signAndSubmit(neema, id, { scrolledToEnd: false })).body.code).toBe('NOT_READ');
+    const wrong = await signAndSubmit(neema, id, { password: 'not-my-password' });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.details.remainingAttempts).toBe(4);
+    expect((await Application.findById(id)).status).toBe('draft');
+  });
+
+  it('refuses when the agreement text differs from what was read', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    const res = await signAndSubmit(neema, id, { textSha256: 'a'.repeat(64) });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('AGREEMENT_CHANGED');
+  });
+
+  it('there is no other way to submit', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    await api(neema.token).patch(`/applications/${id}`, { status: 'pending_credit', amount: 4500000 });
+    expect((await Application.findById(id)).status).toBe('draft');
+  });
+
+  it('signing submits, stores the evidence and locks the PDF', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    const preview = await api(neema.token).get(`/applications/${id}/agreement/preview`);
+    const res = await signAndSubmit(neema, id);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ status: 'pending_credit', statusLabel: 'Pending Credit Review', currentStage: 'credit', cycle: 1 });
+    expect(res.body.data.route.stages).toEqual(['credit', 'hr', 'ceo']);
+
+    const a = await Application.findById(id);
+    const ag = await Agreement.findById(a.currentAgreementId);
+    expect(ag.number).toMatch(/^MKT-\d{4}-00001$/);
+    expect(ag.status).toBe('signed');
+    expect(ag.textSha256).toBe(preview.body.data.textSha256);
+    expect(crypto.createHash('sha256').update(ag.text, 'utf8').digest('hex')).toBe(ag.textSha256);
+    expect(ag.acceptance).toMatchObject({ staffNo: 'LFB0412', fullName: 'Neema Mushi' });
+    expect(ag.acceptance.ip).toBeTruthy();
+    expect(ag.acceptance.at).toBeInstanceOf(Date);
+    expect(ag.templateVersion).toBe('2026.11');
+    expect(ag.terms).toMatchObject({ amount: 4500000, tenor: 36, instalment: 136900 });
+
+    const pdf = await StoredFile.findById(ag.pdfFileId);
+    const bytes = await fileStore.read(pdf);
+    expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(crypto.createHash('sha256').update(bytes).digest('hex')).toBe(ag.pdfSha256);
+
+    expect(a.productVersionId).toBeTruthy();
+    expect(a.pricingVersionId).toBeTruthy();
+    expect(a.applicantSnapshot.salary.basic).toBe(1850000);
+    expect(a.stageDueAt.getTime()).toBeGreaterThan(Date.now());
+    expect((await Staff.findOne({ staffNo: 'LFB0412' })).lastAppliedAt).toBeInstanceOf(Date);
+    expect(await Decision.countDocuments({ applicationId: id, action: 'submit' })).toBe(1);
+    expect(await AuditLog.countDocuments({ action: 'application.submit' })).toBe(1);
+  });
+
+  it('notifies the applicant and every Credit Analyst', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    await signAndSubmit(neema, id);
+    const juma = await User.findOne({ staffNo: 'LFB0233' });
+    const n = await Notification.findOne({ userId: juma._id, type: 'application.stage' });
+    expect(n.text).toMatch(/from Neema Mushi is waiting for your Credit Analyst review$/);
+    const me = await User.findOne({ staffNo: 'LFB0412' });
+    expect(await Notification.countDocuments({ userId: me._id, type: 'application.submitted' })).toBe(1);
+  });
+
+  it('the staff member downloads their agreement and its PDF; others cannot', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    const sub = await signAndSubmit(neema, id);
+    const agId = sub.body.data.agreements[0].id;
+    const ag = await api(neema.token).get(`/agreements/${agId}`);
+    expect(ag.body.data.text).toMatch(/MKATABA/);
+    const pdf = await api(neema.token).get(`/agreements/${agId}/pdf`).buffer(true).parse((r, cb) => {
+      const c = [];
+      r.on('data', (d) => c.push(d));
+      r.on('end', () => cb(null, Buffer.concat(c)));
+    });
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(pdf.body.subarray(0, 5).toString()).toBe('%PDF-');
+    const aisha = await signIn('LFB0451');
+    expect((await api(aisha.token).get(`/agreements/${agId}`)).status).toBe(404);
+    expect((await api(aisha.token).get(`/applications/${id}`)).status).toBe(404);
+  });
+});
+
+describe('routes chosen at submission (BRD 7.3, D-03)', () => {
+  it.each([
+    ['LFB0067', 'mgmt', ['credit', 'hr', 'ceo'], ' (limited details)'],
+    ['LFB0002', 'ceo', ['credit', 'hr'], ' (limited details)'],
+    ['LFB0051', 'hrhead', ['credit', 'pcm', 'ceo'], ' (limited details)'],
+  ])('%s goes on the %s route', async (staffNo, route, stages, suffix) => {
+    const person = await signIn(staffNo);
+    const { id } = await draft(person, PL(), { amount: 5000000, tenor: 24, purpose: 'Family needs', repaymentMethod: 'payroll' });
+    const res = await signAndSubmit(person, id);
+    expect(res.body.data.route).toMatchObject({ key: route, stages });
+    const juma = await User.findOne({ staffNo: 'LFB0233' });
+    expect((await Notification.findOne({ userId: juma._id, type: 'application.stage' })).text.endsWith(`review${suffix}`)).toBe(true);
+  });
+});
+
+describe('probation (NS-01)', () => {
+  beforeEach(async () => {
+    const joined = new Date(Date.now() - 60 * 24 * 3600 * 1000);
+    await Staff.updateOne(
+      { staffNo: 'LFB0596' },
+      {
+        $set: {
+          dateJoined: joined,
+          'personal.maritalStatus': 'Single',
+          'personal.dob': new Date('1998-05-20'),
+          'personal.nida': '19980520411080003126',
+          'personal.poBox': 'P.O. Box 902, Dodoma',
+          'personal.residence': 'Area D, Dodoma',
+          'bank.accountNo': '4010 3341 0596',
+          nextOfKin: [{ name: 'Mwanaidi Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Dodoma' }],
+          payDeclaredAt: new Date(),
+        },
+      }
+    );
+  });
+
+  it('a staff member on probation may apply with a reason, flagged for People and Culture', async () => {
+    const rehema = await signIn('LFB0596');
+    const { id, res } = await draft(rehema, PL(), { amount: 1000000, tenor: 12, purpose: 'Rent deposit', repaymentMethod: 'payroll' });
+    expect(res.body.data.probation.onProbation).toBe(true);
+    expect(res.body.data.checks.fieldErrors.probationReason).toBe('Say why you are applying during probation. People and Culture will verify it.');
+    await api(rehema.token).patch(`/applications/${id}`, { probationReason: 'Moved to Dodoma for this job and need a rent deposit.' });
+    expect((await signAndSubmit(rehema, id)).status).toBe(200);
+    const a = await Application.findById(id);
+    expect(a.probation).toMatchObject({ onProbation: true, reason: 'Moved to Dodoma for this job and need a rent deposit.' });
+    expect(a.ruleFlags[0]).toMatch(/probation/);
+  });
+});
+
+describe('documents (FR-09)', () => {
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
+  const upload = (person, id, buffer, name) => request(app()).post(`/api/v1/applications/${id}/documents`).set(authed(person.token)).field('label', 'Payslip').attach('file', buffer, name);
+
+  it('accepts PDF, JPG and PNG by content and refuses the rest', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL());
+    expect((await upload(neema, id, PNG, 'payslip.png')).status).toBe(201);
+    const fake = await upload(neema, id, Buffer.from('MZ this is not a pdf'), 'payslip.pdf');
+    expect(fake.status).toBe(400);
+    expect(fake.body.code).toBe('FILE_TYPE');
+    expect((await upload(neema, id, PNG, 'payslip.exe')).body.code).toBe('FILE_TYPE');
+    const view = await api(neema.token).get(`/applications/${id}`);
+    expect(view.body.data.documents).toHaveLength(1);
+  });
+
+  it('applies the configurable size limit', async () => {
+    await Settings.updateOne({ _id: 'global' }, { $set: { maxUploadMb: 1 } }, { upsert: true });
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL());
+    const big = Buffer.concat([PNG, Buffer.alloc(1024 * 1024 + 10)]);
+    expect((await upload(neema, id, big, 'big.png')).body.code).toBe('FILE_TOO_LARGE');
+  });
+
+  it('files are served only to their owner, and removal is audited', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL());
+    const up = await upload(neema, id, PNG, 'payslip.png');
+    const fileId = up.body.data.id;
+    expect((await api(neema.token).get(`/files/${fileId}`)).status).toBe(200);
+    const aisha = await signIn('LFB0451');
+    expect((await api(aisha.token).get(`/files/${fileId}`)).status).toBe(404);
+    await request(app()).delete(`/api/v1/applications/${id}/documents/${fileId}`).set(authed(neema.token));
+    expect((await api(neema.token).get(`/applications/${id}`)).body.data.documents).toHaveLength(0);
+    expect(await AuditLog.countDocuments({ action: { $in: ['document.upload', 'document.remove', 'file.download'] } })).toBe(3);
+  });
+});
+
+describe('resubmit and withdraw (FR-11)', () => {
+  it('a returned application is corrected and signed again; the old agreement is replaced', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    await signAndSubmit(neema, id);
+    const first = (await Application.findById(id)).currentAgreementId;
+    await Application.updateOne({ _id: id }, { $set: { status: 'returned', currentStage: null } }); // review arrives in M5
+    await api(neema.token).patch(`/applications/${id}`, { amount: 4000000 });
+    const res = await signAndSubmit(neema, id);
+    expect(res.body.data).toMatchObject({ status: 'pending_credit', cycle: 2, amount: 4000000 });
+    const old = await Agreement.findById(first);
+    expect(old).toMatchObject({ status: 'void', voidReason: 'Replaced by a new signed version on resubmission' });
+    expect(await Decision.countDocuments({ applicationId: id, action: 'resubmit' })).toBe(1);
+    expect(res.body.data.agreements.map((a) => a.status)).toEqual(['signed', 'void']);
+  });
+
+  it('withdrawing voids the agreement', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    await signAndSubmit(neema, id);
+    const res = await api(neema.token).post(`/applications/${id}/withdraw`, { reason: 'No longer needed' });
+    expect(res.body.data.status).toBe('withdrawn');
+    expect(res.body.data.agreements[0]).toMatchObject({ status: 'void', voidReason: 'Application withdrawn' });
+    // A new application for the product is possible again (BR-08).
+    expect((await api(neema.token).post('/applications', { productId: PL() })).status).toBe(201);
+  });
+
+  it('a product deactivated after the draft started cannot be submitted', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    const ProductVersion = require('../../src/models/ProductVersion');
+    await ProductVersion.create({ ...(await ProductVersion.findOne({ productId: products.PL._id }).lean()), _id: undefined, version: 2, changeType: 'deactivate', state: 'inactive', liveFrom: new Date(), approvedAt: new Date(), effectiveFrom: new Date() });
+    const res = await api(neema.token).get(`/applications/${id}/agreement/preview`);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('PRODUCT_UNAVAILABLE');
+    expect(localDay()).toBeTruthy();
+  });
+});

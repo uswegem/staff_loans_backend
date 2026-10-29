@@ -15,7 +15,9 @@
     "test:unit": "jest --runInBand tests/unit",
     "lint": "eslint src tests seed scripts",
     "openapi": "node scripts/export-openapi.js",
-    "ci": "npm run lint && npm test"
+    "ci": "npm run lint && npm run calc:check && npm test",
+    "calc:sync": "node scripts/sync-calc.js",
+    "calc:check": "node scripts/sync-calc.js --check"
   },
   "jest": {
     "testEnvironment": "node",

@@ -44,7 +44,8 @@ function load() {
     cookieSecure: bool('COOKIE_SECURE', true),
     corsOrigin: process.env.CORS_ORIGIN || '',
     trustProxy: process.env.TRUST_PROXY || 'loopback',
-    uploadDir: process.env.UPLOAD_DIR || '',
+    // Outside any web root (NFR-07). The API serves no static files; storage/ is gitignored.
+    uploadDir: process.env.UPLOAD_DIR || require('path').resolve(__dirname, '../../storage/uploads'),
     logLevel: process.env.LOG_LEVEL || 'info',
     loginRateLimitPerMin: int('LOGIN_RATE_LIMIT_PER_MIN', 20),
     bcryptRounds: int('BCRYPT_ROUNDS', 12),

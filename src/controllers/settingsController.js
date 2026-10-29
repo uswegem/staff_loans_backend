@@ -7,7 +7,7 @@ const Holiday = require('../models/Holiday');
 const audit = require('../services/audit/auditService');
 const { badRequest, notFound } = require('../utils/errors');
 
-const EDITABLE = ['stageTargetHours', 'ceoTargetHours', 'workingDays', 'dayStartMinutes', 'dayEndMinutes', 'revisedTermsExpiryDays', 'approvalSlaDays', 'probationMonths', 'maxUploadMb', 'inactivityTimeoutMin', 'lockoutThreshold'];
+const EDITABLE = ['stageTargetHours', 'ceoTargetHours', 'workingDays', 'dayStartMinutes', 'dayEndMinutes', 'revisedTermsExpiryDays', 'approvalSlaDays', 'probationMonths', 'maxUploadMb', 'firstDueDay', 'inactivityTimeoutMin', 'lockoutThreshold'];
 
 function view(s) {
   const out = {};

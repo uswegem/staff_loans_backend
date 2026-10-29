@@ -8,6 +8,7 @@ const { config } = require('../src/config/env');
 const { connect } = require('../src/config/db');
 const { seedFoundation } = require('./foundation');
 const { seedProducts } = require('./products');
+const { seedAgreementTemplate } = require('./agreementTemplate');
 
 async function main() {
   const password = process.env.SEED_PASSWORD;
@@ -15,6 +16,7 @@ async function main() {
   await connect(config.mongoUri);
   const { users } = await seedFoundation({ password });
   const products = await seedProducts(users);
+  await seedAgreementTemplate(users);
   // eslint-disable-next-line no-console
   console.log(`Seeded ${Object.keys(users).length} sample accounts and ${Object.keys(products).length} products.`);
   await mongoose.disconnect();
