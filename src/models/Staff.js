@@ -17,11 +17,12 @@ const otherLoanSchema = new Schema(
   { _id: false }
 );
 
-// Declared existing LFB loans (decision 19). productId/disbursedOn are optional and
-// only used for the reapply cooling period (NS-02, DECISIONS C-03).
+// Existing LFB staff loans from before SLAS, declared by the staff member (decision 19).
+// productId and disbursedOn are optional; when both are given the loan starts the
+// reapply cooling period for that product (NS-02, DECISIONS C-03).
 const lfbLoanSchema = new Schema(
   {
-    ref: String,
+    description: { type: String, trim: true },
     instalment: { type: Number, min: 0 },
     outstanding: { type: Number, min: 0 },
     productId: { type: Schema.Types.ObjectId, ref: 'Product' },
@@ -62,6 +63,7 @@ const staffSchema = new Schema(
     retirementDate: Date,
     incomeClass: { type: String, enum: ['fixed', 'commission'], default: 'fixed' },
     email: { type: String, lowercase: true, trim: true },
+    lfbAccountNo: { type: String, trim: true }, // maintained by People and Culture (FR-01); pre-fills the profile bank details
     workPhone: String,
     status: { type: String, enum: ['active', 'exited', 'deactivated'], default: 'active', index: true },
     exitDate: Date,

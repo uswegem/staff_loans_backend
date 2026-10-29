@@ -199,6 +199,347 @@
         }
       }
     },
+    "/me/profile": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "My profile, employment (read-only), salary, approval route and completeness",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile"
+          }
+        }
+      }
+    },
+    "/me/profile/completeness": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Profile completeness gate (decision 7, FR-05)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Done",
+            "total and missing fields": null
+          }
+        }
+      }
+    },
+    "/me/eligibility": {
+      "get": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Per product: can I apply, why not, and days until I can apply again or top up (NS-02, NS-03)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligibility"
+          }
+        }
+      }
+    },
+    "/me/profile/personal": {
+      "patch": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Save personal details; NIDA with or without dashes",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile"
+          }
+        }
+      }
+    },
+    "/me/profile/bank": {
+      "patch": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Save bank details",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile"
+          }
+        }
+      }
+    },
+    "/me/profile/kin": {
+      "patch": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Save next of kin (one to three)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile"
+          }
+        }
+      }
+    },
+    "/me/profile/pay": {
+      "patch": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Save deductions and other loans; needs the confirmation tick",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile"
+          }
+        }
+      }
+    },
+    "/staff": {
+      "get": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Staff records with salary in force and profile completeness (FR-01)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of staff"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Add a staff record with its first salary",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/staff/{id}": {
+      "get": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Staff record with salary history; the view is audited (NFR-05)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Staff record"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Change employment details",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved"
+          }
+        }
+      }
+    },
+    "/staff/{id}/status": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Activate, deactivate or record an exit; inactive staff cannot sign in (FR-04)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved"
+          }
+        }
+      }
+    },
+    "/staff/{id}/salaries": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Add an effective-dated salary (FR-03)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Added"
+          }
+        }
+      }
+    },
+    "/staff/import/template": {
+      "get": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Excel template with an Instructions sheet (FR-02)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "xlsx file"
+          }
+        }
+      }
+    },
+    "/staff/import": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Upload .xlsx, .xls or .csv; every row is checked; nothing changes yet (FR-02)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Preview of new",
+            "updated": null,
+            "unchanged and error rows": null
+          }
+        }
+      }
+    },
+    "/staff/import/{id}": {
+      "get": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "An upload's preview",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preview"
+          }
+        }
+      }
+    },
+    "/staff/import/{id}/errors.xlsx": {
+      "get": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Error rows with reasons, in template columns, to fix and upload again",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "xlsx file"
+          }
+        }
+      }
+    },
+    "/staff/import/{id}/commit": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Apply the valid rows in one transaction",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result"
+          }
+        }
+      }
+    },
+    "/staff/import/{id}/discard": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Discard an upload",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Discarded"
+          }
+        }
+      }
+    },
     "/permissions": {
       "get": {
         "tags": [

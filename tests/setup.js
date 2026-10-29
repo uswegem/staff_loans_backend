@@ -16,7 +16,8 @@ process.env.MONGODB_URI = process.env.SLAS_TEST_MONGO_URI;
 
 beforeAll(async () => {
   const dbName = `slas_test_${crypto.randomBytes(4).toString('hex')}`;
-  await mongoose.connect(process.env.SLAS_TEST_MONGO_URI, { dbName });
+  // Generous timeouts: the in-memory mongod can stall briefly on a loaded Windows machine.
+  await mongoose.connect(process.env.SLAS_TEST_MONGO_URI, { dbName, serverSelectionTimeoutMS: 60000, connectTimeoutMS: 60000, socketTimeoutMS: 120000, heartbeatFrequencyMS: 30000 });
   await Promise.all(Object.values(mongoose.models).map((m) => m.createCollection().then(() => m.syncIndexes())));
 });
 

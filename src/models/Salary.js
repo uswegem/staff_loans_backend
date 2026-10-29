@@ -4,7 +4,7 @@
 
 const mongoose = require('mongoose');
 
-const money = { type: Number, min: 0, validate: { validator: Number.isInteger, message: '{PATH} must be whole shillings' } };
+const money = { type: Number, min: 0, validate: { validator: (v) => v == null || Number.isInteger(v), message: '{PATH} must be whole shillings' } };
 
 const salarySchema = new mongoose.Schema(
   {

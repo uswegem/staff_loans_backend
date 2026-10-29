@@ -20,6 +20,8 @@ const settingsSchema = new mongoose.Schema(
     maxUploadMb: { type: Number, default: 10, min: 1, max: 50 },
     inactivityTimeoutMin: { type: Number, default: 15, min: 1 },
     lockoutThreshold: { type: Number, default: 5, min: 3, max: 10 },
+    // Profile fields that must be filled before applying (decision 7, FR-05); keys from PROFILE_FIELDS.
+    mandatoryProfileFields: { type: [String], default: undefined },
     version: { type: Number, default: 1 },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

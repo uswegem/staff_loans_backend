@@ -86,6 +86,7 @@ function toStaffDoc(p) {
     workPhone: profile.workPhone,
     personal,
     bank: profile.bank || base.bank,
+    lfbAccountNo: (profile.bank || base.bank).accountNo || `4010 0000 ${p.staffNo.slice(-4)}`,
     nextOfKin: profile.nextOfKin || base.nextOfKin,
     deductions: { medical: 0, other: 0 },
     otherLoans: [],

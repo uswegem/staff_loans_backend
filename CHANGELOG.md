@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 – Milestone 3: Staff records (29 Oct 2026)
+
+- Own profile API in the prototype's sections (personal, bank, next of kin, pay and deductions with the confirmation tick); employment, salary and approval route shown read-only. Every save is audited.
+- Completeness gate with a field catalogue and configurable mandatory fields (decision 7, FR-05). NIDA accepted with or without dashes and checked for a real date.
+- Eligibility view per product: profile gate, the reapply cooling period and the days until a top-up (NS-02, NS-03), counting declared paper loans with a product and payout date.
+- Route resolver for the four approval routes (BRD 7.3) and probation calculation (NS-01).
+- Staff records for People and Culture: list, detail (view audited), create, edit, effective-dated salary history, inactive and exited status that signs the person out (FR-01, FR-03, FR-04).
+- Excel bulk upload with SheetJS 0.20.3 (official CDN build): template with Instructions and Lists sheets; .xlsx, .xls and .csv; per-row checks; preview of new, updated, unchanged and error rows; error rows as Excel in template columns; transactional commit that re-checks rows (FR-02).
+
 ## 0.2.0 – Milestone 2: Products and pricing (29 Oct 2026)
 
 - Products are data: Product plus versioned, effective-dated ProductVersion holding every FR-57 parameter, including the months before reapplying (NS-02). Nothing in src/ branches on a product (tested).
