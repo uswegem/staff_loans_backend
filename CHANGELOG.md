@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 – Milestone 2: Products and pricing (29 Oct 2026)
+
+- Products are data: Product plus versioned, effective-dated ProductVersion holding every FR-57 parameter, including the months before reapplying (NS-02). Nothing in src/ branches on a product (tested).
+- Global pricing (interest, fees, insurance, affordability, pension, rounding, PAYE bands) as versioned PricingVersion, in basis points.
+- Maker-checker engine shared by both: draft with validation and a field-by-field comparison with the live version, submit, take back, discard, approve, and reject with a reason. The checker must be someone other than every editor. One open change per chain. Every action is audited with before and after values (FR-58 to FR-63).
+- Exact go-live: liveFrom is the later of the effective date and the approval time; versions resolve by date; the old version stays live until then; a scheduler keeps display states current. Deactivation follows the same flow and hides the product from new applications (FR-62).
+- In-app notification service with a channel interface; checkers are notified on submit and editors on decisions (FR-59). Inbox endpoints.
+- Seed: the four launch products (TZS 500,000 to 300,000,000) and launch pricing (6%, 1% / 0.5%, 0.60%, 50%).
+
 ## 0.1.0 – Milestone 1: Foundation (29 Oct 2026)
 
 - Express API under `/api/v1` with helmet, a JSON body limit, correlation ids, a uniform error format and an OpenAPI spec (`/api/v1/docs`, `npm run openapi`).

@@ -309,6 +309,371 @@
         }
       }
     },
+    "/products": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Live products open for new applications (FR-05, FR-62)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Products with their live version values"
+          }
+        }
+      }
+    },
+    "/pricing": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Pricing in force (rates in basis points)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pricing"
+          }
+        }
+      }
+    },
+    "/admin/products": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Products with live, scheduled and open versions",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Products"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Create a product as a draft (maker, FR-58)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Draft version with comparison"
+          }
+        }
+      }
+    },
+    "/admin/products/{id}": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Product with every version (history)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product"
+          }
+        }
+      }
+    },
+    "/admin/products/{id}/drafts": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Propose a change or a deactivation as a draft (maker, FR-58, FR-62)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Draft"
+          },
+          "409": {
+            "description": "Another change is open"
+          }
+        }
+      }
+    },
+    "/admin/product-versions/{vid}": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Version with field-by-field comparison to the live version (FR-59)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Version"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Edit a draft or rejected version; validates every value (FR-58)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved"
+          },
+          "400": {
+            "description": "Invalid values"
+          }
+        }
+      }
+    },
+    "/admin/product-versions/{vid}/submit": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Submit for approval; checkers are notified (FR-59)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending approval"
+          }
+        }
+      }
+    },
+    "/admin/product-versions/{vid}/recall": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Maker takes a submitted version back to draft",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Draft"
+          }
+        }
+      }
+    },
+    "/admin/product-versions/{vid}/discard": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Discard a draft (kept for the audit trail)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Discarded"
+          }
+        }
+      }
+    },
+    "/admin/product-versions/{vid}/approve": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Checker approves; refused for anyone who edited it (FR-60)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved (scheduled) or active"
+          },
+          "403": {
+            "description": "Self-approval"
+          }
+        }
+      }
+    },
+    "/admin/product-versions/{vid}/reject": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Checker rejects with a mandatory reason; returns to the maker (FR-59)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rejected"
+          }
+        }
+      }
+    },
+    "/admin/pricing": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Pricing versions, live and open",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pricing history"
+          }
+        }
+      }
+    },
+    "/admin/pricing/drafts": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Propose a pricing change as a draft (maker-checker, D-06)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Draft"
+          }
+        }
+      }
+    },
+    "/admin/pricing-versions/{vid}": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Pricing version with comparison; same submit, recall, discard, approve and reject actions as products",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Version"
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "My in-app notifications (BRD 12)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Items and unread count"
+          }
+        }
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Unread count for the bell",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Count"
+          }
+        }
+      }
+    },
+    "/notifications/{id}/read": {
+      "post": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Mark one as read",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification"
+          }
+        }
+      }
+    },
+    "/notifications/read-all": {
+      "post": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Mark all as read",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/auth/login": {
       "post": {
         "tags": [

@@ -9,7 +9,11 @@ async function main() {
   await connect(config.mongoUri);
   const app = buildApp();
   const server = app.listen(config.port, () => logger.info(`SLAS API listening on port ${config.port}`));
-  const shutdown = () => server.close(() => process.exit(0));
+  const stopJobs = require('./jobs/scheduler').start();
+  const shutdown = () => {
+    stopJobs();
+    server.close(() => process.exit(0));
+  };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 }
