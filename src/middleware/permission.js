@@ -12,7 +12,7 @@ const { unauthorized, forbidden } = require('../utils/errors');
 const privileged = (p) => MFA_KINDS.includes(permById(p)?.kind);
 
 function check(mode, perms) {
-  return async (req, res, next) => {
+  const mw = async (req, res, next) => {
     if (!req.auth) return next(unauthorized());
     const granted = req.auth.permissions;
     const held = perms.filter((p) => granted.has(p));
@@ -32,6 +32,8 @@ function check(mode, perms) {
     }
     return next();
   };
+  mw.slasPermissions = perms; // lets the route guard test see the check
+  return mw;
 }
 
 const requireAll = (...perms) => check('all', perms);

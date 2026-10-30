@@ -50,10 +50,33 @@ Sample accounts all use `SEED_PASSWORD`. Reviewers, OPS, administrators and the 
 | `npm test` | All tests. They start an in-memory MongoDB replica set; the first run downloads a `mongod` binary. |
 | `npm run test:unit` | Unit tests only |
 | `npm run lint` | ESLint |
-| `npm run ci` | Lint, then all tests |
+| `npm run ci` | Lint, calculator check, then all tests |
 | `npm run openapi` | Writes `openapi.json` from the route annotations; this is the API contract the frontend follows |
+| `npm run calc:check` | Checks the web app's copy of the loan calculator matches this one (`calc:sync` regenerates it) |
+| `node scripts/e2e-server.js` | API for the Playwright runs: in-memory replica set, sample data, port 4100. The web app's `npm run e2e` starts it for you. |
+
+## Troubleshooting
+
+- **Tests time out or MongoDB says "server monitor timeout".** The in-memory `mongod` stalls when the machine is busy. Close other heavy jobs and run one suite with `npx jest tests/integration/review.test.js`. A stray `mongod.exe` from an interrupted run can be stopped in Task Manager.
+- **The first test run is slow.** mongodb-memory-server downloads `mongod` once into `node_modules/.cache`. Behind the bank proxy, set `MONGOMS_SYSTEM_BINARY` to an installed `mongod.exe` instead.
+- **"MongoDB is not running as a replica set".** Start `mongod` with `--replSet rs0` and run `rs.initiate` once (step 2).
+- **Sign-in works but a reload signs you out.** On plain http, set `COOKIE_SECURE=false`; the browser drops Secure cookies on http.
+
+## Scheduled jobs
+
+The API runs these in-process (`src/jobs/scheduler.js`); each is safe to run on several instances at once:
+
+| Job | Every | What it does |
+| --- | --- | --- |
+| product-go-live | 1 min | Moves approved product and pricing versions to live at their exact time (FR-62) |
+| revised-terms-expiry | 5 min | Lapses revised terms not accepted in time and tells the applicant and OPS (FR-39) |
+| stage-overdue-reminders | 5 min | Tells the reviewer, and their delegate, once a stage is overdue (BRD 12) |
+| disbursement-outside-sla | 1 h | Keeps the Outside SLA flag current for reports (Q3) |
 
 ## Security notes
+
+The full review, with the go-live checklist, is in [SECURITY.md](SECURITY.md).
+
 
 - The access token lives only in the browser's memory. The refresh token sits in an httpOnly, Secure, SameSite=Strict cookie on `/api/v1/auth`, and is rotated on every refresh. Reusing a rotated token ends the session.
 - CSRF: refresh and logout need the `X-XSRF-TOKEN` header to match the `XSRF-TOKEN` cookie and the session.
@@ -63,3 +86,4 @@ Sample accounts all use `SEED_PASSWORD`. Reviewers, OPS, administrators and the 
   db.createRole({ role: 'slasAuditAppendOnly', privileges: [{ resource: { db: 'slas', collection: 'auditlogs' }, actions: ['insert', 'find'] }], roles: [] })
   ```
 - There are no secrets in git. `.env` is ignored.
+- Every route validates input and checks a permission, or is on a reviewed self-service list; `tests/unit/routeGuards.test.js` enforces this for new routes.

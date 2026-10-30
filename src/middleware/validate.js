@@ -5,7 +5,7 @@
 const { badRequest } = require('../utils/errors');
 
 function validate(schemas) {
-  return (req, res, next) => {
+  const mw = (req, res, next) => {
     for (const part of ['params', 'query', 'body']) {
       if (!schemas[part]) continue;
       const { value, error } = schemas[part].validate(req[part] ?? {}, { abortEarly: false, stripUnknown: true, convert: true });
@@ -27,6 +27,8 @@ function validate(schemas) {
     }
     return next();
   };
+  mw.slasValidate = Object.keys(schemas); // lets the route guard test see what is validated
+  return mw;
 }
 
 module.exports = { validate };

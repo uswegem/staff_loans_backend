@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 – Milestone 8: Hardening (30 Oct 2026)
+
+- E2E API (`scripts/e2e-server.js`): in-memory replica set with the sample data, for the Playwright runs in the web app repo.
+- Route guard test: every route must validate input and check a permission, or be on the reviewed self-service list.
+- Security review with the go-live checklist (SECURITY.md); README troubleshooting and scheduled jobs.
+- Jest test time limit raised to 60 s for slower machines.
+
 ## 0.7.0 – Milestone 7: Reports, admin screens and exports (30 Oct 2026)
 
 - Reports RP-01 to RP-07 and RP-10 with filters (dates, product, department, branch, category, status, grouping) and an overview for the dashboard.
