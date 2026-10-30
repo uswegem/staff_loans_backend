@@ -1217,6 +1217,81 @@
         }
       }
     },
+    "/disbursements": {
+      "get": {
+        "tags": [
+          "Disbursement"
+        ],
+        "summary": "OPS queue: ready to disburse (with Outside SLA flags) or disbursed (FR-20, Q3)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queue"
+          }
+        }
+      }
+    },
+    "/disbursements/register.csv": {
+      "get": {
+        "tags": [
+          "Disbursement"
+        ],
+        "summary": "Disbursed loans register as CSV (FR-26); audited",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV"
+          }
+        }
+      }
+    },
+    "/disbursements/{id}": {
+      "get": {
+        "tags": [
+          "Disbursement"
+        ],
+        "summary": "Loan summary for disbursement and recovery set-up",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Summary"
+          }
+        }
+      }
+    },
+    "/disbursements/{id}/confirm": {
+      "post": {
+        "tags": [
+          "Disbursement"
+        ],
+        "summary": "Confirm disbursement: date, optional reference, comment, checklist; regenerates the schedule (FR-20 to FR-22, FR-24)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disbursed"
+          },
+          "403": {
+            "description": "Own or approved loan (SoD)"
+          }
+        }
+      }
+    },
     "/auth/login": {
       "post": {
         "tags": [

@@ -59,7 +59,19 @@ const applicationSchema = new Schema(
     schedule: { type: Array, default: undefined }, // regenerated at final approval and disbursement (FR-21, FR-24)
     scheduleBasis: { type: String, enum: ['final_approval', 'disbursement', null], default: null },
     revisedExpiresAt: Date, // FR-39
-    outsideSla: { type: Boolean, default: false },
+    outsideSla: { type: Boolean, default: false }, // Q3: Pending Disbursement past approvalSlaDays (flag only)
+    overdueNotifiedAt: Date, // stage-overdue reminder sent for the current stage (BRD 12)
+
+    // OPS confirmation (FR-20 to FR-22)
+    disbursement: {
+      date: Date, // local midnight of the disbursement date
+      transactionRef: String,
+      comment: String,
+      conditions: { type: [{ _id: false, text: String, ticked: Boolean }], default: undefined },
+      topUpSettled: Boolean,
+      confirmedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      confirmedAt: Date,
+    },
 
     applicantSnapshot: Schema.Types.Mixed, // staff and salary in force at submission (FR-03)
     calcSnapshot: Schema.Types.Mixed, // the full quote at submission (BRD 10)
@@ -75,5 +87,6 @@ const applicationSchema = new Schema(
 applicationSchema.index({ applicantUserId: 1, createdAt: -1 });
 applicationSchema.index({ applicantUserId: 1, productId: 1, status: 1 });
 applicationSchema.index({ status: 1, currentStage: 1 });
+applicationSchema.index({ status: 1, 'disbursement.date': -1 });
 
 module.exports = mongoose.model('Application', applicationSchema);

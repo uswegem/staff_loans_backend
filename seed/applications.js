@@ -2,8 +2,7 @@
 
 // The prototype's sample applications (all fictional), so queues, the four routes,
 // returns, revised terms and the OPS queue can be shown straight after seeding.
-// Only seeded into a system with no applications. The disbursed sample
-// (SL-2026-00015) arrives with milestone 6.
+// Only seeded into a system with no applications.
 
 const Application = require('../src/models/Application');
 const Agreement = require('../src/models/Agreement');
@@ -73,6 +72,15 @@ const SAMPLES = [
       { by: 'LFB0051', stage: 'hr', days: 10 },
       { by: 'LFB0002', stage: 'ceo', days: 8 },
     ],
+  },
+  {
+    ref: 'SL-2026-00015', a: 'LFB0412', p: 'SA', amount: 500000, tenor: 2, purpose: 'Rent deposit', submittedDays: 70, status: 'disbursed', crb: 'Clear',
+    steps: [
+      { by: 'LFB0233', stage: 'credit', days: 69 },
+      { by: 'LFB0051', stage: 'hr', days: 68 },
+      { by: 'LFB0002', stage: 'ceo', days: 66 },
+    ],
+    disbursed: { by: 'LFB0318', days: 64, ref: 'FT26223XK9', comment: 'Loan disbursed to staff account.' },
   },
   {
     ref: 'SL-2026-00012', a: 'LFB0451', p: 'VL', amount: 25000000, tenor: 60, purpose: 'Vehicle purchase', fields: { make: 'Nissan X-Trail', year: 2015, seller: 'Private seller', price: 27000000 }, submittedDays: 30, status: 'rejected', crb: 'Clear',
@@ -181,12 +189,21 @@ async function seedSampleApplications({ users, products: byCode }) {
       const inst = calc.instalment(s.recommended.amount, s.recommended.tenor, pricing.interestBps, pricing.instalmentRounding);
       Object.assign(app, { approved: { amount: s.recommended.amount, tenor: s.recommended.tenor, instalment: inst }, finalApprovedAt: enteredAt, revisedExpiresAt: new Date(enteredAt.getTime() + settings.revisedTermsExpiryDays * DAY) });
     }
-    if (s.status === 'pending_disbursement') {
+    if (['pending_disbursement', 'disbursed'].includes(s.status)) {
       const rows = calc.schedule(s.amount, s.tenor, pricing.interestBps, pricing.instalmentRounding, calc.firstDueDate(localDay(enteredAt), settings.firstDueDay));
       Object.assign(app, { approved: { amount: s.amount, tenor: s.tenor, instalment: q.instalment }, finalApprovedAt: enteredAt, schedule: rows, scheduleBasis: 'final_approval' });
       const inForce = await fileStore.store(await agreementPdf({ blocks: textBlocks(doc.text), title: `Mkataba ${number} (${s.ref}) - unatumika`, evidence: [...evidence, ...approvals.map((x, i) => [`Kwa niaba ya Mwajiri ${i + 1}`, `${x.name}, ${x.title}, ${x.stage}, ${x.at.toISOString()}`])] }), { kind: 'agreement_pdf', originalName: `${number}-in-force.pdf`, applicationId: app._id, ownerUserId: id(s.a), uploadedBy: id('LFB0002') });
       Object.assign(agreement, { status: 'in_force', effectiveAt: enteredAt, inForcePdfFileId: inForce._id, approvals });
       await Staff.updateOne({ _id: staff._id }, { $push: { loanHistory: { productId: product._id, applicationId: app._id, ref: s.ref, appliedAt: submittedAt, approvedAt: enteredAt } } });
+    }
+    if (s.disbursed) {
+      // FR-21, FR-24: the schedule restarts from the disbursement date.
+      const at = new Date(now.getTime() - s.disbursed.days * DAY);
+      const date = localDay(at);
+      app.disbursement = { date: new Date(`${date}T00:00:00+03:00`), transactionRef: s.disbursed.ref, comment: s.disbursed.comment, conditions: version.disbursementConditions.map((text) => ({ text, ticked: true })), confirmedBy: id(s.disbursed.by), confirmedAt: at };
+      app.schedule = calc.schedule(s.amount, s.tenor, pricing.interestBps, pricing.instalmentRounding, calc.firstDueDate(date, settings.firstDueDay));
+      Object.assign(app, { scheduleBasis: 'disbursement', closedAt: at, stageEnteredAt: at });
+      await Decision.create({ applicationId: app._id, cycle: 1, action: 'disburse', actorId: id(s.disbursed.by), comment: `${s.disbursed.comment} Ref ${s.disbursed.ref}.`, details: { date, transactionRef: s.disbursed.ref }, at, ip: ip(s.disbursed.by) });
     }
     await agreement.save();
     await app.save();

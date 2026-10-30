@@ -16,6 +16,9 @@ const AuditLog = require('../../src/models/AuditLog');
 const { expireRevisedTerms } = require('../../src/services/review/reviewService');
 const { localDay } = require('../../src/utils/dates');
 
+// Whole-route flows sign in four people; allow for a loaded machine.
+jest.setTimeout(120000);
+
 let products;
 const PL = () => products.PL._id;
 const userId = async (staffNo) => (await User.findOne({ staffNo }))._id;

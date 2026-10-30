@@ -10,7 +10,7 @@ const Agreement = require('../../src/models/Agreement');
 
 beforeEach(async () => {
   const seeded = await seedAll();
-  expect(await seedSampleApplications(seeded)).toBe(11);
+  expect(await seedSampleApplications(seeded)).toBe(12);
 });
 
 const refs = (body) => body.data.items.map((i) => i.ref).sort();
@@ -46,4 +46,21 @@ it('new references continue after the samples', async () => {
   expect(body.message).toMatch(/SL-2026-00031/);
   const he = await api(aisha.token).post('/applications', { productId: String((await Application.findOne({ ref: 'SL-2026-00028' })).productId) });
   expect(he.body.data.ref).toMatch(/^SL-\d{4}-00032$/);
+});
+
+it('OPS sees SL-2026-00019 ready and SL-2026-00015 disbursed; Neema waits to reapply for a Salary Advance (NS-03)', async () => {
+  const ops = api((await signIn('LFB0318')).token);
+  expect(refs((await ops.get('/disbursements')).body)).toEqual(['SL-2026-00019']);
+  const done = (await ops.get('/disbursements?tab=done')).body.data.items;
+  expect(done).toHaveLength(1);
+  expect(done[0]).toMatchObject({ ref: 'SL-2026-00015', amount: 500000, tenor: 2, disbursement: { transactionRef: 'FT26223XK9', by: 'Halima Said' } });
+  const app = await Application.findOne({ ref: 'SL-2026-00015' });
+  expect(app.scheduleBasis).toBe('disbursement');
+  expect(app.schedule).toHaveLength(2);
+
+  const neema = await signIn('LFB0412');
+  const elig = await api(neema.token).get('/me/eligibility');
+  const sa = elig.body.data.products.find((p) => p.productId === String(app.productId));
+  expect(sa.canApply).toBe(false);
+  expect(sa.daysRemaining).toBeGreaterThan(100);
 });

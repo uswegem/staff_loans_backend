@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 – Milestone 6: Disbursement and notifications (30 Oct 2026)
+
+- OPS disbursement API (FR-20 to FR-22): ready and disbursed queues, loan summary for recovery set-up, confirmation with date, optional reference, mandatory comment, product checklist and top-up settlement; regenerates the schedule from the disbursement date (FR-21, FR-24); a decision, an audit entry and an applicant notification.
+- SoD: OPS cannot confirm their own loan or one they approved, directly or through a delegate (FR-48).
+- Outside SLA flag for loans waiting longer than approvalSlaDays; nothing expires (Q3).
+- Disbursed loans register as CSV, safe against formula injection and audited (FR-26).
+- Remaining BRD 12 notifications: stage overdue (reviewer and delegate, once per stage), profile incomplete, disbursement confirmed; first-stage notices go to a delegate in place of an absent holder.
+- Applicant view returns the schedule and disbursement details (FR-25); OPS can open agreements and documents, not the bureau report.
+- Seeds the disbursed sample SL-2026-00015.
+
 ## 0.5.0 – Milestone 5: Review (30 Oct 2026)
 
 - Workflow: each stage goes to every active holder of its review permission except the applicant (FR-47); delegates act on the holder's behalf (FR-19). Queue with waiting, overdue (working hours) and handled tabs (FR-13).

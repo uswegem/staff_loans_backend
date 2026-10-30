@@ -19,13 +19,16 @@ const workflow = require('../services/workflow/workflowService');
 /**
  * Files and agreements: the applicant, or a reviewer with the full view. Never a
  * limited (FR-55) viewer: documents and the agreement are among the hidden fields.
+ * OPS sees the agreement and documents of loans with them (FR-20), not the bureau report.
  */
 async function canSee(req, applicationId) {
   const app = await Application.findById(applicationId);
   if (!app) return null;
   if (String(app.applicantUserId) === String(req.auth.user._id)) return { app, as: 'applicant' };
   const access = await workflow.reviewAccess(req.auth, app);
-  return access && !access.limited ? { app, as: 'reviewer' } : null;
+  if (access && !access.limited) return { app, as: 'reviewer' };
+  if (req.auth.permissions.has('disb.confirm') && ['pending_disbursement', 'disbursed'].includes(app.status)) return { app, as: 'ops' };
+  return null;
 }
 
 const ApplicationController = {
@@ -112,14 +115,14 @@ const ApplicationController = {
     res.json({ success: true, message: 'Document removed.' });
   },
 
-  /** Own documents and agreement PDFs only. Reviewer access joins in milestone 5. */
   async file(req, res) {
     const file = await StoredFile.findById(req.params.id);
     const own = file && String(file.ownerUserId) === String(req.auth.user._id) && file.kind !== 'crb_report';
     const uploader = file && file.kind === 'crb_report' && String(file.uploadedBy) === String(req.auth.user._id);
     // The applicant sees their own documents and agreement PDFs; the bureau report is
     // for reviewers only (and the Credit Analyst who attached it).
-    const allowed = file && !file.removedAt && (own || uploader || (await canSee(req, file.applicationId))?.as === 'reviewer');
+    const seen = file && !own && !uploader ? (await canSee(req, file.applicationId))?.as : null;
+    const allowed = file && !file.removedAt && (own || uploader || seen === 'reviewer' || (seen === 'ops' && file.kind !== 'crb_report'));
     if (!allowed) throw notFound('File not found.');
     await audit.record({ req, action: 'file.download', description: `${file.originalName} downloaded`, entity: 'StoredFile', entityId: String(file._id) });
     await fileStore.send(res, file);

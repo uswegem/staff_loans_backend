@@ -6,6 +6,7 @@
 const Application = require('../../models/Application');
 const Agreement = require('../../models/Agreement');
 const Decision = require('../../models/Decision');
+const Notification = require('../../models/Notification');
 const Staff = require('../../models/Staff');
 const Salary = require('../../models/Salary');
 const Settings = require('../../models/Settings');
@@ -15,7 +16,6 @@ const Counter = require('../../models/Counter');
 const StoredFile = require('../../models/StoredFile');
 const audit = require('../audit/auditService');
 const notify = require('../notify/notificationService');
-const rbac = require('../rbac/rbacService');
 const calendar = require('../calendar/calendarService');
 const workingTime = require('../calendar/workingTime');
 const products = require('../products/productService');
@@ -128,6 +128,11 @@ async function view(req, app) {
     topUp: app.topUp,
     probation: { onProbation: result.onProbation, endsOn: result.probation.endsOn, reason: app.probation?.reason || '' },
     approved: app.approved?.amount ? app.approved : null,
+    // FR-25: the schedule for the agreement in force, from final approval or, once
+    // OPS confirms, from the disbursement date (FR-21, FR-24).
+    schedule: app.schedule?.length ? app.schedule : null,
+    scheduleBasis: app.scheduleBasis || null,
+    disbursement: app.disbursement?.date ? { date: localDay(app.disbursement.date), transactionRef: app.disbursement.transactionRef || null } : null,
     documents: docs.map(DOC_VIEW),
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
     history: decisions.map((d) => ({ action: d.action, stage: d.stage, comment: d.comment, at: d.at, cycle: d.cycle, mine: String(d.actorId) === String(req.auth.user._id) })),
@@ -168,9 +173,16 @@ async function nextRef(prefix, session) {
 
 // ---------- drafts ----------
 
+/** BRD 12: starting an application with an incomplete profile tells the applicant what is missing (once while unread). */
+async function notifyProfileIncomplete(userId, profile) {
+  if (await Notification.exists({ userId, type: 'profile.incomplete', readAt: null })) return;
+  await notify.notifyUsers([userId], { type: 'profile.incomplete', text: `Complete your profile to apply. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`, href: '/profile' });
+}
+
 async function createDraft(req, productId) {
   const ctx = await context(req, productId);
   const elig = rules.eligibility(ctx);
+  if (!ctx.profile.complete) await notifyProfileIncomplete(req.auth.user._id, ctx.profile);
   if (elig.messages.length) throw badRequest(elig.messages[0], { eligibility: elig.messages }, 'NOT_ELIGIBLE');
   const app = await withTransaction(async (session) => {
     const [a] = await Application.create(
@@ -357,11 +369,12 @@ async function signAndSubmit(req, app, body) {
       { session }
     );
 
-    // Notifications (BRD 12): the applicant, and every active holder of the first stage's permission.
+    // Notifications (BRD 12): the applicant, and the first stage's reviewers (a delegate in
+    // place of a holder who is away, FR-19).
     await notify.notifyUsers([req.auth.user._id], { type: 'application.submitted', text: `${fresh.ref} is submitted. Your agreement ${number} is signed and takes effect on final approval.`, href: `/applications/${fresh._id}`, entity: 'Application', entityId: String(fresh._id) }, { session });
-    const holders = await rbac.holdersOf(STAGES[firstStage].permission, { session });
+    const actors = await require('../workflow/workflowService').stageActors(fresh, { session });
     const limited = ['mgmt', 'ceo', 'hrhead'].includes(route.key);
-    await notify.notifyUsers(holders, { type: 'application.stage', text: `${fresh.ref} from ${staffName} is waiting for your ${STAGES[firstStage].short || STAGES[firstStage].label} review${limited && firstStage === 'credit' ? ' (limited details)' : ''}`, href: `/review/${fresh._id}`, entity: 'Application', entityId: String(fresh._id) }, { exclude: [req.auth.user._id], session });
+    await notify.notifyUsers(actors.map((a) => a.userId), { type: 'application.stage', text: `${fresh.ref} from ${staffName} is waiting for your ${STAGES[firstStage].short || STAGES[firstStage].label} review${limited && firstStage === 'credit' ? ' (limited details)' : ''}`, href: `/review/${fresh._id}`, entity: 'Application', entityId: String(fresh._id) }, { exclude: [req.auth.user._id], session });
   });
   return Application.findById(app._id);
 }
