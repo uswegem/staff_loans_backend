@@ -52,10 +52,13 @@ const applicationSchema = new Schema(
     crb: { outcome: String, reportDate: Date, fileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' } },
     appraisalNote: String,
     arrearsNote: String,
-    recommended: { amount: Number, tenor: Number, reason: String },
+    recommended: { amount: Number, tenor: Number, reason: String, by: { type: Schema.Types.ObjectId, ref: 'User' } },
     hrChecks: { employment: Boolean, category: Boolean, salary: Boolean, probationReasonVerified: Boolean },
     approved: { amount: Number, tenor: Number, instalment: Number },
     finalApprovedAt: Date,
+    schedule: { type: Array, default: undefined }, // regenerated at final approval and disbursement (FR-21, FR-24)
+    scheduleBasis: { type: String, enum: ['final_approval', 'disbursement', null], default: null },
+    revisedExpiresAt: Date, // FR-39
     outsideSla: { type: Boolean, default: false },
 
     applicantSnapshot: Schema.Types.Mixed, // staff and salary in force at submission (FR-03)

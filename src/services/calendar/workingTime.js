@@ -71,6 +71,25 @@ function addWorkingHours(calendar, start, hours) {
   throw new Error('Working time could not be reached within 10 years');
 }
 
+/** The instant `hours` working hours before `end` (used to seed sample data). */
+function subtractWorkingHours(calendar, end, hours) {
+  const c = normalise(calendar);
+  let left = hours * HOUR;
+  let cur = new Date(end).getTime();
+  if (left <= 0) return new Date(cur);
+  for (let d = localDateUtc(cur, c.offset).getTime(), guard = 0; guard < 3660; d -= DAY, guard += 1) {
+    const w = windowFor(c, d);
+    if (w && cur > w[0]) {
+      const to = Math.min(cur, w[1]);
+      const avail = to - w[0];
+      if (avail >= left) return new Date(to - left);
+      left -= avail;
+      cur = w[0];
+    }
+  }
+  throw new Error('Working time could not be reached within 10 years');
+}
+
 /**
  * Due and overdue info for a stage entered at `enteredAt` with a target in hours.
  * { dueAt, overdue, hoursLeft, hoursOverdue }
@@ -83,4 +102,4 @@ function dueInfo(calendar, enteredAt, targetHours, now = new Date()) {
     : { dueAt, overdue, hoursLeft: workingHoursBetween(calendar, now, dueAt), hoursOverdue: 0 };
 }
 
-module.exports = { localDateUtc, workingMsBetween, workingHoursBetween, addWorkingHours, dueInfo, isoDay };
+module.exports = { localDateUtc, workingMsBetween, workingHoursBetween, addWorkingHours, subtractWorkingHours, dueInfo, isoDay };

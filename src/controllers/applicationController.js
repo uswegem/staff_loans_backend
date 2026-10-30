@@ -14,6 +14,19 @@ const audit = require('../services/audit/auditService');
 const { STATUS, EDITABLE } = require('../constants/statuses');
 const { withTransaction } = require('../config/db');
 const { badRequest, conflict, notFound } = require('../utils/errors');
+const workflow = require('../services/workflow/workflowService');
+
+/**
+ * Files and agreements: the applicant, or a reviewer with the full view. Never a
+ * limited (FR-55) viewer: documents and the agreement are among the hidden fields.
+ */
+async function canSee(req, applicationId) {
+  const app = await Application.findById(applicationId);
+  if (!app) return null;
+  if (String(app.applicantUserId) === String(req.auth.user._id)) return { app, as: 'applicant' };
+  const access = await workflow.reviewAccess(req.auth, app);
+  return access && !access.limited ? { app, as: 'reviewer' } : null;
+}
 
 const ApplicationController = {
   async list(req, res) {
@@ -102,7 +115,12 @@ const ApplicationController = {
   /** Own documents and agreement PDFs only. Reviewer access joins in milestone 5. */
   async file(req, res) {
     const file = await StoredFile.findById(req.params.id);
-    if (!file || String(file.ownerUserId) !== String(req.auth.user._id)) throw notFound('File not found.');
+    const own = file && String(file.ownerUserId) === String(req.auth.user._id) && file.kind !== 'crb_report';
+    const uploader = file && file.kind === 'crb_report' && String(file.uploadedBy) === String(req.auth.user._id);
+    // The applicant sees their own documents and agreement PDFs; the bureau report is
+    // for reviewers only (and the Credit Analyst who attached it).
+    const allowed = file && !file.removedAt && (own || uploader || (await canSee(req, file.applicationId))?.as === 'reviewer');
+    if (!allowed) throw notFound('File not found.');
     await audit.record({ req, action: 'file.download', description: `${file.originalName} downloaded`, entity: 'StoredFile', entityId: String(file._id) });
     await fileStore.send(res, file);
   },
@@ -111,8 +129,9 @@ const ApplicationController = {
 
   async agreement(req, res) {
     const ag = await Agreement.findById(req.params.id).lean();
-    const app = ag && (await Application.findById(ag.applicationId).select('applicantUserId ref').lean());
-    if (!ag || !app || String(app.applicantUserId) !== String(req.auth.user._id)) throw notFound('Agreement not found.');
+    const seen = ag && (await canSee(req, ag.applicationId));
+    if (!seen) throw notFound('Agreement not found.');
+    const { app } = seen;
     res.json({
       success: true,
       data: {
@@ -131,15 +150,16 @@ const ApplicationController = {
         effectiveAt: ag.effectiveAt,
         voidAt: ag.voidAt,
         voidReason: ag.voidReason,
+        approvals: ag.approvals || [],
       },
     });
   },
 
   async agreementPdf(req, res) {
     const ag = await Agreement.findById(req.params.id).lean();
-    const app = ag && (await Application.findById(ag.applicationId).select('applicantUserId').lean());
-    if (!ag || !app || String(app.applicantUserId) !== String(req.auth.user._id)) throw notFound('Agreement not found.');
-    const file = await StoredFile.findById(ag.pdfFileId);
+    if (!ag || !(await canSee(req, ag.applicationId))) throw notFound('Agreement not found.');
+    // Once in force, the PDF that lists the approvers (FR-36).
+    const file = await StoredFile.findById(ag.inForcePdfFileId || ag.pdfFileId);
     await audit.record({ req, action: 'agreement.download', description: `Agreement ${ag.number} PDF downloaded`, entity: 'Agreement', entityId: String(ag._id) });
     await fileStore.send(res, file);
   },

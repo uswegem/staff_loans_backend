@@ -33,6 +33,9 @@ const agreementSchema = new Schema(
     textSha256: { type: String, required: true },
     pdfFileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' },
     pdfSha256: String,
+    // At final approval: the same text with the approvers who signed for the employer (FR-36).
+    inForcePdfFileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' },
+    approvals: { type: [{ name: String, title: String, stage: String, at: Date, onBehalfOf: String, _id: false }], default: [] },
     acceptance: {
       userId: { type: Schema.Types.ObjectId, ref: 'User' },
       staffNo: String,

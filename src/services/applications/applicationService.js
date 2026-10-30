@@ -32,15 +32,19 @@ const { AppError, badRequest, conflict, notFound } = require('../../utils/errors
 
 const fullName = (s) => [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ');
 
-/** Loads what the rules need for an applicant and a product (live versions unless pinned). */
-async function context(req, productId, { app, versions } = {}) {
-  const staff = await Staff.findById(req.auth.user.staffId);
+/**
+ * Loads what the rules need for an applicant and a product (live versions unless pinned).
+ * The applicant is the signed-in user, or opts.applicant { userId, staffId } for reviewers.
+ */
+async function context(req, productId, { app, versions, applicant } = {}) {
+  const who = applicant || { userId: req.auth.user._id, staffId: req.auth.user.staffId };
+  const staff = await Staff.findById(who.staffId);
   if (!staff) throw notFound('Your staff record was not found. Contact People and Culture.');
   const [salary, profile, settings, apps] = await Promise.all([
     Salary.inForce(staff._id),
     completeness(staff),
     Settings.get(),
-    Application.find({ applicantUserId: req.auth.user._id }).lean(),
+    Application.find({ applicantUserId: who.userId }).lean(),
   ]);
   let product;
   let version;
@@ -381,4 +385,4 @@ async function withdraw(req, app, reason) {
   return Application.findById(app._id);
 }
 
-module.exports = { context, own, view, createDraft, update, preview, signAndSubmit, withdraw, inputOf, DOC_VIEW };
+module.exports = { context, own, view, createDraft, update, preview, signAndSubmit, withdraw, inputOf, DOC_VIEW, nextRef, summariseQuote };

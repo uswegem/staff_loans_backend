@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 – Milestone 5: Review (30 Oct 2026)
+
+- Workflow: each stage goes to every active holder of its review permission except the applicant (FR-47); delegates act on the holder's behalf (FR-19). Queue with waiting, overdue (working hours) and handled tabs (FR-13).
+- FR-55 projector: on the management, CEO and Head of P&C routes a Credit-only viewer gets an allow-list of name, mobile and NIDA in the queue, review screen and decision response; documents, agreements and files are refused. Tested by scanning every response as the Credit Analyst.
+- Decisions with the prototype's checks: comment to return or reject, bureau outcome and optional report (FR-42), recommendations that only lower terms and pass affordability (FR-16, BR-11), the three staff-record checks and probation verification (FR-17, NS-01), arrears comments (BR-10). Concurrent decisions are refused.
+- Final approval per route (FR-56): agreement in force with a PDF listing the approvers (FR-36), schedule regenerated (FR-24), reapply wait started (NS-02), OPS notified; or Revised Terms to Accept with accept (new agreement), decline and expiry (FR-38, FR-39, FR-54).
+- Delegation with SoD checks; decisions need an MFA-verified session, including a delegate's.
+- Seeds the prototype's sample applications on an empty system.
+
 ## 0.4.0 – Milestone 4: Apply (29 Oct 2026)
 
 - One pure loan calculator (BRD 10, BR-14, BR-15) in integer shillings and basis points, tested against the prototype worked example; the web app uses a generated copy (npm run calc:sync, calc:check).

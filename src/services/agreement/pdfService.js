@@ -123,4 +123,27 @@ async function agreementPdf({ blocks, title, evidence }) {
   return Buffer.from(await doc.save({ useObjectStreams: false }));
 }
 
-module.exports = { agreementPdf };
+const NL = String.fromCharCode(10);
+const TAB = String.fromCharCode(9);
+
+/** Rebuilds printable blocks from the stored canonical text (one line per block). */
+function textBlocks(text) {
+  const blocks = [];
+  const lines = text.split(NL);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.includes(TAB)) {
+      const head = line.split(TAB);
+      const rows = [];
+      while (lines[i + 1] && lines[i + 1].includes(TAB)) {
+        i += 1;
+        rows.push(lines[i].split(TAB));
+      }
+      blocks.push({ type: 'table', head, rows });
+    } else if (i === 0) blocks.push({ type: 'h1', parts: [{ text: line }] });
+    else blocks.push({ type: 'p', parts: [{ text: line }] });
+  }
+  return blocks;
+}
+
+module.exports = { agreementPdf, textBlocks };

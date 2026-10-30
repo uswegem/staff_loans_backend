@@ -6,8 +6,12 @@
 
 const logger = require('../utils/logger');
 const { promoteAll } = require('../services/products/productService');
+const { expireRevisedTerms } = require('../services/review/reviewService');
 
-const JOBS = [{ name: 'product-go-live', everyMs: 60 * 1000, run: () => promoteAll() }];
+const JOBS = [
+  { name: 'product-go-live', everyMs: 60 * 1000, run: () => promoteAll() },
+  { name: 'revised-terms-expiry', everyMs: 5 * 60 * 1000, run: () => expireRevisedTerms() }, // FR-39
+];
 
 function start() {
   const timers = JOBS.map((job) => {

@@ -650,6 +650,208 @@
         }
       }
     },
+    "/queue": {
+      "get": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "My review queue: waiting, overdue (working hours) and handled (FR-13); limited rows on management routes (FR-55)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queue"
+          }
+        }
+      }
+    },
+    "/review/{id}": {
+      "get": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Review screen: full (FR-14) or limited to name, mobile and NIDA (FR-55); audited",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Review view"
+          },
+          "403": {
+            "description": "Own application"
+          }
+        }
+      }
+    },
+    "/review/{id}/decision": {
+      "post": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Approve, return or reject with the stage's checks (FR-15 to FR-18, FR-42, FR-56)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcome"
+          },
+          "400": {
+            "description": "Missing comment or checks"
+          }
+        }
+      }
+    },
+    "/review/{id}/crb-report": {
+      "post": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Attach the credit bureau report (FR-42)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "File"
+          }
+        }
+      }
+    },
+    "/applications/{id}/revised": {
+      "get": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Signed vs approved terms with the revised agreement (FR-54)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revised terms"
+          }
+        }
+      }
+    },
+    "/applications/{id}/accept-revised": {
+      "post": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Accept the revised agreement: tick, read to the end, password, fingerprint (FR-54)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending disbursement"
+          }
+        }
+      }
+    },
+    "/applications/{id}/decline-revised": {
+      "post": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Decline the revised terms with a reason (FR-38)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Declined by applicant"
+          }
+        }
+      }
+    },
+    "/delegations": {
+      "get": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "My delegations, given and received (FR-19)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delegations"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Set a time-bound delegate (SoD checked)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Delegation"
+          }
+        }
+      }
+    },
+    "/delegations/candidates": {
+      "get": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Colleagues who can be chosen as a delegate",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "People"
+          }
+        }
+      }
+    },
+    "/delegations/{id}/end": {
+      "post": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "End a delegation early",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ended"
+          }
+        }
+      }
+    },
     "/products": {
       "get": {
         "tags": [

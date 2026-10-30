@@ -14,6 +14,7 @@ const Staff = require('../models/Staff');
 const Session = require('../models/Session');
 const RefreshToken = require('../models/RefreshToken');
 const Settings = require('../models/Settings');
+const Delegation = require('../models/Delegation');
 const credentials = require('../services/auth/credentialProvider');
 const tokenService = require('../services/auth/tokenService');
 const mfa = require('../services/auth/mfaService');
@@ -145,7 +146,9 @@ const AuthController = {
     }
 
     const eff = await rbac.effectiveFor(user._id);
-    if (eff.mfaRequired) {
+    // A delegate covering someone's reviews holds review permissions too (FR-19, FR-49).
+    const delegate = await Delegation.exists({ delegateId: user._id, ...Delegation.activeFilter() });
+    if (eff.mfaRequired || delegate) {
       const purpose = user.mfa?.enabled ? 'verify' : 'enrol';
       const { token, jti } = tokenService.signMfa(user, purpose);
       await User.updateOne({ _id: user._id }, { $set: { 'mfa.pendingJti': jti } });
