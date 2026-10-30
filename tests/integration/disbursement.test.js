@@ -164,7 +164,7 @@ describe('disbursed loans register (FR-26)', () => {
     const res = await ops.get('/disbursements/register.csv');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/csv/);
-    const lines = res.text.replace(/^﻿/, '').split('\r\n');
+    const lines = res.text.slice(1).split('\r\n');
     expect(lines[0]).toBe('Reference,Staff number,Staff,Department,Product,Amount,Processing fee,Insurance,Instalment,Tenor,Repayment method,Account,First due date,Disbursed,Transaction ref,Agreement');
     expect(lines[1]).toMatch(/^SL-\d{4}-\d{5},LFB0412,Neema Mushi,.*,Personal Loan,4500000,.*,136900,36,Payroll deduction,,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-\d{2},FT26294AB12,MKT-/);
     expect(await AuditLog.countDocuments({ action: 'report.export' })).toBe(1);

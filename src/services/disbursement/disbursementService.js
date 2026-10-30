@@ -194,34 +194,6 @@ async function confirm(req, id, body) {
   return detail(req, app._id);
 }
 
-// ---------- disbursed loans register (FR-26) ----------
-
-const REGISTER_COLUMNS = ['Reference', 'Staff number', 'Staff', 'Department', 'Product', 'Amount', 'Processing fee', 'Insurance', 'Instalment', 'Tenor', 'Repayment method', 'Account', 'First due date', 'Disbursed', 'Transaction ref', 'Agreement'];
-
-async function register({ from, to } = {}) {
-  const filter = { status: 'disbursed' };
-  if (from || to) filter['disbursement.date'] = { ...(from && { $gte: localMidnight(from) }), ...(to && { $lte: localMidnight(to) }) };
-  const apps = await Application.find(filter).sort({ 'disbursement.date': -1 }).lean();
-  const settings = await Settings.get();
-  const maps = await loadAll(apps);
-  return apps.map((a) => {
-    const r = row(a, maps, settings);
-    return [r.ref, r.staff.staffNo, r.staff.name, r.staff.department || '', r.product, r.amount, r.processingFee, r.insuranceFee, r.instalment, r.tenor, a.repayment.method === 'payroll' ? 'Payroll deduction' : 'Account debit', a.repayment.method === 'account' ? `${a.repayment.bank || ''} ${a.repayment.accountNo || ''}`.trim() : '', r.firstDueDate, r.disbursement.date, r.disbursement.transactionRef || '', r.agreementNumber];
-  });
-}
-
-const csvCell = (v) => {
-  const s = v == null ? '' : String(v);
-  // Neutralise spreadsheet formulas (CSV injection) and quote when needed.
-  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
-  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-};
-
-async function registerCsv(opts) {
-  const rows = await register(opts);
-  return [REGISTER_COLUMNS, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
-}
-
 // ---------- Outside SLA flag (Q3, BR-13) ----------
 
 /** Scheduler job: keeps the stored Outside SLA flag current for reports. */
@@ -233,4 +205,4 @@ async function flagOutsideSla(now = new Date()) {
   return set.modifiedCount + unset.modifiedCount;
 }
 
-module.exports = { list, detail, confirm, register, registerCsv, REGISTER_COLUMNS, flagOutsideSla, slaInfo, blockedReason, csvCell };
+module.exports = { list, detail, confirm, flagOutsideSla, slaInfo, blockedReason };

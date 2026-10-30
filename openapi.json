@@ -199,6 +199,79 @@
         }
       }
     },
+    "/admin/templates": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Agreement template versions: current, scheduled and retired, with agreement counts (FR-40)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versions"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Load a new version after Legal approval; checked by rendering a sample; audited",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Loaded"
+          },
+          "400": {
+            "description": "Invalid text or no Legal approval"
+          }
+        }
+      }
+    },
+    "/admin/templates/preview": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Render template text with a fictional applicant",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocks"
+          }
+        }
+      }
+    },
+    "/admin/templates/{id}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "One version with its text and a sample rendering",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Version"
+          }
+        }
+      }
+    },
     "/me/profile": {
       "get": {
         "tags": [
@@ -848,6 +921,78 @@
         "responses": {
           "200": {
             "description": "Ended"
+          }
+        }
+      }
+    },
+    "/reports": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Reports this user may open, and filter values",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalogue"
+          }
+        }
+      }
+    },
+    "/reports/overview": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Dashboard figures: in review, overdue, pending disbursement, outside SLA, time per stage, disbursed by product",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Overview"
+          }
+        }
+      }
+    },
+    "/reports/{key}": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "One report on screen (RP-01 to RP-07, RP-10) with filters; FR-55 applied",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Columns and rows"
+          }
+        }
+      }
+    },
+    "/reports/{key}/export/{format}": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Export as csv, xlsx or pdf; same rows as the screen; audited",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File"
           }
         }
       }

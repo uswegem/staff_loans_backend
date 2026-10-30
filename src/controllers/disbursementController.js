@@ -4,9 +4,10 @@
 
 const disbursements = require('../services/disbursement/disbursementService');
 const audit = require('../services/audit/auditService');
+const reports = require('../services/reports/reportsService');
+const { toCsv } = require('../services/reports/exporters');
 const { localDay } = require('../utils/dates');
 
-const BOM = String.fromCharCode(0xfeff); // so Excel reads the CSV as UTF-8
 
 const DisbursementController = {
   async list(req, res) {
@@ -22,12 +23,13 @@ const DisbursementController = {
     res.json({ success: true, message: `${data.ref} disbursed. Journey complete.`, data });
   },
 
+  /** RP-04 as CSV: the same builder as the Reports screen, so FR-55 holds here too. */
   async registerCsv(req, res) {
-    const csv = await disbursements.registerCsv(req.query);
-    await audit.record({ req, action: 'report.export', description: `Disbursed loans register exported (CSV)${req.query.from || req.query.to ? `, ${req.query.from || '…'} to ${req.query.to || '…'}` : ''}`, entity: 'Report', entityId: 'disbursed' });
+    const report = await reports.build(req, 'disbursed', req.query, { forExport: true });
+    await audit.record({ req, action: 'report.export', description: `${report.id} ${report.name} exported (CSV, ${report.rows.length} rows)`, entity: 'Report', entityId: 'disbursed', after: { filters: report.filters, rows: report.rows.length } });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="disbursed-loans-register-${localDay()}.csv"`);
-    res.send(BOM + csv);
+    res.send(toCsv(report));
   },
 };
 

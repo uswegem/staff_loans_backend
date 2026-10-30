@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 – Milestone 7: Reports, admin screens and exports (30 Oct 2026)
+
+- Reports RP-01 to RP-07 and RP-10 with filters (dates, product, department, branch, category, status, grouping) and an overview for the dashboard.
+- Exports to CSV, Excel and PDF from the same builder as the screen; formula-safe; every export audited.
+- FR-55 in every report and export: Credit-only viewers get name only for management-route applications, and filters on hidden fields leave them out; tested across screen, CSV and Excel.
+- Agreement template versions: list, preview with a fictional applicant, load after Legal approval with a start date (FR-40).
+- Workflow settings return the four routes; dates in report filters are checked as real dates.
+
 ## 0.6.0 – Milestone 6: Disbursement and notifications (30 Oct 2026)
 
 - OPS disbursement API (FR-20 to FR-22): ready and disbursed queues, loan summary for recovery set-up, confirmation with date, optional reference, mandatory comment, product checklist and top-up settlement; regenerates the schedule from the disbursement date (FR-21, FR-24); a decision, an audit entry and an applicant notification.

@@ -1,8 +1,8 @@
 'use strict';
 
 // Versioned Swahili agreement templates (FR-40). Only an administrator loads a new
-// version after Legal approval (milestone 7 screens); each loan keeps the version
-// it accepted.
+// version after Legal approval; each loan keeps the version it accepted. The current
+// version is the newest one whose effective date has come (DECISIONS D-73).
 
 const mongoose = require('mongoose');
 
@@ -21,8 +21,10 @@ const templateSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-templateSchema.statics.active = function active(session) {
-  return this.findOne({ status: 'active' }).sort({ createdAt: -1 }).session(session || null);
+templateSchema.statics.active = function active(session, now = new Date()) {
+  return this.findOne({ status: 'active', $or: [{ effectiveFrom: null }, { effectiveFrom: { $lte: now } }] })
+    .sort({ effectiveFrom: -1, createdAt: -1 })
+    .session(session || null);
 };
 
 module.exports = mongoose.model('AgreementTemplate', templateSchema);

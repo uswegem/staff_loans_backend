@@ -6,6 +6,10 @@ const Settings = require('../models/Settings');
 const Holiday = require('../models/Holiday');
 const audit = require('../services/audit/auditService');
 const { badRequest, notFound } = require('../utils/errors');
+const { ROUTES, STAGES } = require('../services/workflow/routes');
+
+// The four routes are fixed by the BRD (7.3); shown read-only on the workflow screen.
+const ROUTE_VIEW = Object.values(ROUTES).map((r) => ({ key: r.key, label: r.label, stages: r.stages.map((k) => STAGES[k].short || STAGES[k].label), limitedCredit: r.limitedCredit }));
 
 const EDITABLE = ['stageTargetHours', 'ceoTargetHours', 'workingDays', 'dayStartMinutes', 'dayEndMinutes', 'revisedTermsExpiryDays', 'approvalSlaDays', 'probationMonths', 'maxUploadMb', 'firstDueDay', 'inactivityTimeoutMin', 'lockoutThreshold'];
 
@@ -22,7 +26,7 @@ function view(s) {
 const SettingsController = {
   async get(req, res) {
     const [s, holidays] = await Promise.all([Settings.get(), Holiday.find().sort({ date: 1 }).lean()]);
-    res.json({ success: true, data: { settings: view(s), holidays: holidays.map((h) => ({ id: String(h._id), date: h.date, name: h.name })) } });
+    res.json({ success: true, data: { settings: view(s), routes: ROUTE_VIEW, holidays: holidays.map((h) => ({ id: String(h._id), date: h.date, name: h.name })) } });
   },
 
   async update(req, res) {
