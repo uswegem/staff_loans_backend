@@ -20,6 +20,8 @@ const AuditLog = require('../src/models/AuditLog');
 const { localDay } = require('../src/utils/dates');
 
 async function run() {
+  // The unique "one pending change per staff member" index must exist before anyone submits.
+  await DobChange.createIndexes();
   const roles = await Role.updateMany({ code: { $in: ['head_pc', 'pc_manager'] }, permissions: { $ne: 'staff.verifyDob' } }, { $addToSet: { permissions: 'staff.verifyDob' } });
 
   const legacy = await Staff.find({ 'personal.dob': { $ne: null }, 'dateOfBirth.value': null, 'dateOfBirth.pending.changeId': null }).select('staffNo personal.dob').lean();
