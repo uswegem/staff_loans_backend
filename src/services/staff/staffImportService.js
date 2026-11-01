@@ -6,6 +6,7 @@
 // confirm. Blank cells keep the existing value for staff already on file (prototype).
 
 const XLSX = require('xlsx');
+const { STAFF_NO } = require('../../constants/staffNo');
 const Staff = require('../../models/Staff');
 const Salary = require('../../models/Salary');
 const { localDay, localMidnight } = require('../../utils/dates');
@@ -14,7 +15,7 @@ const MAX_ROWS = 5000;
 
 // [key, header, instruction, requiredForNew]
 const COLUMNS = Object.freeze([
-  ['staffNo', 'Staff number', 'Required. LFB followed by 4 digits, for example LFB0612.', true],
+  ['staffNo', 'Staff number', 'Required. The employee code on the payslip, for example AT637.', true],
   ['firstName', 'First name', 'Required for new staff.', true],
   ['middleName', 'Middle name', 'Optional.', false],
   ['lastName', 'Last name', 'Required for new staff.', true],
@@ -181,7 +182,7 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
   const problems = [];
   const staffNo = (text(raw.staffNo) || '').toUpperCase();
   if (!staffNo) problems.push('Staff number is missing');
-  else if (!/^LFB\d{4}$/.test(staffNo)) problems.push('Staff number must be LFB followed by 4 digits');
+  else if (!STAFF_NO.test(staffNo)) problems.push('Staff number must be the employee code on the payslip, for example AT637');
   else if (seenStaffNos.has(staffNo)) problems.push(`Staff number repeats row ${seenStaffNos.get(staffNo)}`);
 
   const ex = existing || {};
@@ -232,7 +233,7 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
 
   const lm = text(raw.lineManager)?.toUpperCase();
   if (lm) {
-    if (!/^LFB\d{4}$/.test(lm)) problems.push('Line manager staff number must be LFB followed by 4 digits');
+    if (!STAFF_NO.test(lm)) problems.push('Line manager staff number must be an employee code, for example AT637');
     else if (lm === staffNo) problems.push('A staff member cannot be their own line manager');
     else if (!knownStaffNos.has(lm)) problems.push(`Line manager ${lm} is not on file or in this upload`);
   }

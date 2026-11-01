@@ -124,7 +124,7 @@ describe('Excel bulk upload (FR-02)', () => {
       row({ 'Staff number': 'LFB0412', 'Basic salary (TZS)': '1,950,000', 'Salary effective from': '01/11/2026' }),
       row({ 'Staff number': 'LFB0612', 'First name': 'Baraka', 'Last name': 'Mwakyusa', 'Job title': 'Teller', 'Department': 'Branch Network', 'Work station': 'Mbeya Branch', 'Line manager staff number': 'LFB0613', 'Category': 'Non-management', 'Employment type': 'Probation', 'Date joined': '03/09/2026', 'Retirement date': '14/02/2062', 'Basic salary (TZS)': 1150000, 'Allowances (TZS)': 100000 }),
       row({ 'Staff number': 'LFB0188', 'Job title': 'Branch Manager', 'Category': 'Non-management' }),
-      row({ 'Staff number': 'LFB06O2', 'First name': 'Zawadi', 'Last name': 'Said', 'Job title': 'Loan Officer', 'Work station': 'Tanga Branch', 'Category': 'Officer', 'Employment type': 'Permanent', 'Date joined': '01/12/2025', 'Retirement date': '01/12/2020' }),
+      row({ 'Staff number': '06-LFB2', 'First name': 'Zawadi', 'Last name': 'Said', 'Job title': 'Loan Officer', 'Work station': 'Tanga Branch', 'Category': 'Officer', 'Employment type': 'Permanent', 'Date joined': '01/12/2025', 'Retirement date': '01/12/2020' }),
       row({ 'Staff number': 'LFB0613', 'First name': 'Imani', 'Last name': 'Komba', 'Job title': 'Head of Finance', 'Work station': 'Head Office', 'Category': 'Management', 'Employment type': 'Contract', 'Date joined': '17/08/2026', 'Retirement date': '30/06/2050', 'Basic salary (TZS)': 9800000, 'Allowances (TZS)': 900000 }),
     ]);
 
@@ -146,7 +146,7 @@ describe('Excel bulk upload (FR-02)', () => {
     expect(byNo.LFB0412.outcome).toBe('update');
     expect(byNo.LFB0412.changes.join()).toMatch(/basic 1,850,000 → 1,950,000/);
     expect(byNo.LFB0188.outcome).toBe('unchanged');
-    expect(byNo.LFB06O2.problems).toEqual(expect.arrayContaining(['Staff number must be LFB followed by 4 digits', 'Category must be Management or Non-management', 'Retirement date must be after the date joined']));
+    expect(byNo['06-LFB2'].problems).toEqual(expect.arrayContaining(['Staff number must be the employee code on the payslip, for example AT637', 'Category must be Management or Non-management', 'Retirement date must be after the date joined']));
     expect(byNo.LFB0613.problems).toContain('Contract end date is required for contract staff');
     // Nothing has changed yet.
     expect(await Staff.exists({ staffNo: 'LFB0612' })).toBeNull();
@@ -167,7 +167,7 @@ describe('Excel bulk upload (FR-02)', () => {
     const rows = XLSX.utils.sheet_to_json(XLSX.read(res.body, { type: 'buffer' }).Sheets['Staff records'], { header: 1 });
     expect(rows[0].slice(-2)).toEqual(['Errors', 'Row in your file']);
     expect(rows).toHaveLength(3);
-    expect(rows[1][0]).toBe('LFB06O2');
+    expect(rows[1][0]).toBe('06-LFB2');
     // Fix the contract row and upload the error file again.
     const fixed = rows.slice(1).filter((r) => r[0] === 'LFB0613').map((r) => r.slice(0, HEADERS.length));
     fixed[0][HEADERS.indexOf('Contract end date')] = '30/06/2028';

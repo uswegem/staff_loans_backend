@@ -4,6 +4,7 @@
 // Kept apart from the login identity in User (prompt 3a.6).
 
 const mongoose = require('mongoose');
+const { STAFF_NO } = require('../constants/staffNo');
 
 const { Schema } = mongoose;
 
@@ -46,7 +47,7 @@ const loanHistorySchema = new Schema(
 
 const staffSchema = new Schema(
   {
-    staffNo: { type: String, required: true, unique: true, uppercase: true, trim: true, match: /^LFB\d{4}$/ },
+    staffNo: { type: String, required: true, unique: true, uppercase: true, trim: true, match: STAFF_NO }, // employee code (C-07)
     firstName: { type: String, required: true, trim: true },
     middleName: { type: String, trim: true },
     lastName: { type: String, required: true, trim: true },

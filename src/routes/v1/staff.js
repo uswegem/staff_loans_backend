@@ -2,6 +2,7 @@
 
 const express = require('express');
 const Joi = require('joi');
+const { STAFF_NO, STAFF_NO_MESSAGE } = require('../../constants/staffNo');
 const multer = require('multer');
 const ProfileController = require('../../controllers/profileController');
 const StaffController = require('../../controllers/staffController');
@@ -15,7 +16,7 @@ const day = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).messages({ 'string.patte
 const text = (max) => Joi.string().trim().max(max).allow('');
 const phone = Joi.string().trim().max(30).pattern(/^[+\d][\d\s()-]{5,}$/).allow('').messages({ 'string.pattern.base': 'Enter a phone number, for example +255 713 448 902.' });
 const money = Joi.number().integer().min(0).max(10_000_000_000);
-const staffNo = Joi.string().trim().uppercase().pattern(/^LFB\d{4}$/).messages({ 'string.pattern.base': 'Staff numbers look like LFB0412.' });
+const staffNo = Joi.string().trim().uppercase().pattern(STAFF_NO).messages({ 'string.pattern.base': STAFF_NO_MESSAGE });
 
 // ---------- own profile ----------
 

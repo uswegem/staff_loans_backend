@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1 – Staff numbers are employee codes (1 Nov 2026)
+
+- Staff numbers follow Payroll's employee codes (for example AT637), one rule for sign-in, users, staff records and the Excel upload (C-07, D-81).
+- The payslip must show the applicant's staff number as a whole code; the name alone is not enough.
+- C-06 confirmed: LFB deductions raise the limit.
+
 ## 0.9.0 – Affordability from the payslip (31 Oct 2026)
 
 - New affordability method (DECISIONS A-01 to A-05, D-78): Pension 10% of Basic Pay; PAYE on Basic Pay less Pension; Net Pay = Basic Pay − Pension − PAYE; Adjusted Net Pay = Net Pay + LFB deductions; Maximum Instalment = 50%. Medical aid, other deductions, other-bank loans and commission no longer count.

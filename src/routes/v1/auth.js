@@ -6,6 +6,7 @@
 
 const express = require('express');
 const Joi = require('joi');
+const { STAFF_NO, STAFF_NO_MESSAGE } = require('../../constants/staffNo');
 const rateLimit = require('express-rate-limit');
 const AuthController = require('../../controllers/authController');
 const { authenticate } = require('../../middleware/auth');
@@ -17,8 +18,8 @@ const { asyncHandler } = require('../../utils/errors');
 
 const router = express.Router();
 
-const staffNo = Joi.string().trim().uppercase().pattern(/^LFB\d{4}$/).required().messages({
-  'string.pattern.base': 'Staff numbers look like LFB0412.',
+const staffNo = Joi.string().trim().uppercase().pattern(STAFF_NO).required().messages({
+  'string.pattern.base': STAFF_NO_MESSAGE,
   'string.empty': 'Enter your staff number.',
   'any.required': 'Enter your staff number.',
 });

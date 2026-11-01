@@ -6,6 +6,7 @@
 
 const express = require('express');
 const Joi = require('joi');
+const { STAFF_NO, STAFF_NO_MESSAGE } = require('../../constants/staffNo');
 const UserController = require('../../controllers/userController');
 const { requireAll } = require('../../middleware/permission');
 const { validate } = require('../../middleware/validate');
@@ -54,7 +55,7 @@ router.get(
 );
 router.post(
   '/',
-  validate({ body: Joi.object({ staffNo: Joi.string().trim().uppercase().pattern(/^LFB\d{4}$/).required(), temporaryPassword: tempPassword }) }),
+  validate({ body: Joi.object({ staffNo: Joi.string().trim().uppercase().pattern(STAFF_NO).required().messages({ 'string.pattern.base': STAFF_NO_MESSAGE }), temporaryPassword: tempPassword }) }),
   asyncHandler(UserController.create)
 );
 router.get('/:id', validate(idParams), asyncHandler(UserController.get));

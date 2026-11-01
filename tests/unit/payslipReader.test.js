@@ -41,8 +41,12 @@ describe('payslip reader', () => {
     expect((await reader.read(pdf, { staff: STAFF })).problem.code).toBe('PAYSLIP_NOT_YOURS');
   });
 
-  it('accepts a payslip that names the applicant without the SLAS staff number (payroll employee codes differ)', () => {
-    expect(reader.namesStaff(['NAME  EMPLOYEE CODE', 'Neema Mushi  AT412'], STAFF)).toBe(true);
+  it('matches on the employee code, which is the staff number (C-07); the name alone is not enough', () => {
+    const at = { ...STAFF, staffNo: 'AT637' };
+    expect(reader.namesStaff(['NAME  EMPLOYEE CODE', 'Neema Mushi  AT637'], at)).toBe(true);
+    expect(reader.namesStaff(['NAME  EMPLOYEE CODE', 'Neema Mushi  AT6370'], at)).toBe(false);
+    expect(reader.namesStaff(['NAME  EMPLOYEE CODE', 'Neema Mushi  AT412'], at)).toBe(false);
+    expect(reader.namesStaff(['NAME  EMPLOYEE CODE', 'Someone Else  AT637'], { ...at, staffNo: 'AT63' })).toBe(false);
   });
 
   it('refuses a PDF without text (a scan) and a file that is not a PDF', async () => {

@@ -43,10 +43,15 @@ describe('sign-in with staff number and password', () => {
     expect(res.status).toBe(200);
   });
 
-  it('validates the LFB0000 format', async () => {
-    const res = await login({ staffNo: 'LFB412', password: PASSWORD });
-    expect(res.status).toBe(400);
-    expect(res.body.details.staffNo[0]).toBe('Staff numbers look like LFB0412.');
+  it('validates the staff number: the employee code on the payslip (C-07)', async () => {
+    for (const bad of ['412', 'AT-637', 'A']) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await login({ staffNo: bad, password: PASSWORD });
+      expect(res.status).toBe(400);
+      expect(res.body.details.staffNo[0]).toBe('Enter the staff number as on the payslip (employee code), for example AT637.');
+    }
+    // A code in the right format that is not on file is a plain wrong sign-in.
+    expect((await login({ staffNo: 'at637', password: PASSWORD })).status).toBe(401);
   });
 
   it('[ESS] rejects invalid credentials and shows remaining attempts', async () => {

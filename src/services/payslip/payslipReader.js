@@ -131,11 +131,13 @@ function parse(lines, rules = DEFAULT_RULES) {
   return { basic, payDate, lfbLines, lfbDeductions: lfbLines.reduce((s, l) => s + l.amount, 0) };
 }
 
-/** Does the payslip name this staff member (staff number, or first and last name)? */
+/**
+ * Is this the staff member's payslip? Its employee code is the staff number (C-07),
+ * unique per staff member, so it must appear as a whole code: AT63 does not match AT637.
+ */
 function namesStaff(lines, staff) {
-  const text = lines.join(' ').toUpperCase();
-  if (staff.staffNo && text.replace(/\s+/g, '').includes(staff.staffNo.toUpperCase())) return true;
-  return !!(staff.firstName && staff.lastName && text.includes(staff.firstName.toUpperCase()) && text.includes(staff.lastName.toUpperCase()));
+  if (!staff.staffNo) return false;
+  return new RegExp(`(^|[^A-Z0-9])${escapeRe(staff.staffNo.toUpperCase())}($|[^A-Z0-9])`).test(lines.join('  ').toUpperCase());
 }
 
 /**
@@ -150,7 +152,7 @@ async function read(buffer, { staff, rules = DEFAULT_RULES }) {
     return { problem: { code: 'PAYSLIP_UNREADABLE', message: 'This file could not be opened as a PDF. Attach the payslip PDF from the payroll system.' } };
   }
   if (!lines.length) return { problem: { code: 'PAYSLIP_UNREADABLE', message: 'This payslip has no readable text (it looks like a scan or photo). Attach the PDF payslip from the payroll system.' } };
-  if (!namesStaff(lines, staff)) return { problem: { code: 'PAYSLIP_NOT_YOURS', message: 'This payslip does not show your staff number or name. Attach your own latest payslip.' } };
+  if (!namesStaff(lines, staff)) return { problem: { code: 'PAYSLIP_NOT_YOURS', message: 'This payslip does not show your staff number (employee code). Attach your own latest payslip.' } };
   const out = parse(lines, rules);
   if (!out.basic) return { problem: { code: 'PAYSLIP_NO_BASIC', message: 'Basic Pay could not be found on this payslip. Attach the payslip PDF from the payroll system, or ask People and Culture for help.' } };
   if (!out.payDate) return { problem: { code: 'PAYSLIP_NO_DATE', message: 'The pay date could not be found on this payslip. Attach the payslip PDF from the payroll system, or ask People and Culture for help.' } };

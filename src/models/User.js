@@ -9,7 +9,7 @@
 
 const mongoose = require('mongoose');
 
-const STAFF_NO = /^LFB\d{4}$/;
+const { STAFF_NO } = require('../constants/staffNo');
 
 const userSchema = new mongoose.Schema(
   {
