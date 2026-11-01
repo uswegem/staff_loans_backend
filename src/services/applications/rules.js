@@ -7,6 +7,7 @@
 const calc = require('../calc/loanCalculator');
 const { cooling, coolingMessage } = require('../staff/eligibilityService');
 const { probationInfo } = require('../staff/staffService');
+const { cutoffFor, cutoffRule, cutoffProblem } = require('../staff/retirement');
 const { OPEN } = require('../../constants/statuses');
 const { localDay } = require('../../utils/dates');
 
@@ -48,15 +49,33 @@ function payslipProblem(payslip, settings, today) {
 }
 
 /**
- * The longest tenor this person may take: the product maximum, cut short so the last
- * instalment falls before retirement or contract end (BR-04, BR-05).
+ * The longest tenor this person may take (D-82, BR-04): the lowest of the product
+ * maximum, the whole instalments that fall on or before the retirement cutoff, and those
+ * before a contract end. 0 when not even the product minimum fits.
  */
-function longestTenor(version, staff, startDay, dueDay) {
+function longestTenor(version, staff, startDay, dueDay, settings = {}) {
   const first = calc.firstDueDate(startDay, dueDay);
-  const ends = [staff.retirementDate, staff.contractEndDate].filter(Boolean).map(day);
-  let n = version.maxTenor;
-  while (n >= version.minTenor && ends.some((end) => calc.addMonthsToDay(first, n - 1) > end)) n -= 1;
+  const limits = [version.maxTenor];
+  const cutoff = cutoffFor(staff, settings);
+  if (cutoff) limits.push(calc.instalmentsBefore(cutoff, first));
+  if (staff.contractEndDate) limits.push(calc.instalmentsBefore(day(staff.contractEndDate), first));
+  const n = Math.min(...limits);
   return n >= version.minTenor ? n : 0;
+}
+
+/**
+ * The cutoff check on a schedule (D-82): the actual last instalment date must be on or
+ * before the cutoff. Used at entry, at submission and again at every approval.
+ * Returns { ok, lastDue, cutoff, maxTenor } or { ok: false, message }.
+ */
+function cutoffCheck({ staff, settings, version, tenor, lastDue, startDay }) {
+  const cutoff = cutoffFor(staff, settings);
+  if (!cutoff) return { ok: false, message: 'The applicant has no verified date of birth.', code: 'DOB_NOT_VERIFIED' };
+  const maxTenor = longestTenor(version, staff, startDay, settings.firstDueDay || 25, settings);
+  if (lastDue && lastDue > cutoff) {
+    return { ok: false, cutoff, lastDue, maxTenor, code: 'CUTOFF_EXCEEDED', message: `The last instalment would be due on ${lastDue}, after the cutoff of ${cutoff} (${cutoffRule(settings)}). The longest tenor allowed is ${maxTenor} months; ${tenor} months is too long.` };
+  }
+  return { ok: true, cutoff, lastDue, maxTenor };
 }
 
 /**
@@ -67,7 +86,8 @@ function eligibility(ctx) {
   const { staff, profile, version: v, settings, apps, today } = ctx;
   const out = [];
   if (staff.status !== 'active') out.push('Your staff record is not active. Contact People and Culture.');
-  if (!profile.complete) out.push(`You can apply once your profile is complete. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`);
+  // When the date of birth is all that is missing, its own message (below) says what to do (D-82).
+  if (!profile.complete && !profile.missing.every((m) => m.key === 'personal.dob')) out.push(`You can apply once your profile is complete. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`);
   if (staff.employmentType === 'Contract' && !v.contractStaffAllowed) out.push(`${v.name} is for permanent staff only.`);
   if (!v.eligibleCategories.includes(staff.category)) out.push(`${v.name} is not open to ${staff.category.toLowerCase()} staff.`);
 
@@ -87,6 +107,8 @@ function eligibility(ctx) {
 
   const c = cooling(staff, ctx.product._id, v.reapplyCoolingMonths, new Date(`${today}T12:00:00+03:00`));
   if (c && c.daysRemaining > 0) out.push(coolingMessage(v.name, c));
+  const cut = cutoffProblem(staff, v, settings, today);
+  if (cut) out.push(cut);
   return { messages: out, onProbation, probation, service };
 }
 
@@ -123,14 +145,19 @@ function fieldErrors(input, version, { onProbation }) {
 }
 
 /** Amount, tenor and affordability (BR-03 to BR-06, D-78). */
-function loanChecks(input, version, staff, q) {
+function loanChecks(input, version, staff, q, settings = {}) {
   const out = [];
   const { amount, tenor } = input;
   if (amount && amount < version.minAmount) out.push(`The minimum for ${version.name} is ${tzs(version.minAmount)}.`);
   if (amount && amount > version.maxAmount) out.push(`The maximum for ${version.name} is ${tzs(version.maxAmount)}.`);
   if (tenor && (tenor < version.minTenor || tenor > version.maxTenor)) out.push(`Choose a tenor between ${version.minTenor} and ${version.maxTenor} months.`);
   const lastDue = q.schedule.at(-1)?.due;
-  if (lastDue && staff.retirementDate && lastDue > day(staff.retirementDate)) out.push('The loan must be repaid before your retirement date. Shorten the tenor.');
+  // D-82: the cutoff from the verified date of birth, on the schedule's actual last date. It is
+  // never shortened silently; the message gives the cutoff and the longest tenor allowed.
+  const cutoff = cutoffFor(staff, settings);
+  if (lastDue && cutoff && lastDue > cutoff) {
+    out.push(`Your last instalment would be due on ${lastDue}, after your cutoff of ${cutoff} (${cutoffRule(settings)}). The longest tenor you can take is ${q.maxTenor} months.`);
+  }
   if (lastDue && staff.contractEndDate && lastDue > day(staff.contractEndDate)) out.push('The loan must be repaid before your contract ends. Shorten the tenor.');
   if (input.payslip && amount && tenor && !q.pass) {
     out.push(`The instalment of ${tzs(q.instalment)} is above your limit of ${tzs(q.maxInstalment)} (${q.rates.affordabilityBps / 100}% of adjusted net pay). Borrow up to ${tzs(q.maxAmountAtTenor)} over ${tenor} months, or up to ${tzs(q.maxAmount)} over ${q.maxTenor} months.`);
@@ -155,13 +182,13 @@ function evaluate(ctx, input) {
     pricing: ctx.pricing,
     startDay: ctx.today,
     dueDay,
-    maxTenor: longestTenor(ctx.version, ctx.staff, ctx.today, dueDay),
+    maxTenor: longestTenor(ctx.version, ctx.staff, ctx.today, dueDay, ctx.settings),
     maxAmountCap: ctx.version.maxAmount,
   });
   const fields = fieldErrors(input, ctx.version, elig);
   const slip = payslipProblem(input.payslip, ctx.settings, ctx.today);
   if (slip) fields.payslip = slip;
-  const checks = loanChecks(input, ctx.version, ctx.staff, q);
+  const checks = loanChecks(input, ctx.version, ctx.staff, q, ctx.settings);
   const flags = elig.onProbation ? ['Applied during probation: verify the reason (NS-01).'] : [];
   // People and Culture's salary record is the check on the payslip (D-79).
   if (input.payslip?.basic && ctx.salary?.basic && input.payslip.basic !== ctx.salary.basic) {
@@ -176,8 +203,9 @@ function evaluate(ctx, input) {
     probation: elig.probation,
     pay,
     quote: q,
+    cutoff: cutoffFor(ctx.staff, ctx.settings),
     canSubmit: !elig.messages.length && !Object.keys(fields).length && !checks.length,
   };
 }
 
-module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, payslipProblem, longestTenor, runningLoans, monthsBetweenDays };
+module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, payslipProblem, longestTenor, cutoffFor, cutoffProblem, cutoffCheck, runningLoans, monthsBetweenDays };

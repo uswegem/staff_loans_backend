@@ -85,6 +85,33 @@ function addMonthsToDay(day, months) {
   return `${ny}-${pad(nm)}-${pad(Math.min(d, last))}`;
 }
 
+/** Adds (or, when negative, subtracts) calendar days. */
+function addDaysToDay(day, days) {
+  const { y, m, d } = parseDay(day);
+  const t = new Date(Date.UTC(y, m - 1, d + days));
+  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+}
+
+/**
+ * Retirement cutoff (D-82): the date of birth plus ageYears calendar years (a
+ * 29 February birthday falls on 28 February in a common year), less bufferDays days.
+ * The last instalment of a loan must fall on or before this day.
+ */
+function retirementCutoff(dobDay, ageYears = 60, bufferDays = 60) {
+  if (!dobDay) return null;
+  return addDaysToDay(addMonthsToDay(dobDay, ageYears * 12), -bufferDays);
+}
+
+/** How many monthly instalments, the first due on firstDue, fall on or before cutoff. */
+function instalmentsBefore(cutoff, firstDue) {
+  if (!cutoff || !firstDue || firstDue > cutoff) return 0;
+  const a = parseDay(firstDue);
+  const b = parseDay(cutoff);
+  let k = (b.y - a.y) * 12 + (b.m - a.m);
+  while (k > 0 && addMonthsToDay(firstDue, k) > cutoff) k -= 1;
+  return k + 1;
+}
+
 /** First instalment: the due day of the month after the start day (prototype: the 25th). */
 function firstDueDate(startDay, dueDay = 25) {
   const { y, m } = parseDay(startDay);
@@ -159,4 +186,4 @@ function quote({ amount, tenor, topUp = false, pay, pricing, startDay, dueDay = 
   };
 }
 
-module.exports = { paye, payslip, maxInstalmentFor, maxAmount, instalment, schedule, quote, addMonthsToDay, firstDueDate };
+module.exports = { paye, payslip, maxInstalmentFor, maxAmount, instalment, schedule, quote, addMonthsToDay, addDaysToDay, firstDueDate, retirementCutoff, instalmentsBefore };

@@ -21,6 +21,13 @@ const settingsSchema = new mongoose.Schema(
     firstDueDay: { type: Number, default: 25, min: 1, max: 31 }, // instalments fall on this day of the month (D-48)
     inactivityTimeoutMin: { type: Number, default: 15, min: 1 },
     lockoutThreshold: { type: Number, default: 5, min: 3, max: 10 },
+    // Retirement cutoff (D-82): the last instalment must fall on or before
+    // date of birth + retirementAge years - retirementBufferDays.
+    retirementAge: { type: Number, default: 60, min: 40, max: 75 },
+    retirementBufferDays: { type: Number, default: 60, min: 0, max: 365 },
+    // A date of birth must give an age in this range on the day it is entered (D-82).
+    dobMinAge: { type: Number, default: 18, min: 14, max: 30 },
+    dobMaxAge: { type: Number, default: 60, min: 40, max: 75 },
     // The payslip attached to an application must be at most this old at submission (D-79).
     payslipMaxAgeDays: { type: Number, default: 45, min: 1, max: 120 },
     // Labels the payslip reader looks for; empty means the reader's defaults (D-79).

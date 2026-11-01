@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 – Date of birth verification and retirement cutoff (2 Nov 2026)
+
+- Date of birth changes wait for People and Culture (`DobChange`, permission `staff.verifyDob`): queue, approve, reject with a reason, withdraw by the submitter; no self-verification; audited and notified (D-82).
+- Retirement cutoff = verified date of birth + 60 years − 60 days (settings `retirementAge`, `retirementBufferDays`); the tenor is capped by the instalments that fit before it, affordability uses the capped tenor, and a longer tenor is refused with the cutoff and the maximum. Re-checked at every approval and when revised terms are accepted.
+- No verified date of birth, or no room before the cutoff: not eligible, with the reason. Settings `dobMinAge` and `dobMaxAge` check entered dates.
+- Deployment script `scripts/dob-verification-setup.js`. Loan rules no longer use the typed retirement date (D-83).
+
 ## 0.9.1 – Staff numbers are employee codes (1 Nov 2026)
 
 - Staff numbers follow Payroll's employee codes (for example AT637), one rule for sign-in, users, staff records and the Excel upload (C-07, D-81).

@@ -136,6 +136,8 @@ async function view(req, app) {
     disbursement: app.disbursement?.date ? { date: localDay(app.disbursement.date), transactionRef: app.disbursement.transactionRef || null } : null,
     payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [], readAt: app.payslip.readAt } : null,
     payslipMaxAgeDays: ctx.settings.payslipMaxAgeDays || 45,
+    // D-82: the cutoff from the verified date of birth and the longest tenor it allows.
+    retirement: { dateOfBirth: ctx.staff.dateOfBirth?.value || null, cutoff: result.cutoff, maxTenor: result.quote.maxTenor, age: ctx.settings.retirementAge ?? 60, bufferDays: ctx.settings.retirementBufferDays ?? 60 },
     documents: docs.map(DOC_VIEW),
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
     history: decisions.map((d) => ({ action: d.action, stage: d.stage, comment: d.comment, at: d.at, cycle: d.cycle, mine: String(d.actorId) === String(req.auth.user._id) })),
@@ -350,6 +352,8 @@ async function signAndSubmit(req, app, body) {
         station: ctx.staff.station,
         dateJoined: ctx.staff.dateJoined,
         retirementDate: ctx.staff.retirementDate,
+        dateOfBirth: ctx.staff.dateOfBirth?.value || null, // verified value used (D-82)
+        cutoff: result.cutoff,
         salary: ctx.salary ? { basic: ctx.salary.basic, allowances: ctx.salary.allowances, effectiveFrom: ctx.salary.effectiveFrom } : null,
         pay: result.pay,
         payslip: { fileId: fresh.payslip.fileId, payDate: fresh.payslip.payDate, basic: fresh.payslip.basic, lfbDeductions: fresh.payslip.lfbDeductions, lfbLines: fresh.payslip.lfbLines },

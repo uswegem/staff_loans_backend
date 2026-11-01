@@ -11,7 +11,7 @@ const { ROUTES, STAGES } = require('../services/workflow/routes');
 // The four routes are fixed by the BRD (7.3); shown read-only on the workflow screen.
 const ROUTE_VIEW = Object.values(ROUTES).map((r) => ({ key: r.key, label: r.label, stages: r.stages.map((k) => STAGES[k].short || STAGES[k].label), limitedCredit: r.limitedCredit }));
 
-const EDITABLE = ['stageTargetHours', 'ceoTargetHours', 'workingDays', 'dayStartMinutes', 'dayEndMinutes', 'revisedTermsExpiryDays', 'approvalSlaDays', 'probationMonths', 'maxUploadMb', 'firstDueDay', 'inactivityTimeoutMin', 'lockoutThreshold', 'payslipMaxAgeDays'];
+const EDITABLE = ['stageTargetHours', 'ceoTargetHours', 'workingDays', 'dayStartMinutes', 'dayEndMinutes', 'revisedTermsExpiryDays', 'approvalSlaDays', 'probationMonths', 'maxUploadMb', 'firstDueDay', 'inactivityTimeoutMin', 'lockoutThreshold', 'payslipMaxAgeDays', 'retirementAge', 'retirementBufferDays', 'dobMinAge', 'dobMaxAge'];
 const { rulesFrom: payslipRules } = require('../services/payslip/payslipReader');
 
 function view(s) {
@@ -37,6 +37,7 @@ const SettingsController = {
     const next = { ...before, ...req.body };
     if (next.dayEndMinutes <= next.dayStartMinutes) throw badRequest('The working day must end after it starts.', { dayEndMinutes: ['Must be after the start.'] });
     if (!next.workingDays.length) throw badRequest('Choose at least one working day.', { workingDays: ['Required.'] });
+    if (next.dobMinAge >= next.dobMaxAge) throw badRequest('The youngest age must be below the oldest.', { dobMaxAge: ['Must be above the youngest age.'] });
     EDITABLE.forEach((k) => {
       if (req.body[k] !== undefined) s[k] = req.body[k];
     });

@@ -68,7 +68,8 @@ function toStaffDoc(p) {
   const profile = p.profile || {};
   // A person with their own profile keeps exactly that (Rehema Ally stays incomplete).
   const personal = { ...(profile.personal || base.personal) };
-  personal.dob = personal.dob ? new Date(`${personal.dob}T00:00:00+03:00`) : undefined;
+  const dob = personal.dob;
+  personal.dob = dob ? new Date(`${dob}T00:00:00+03:00`) : undefined;
   return {
     staffNo: p.staffNo,
     firstName,
@@ -85,6 +86,9 @@ function toStaffDoc(p) {
     status: 'active',
     workPhone: profile.workPhone,
     personal,
+    // Seeded birthdates (fictional) start verified so the samples can apply; real ones
+    // go through People and Culture verification (D-82). Rehema Ally has none.
+    dateOfBirth: dob ? { value: dob, verifiedAt: new Date() } : undefined,
     bank: profile.bank || base.bank,
     lfbAccountNo: (profile.bank || base.bank).accountNo || `4010 0000 ${p.staffNo.slice(-4)}`,
     nextOfKin: profile.nextOfKin || base.nextOfKin,

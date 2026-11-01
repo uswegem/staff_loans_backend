@@ -89,6 +89,30 @@ async function putInForce(req, app, agreement, terms, now, session, approvals) {
   return sched;
 }
 
+// ---------- retirement cutoff (D-82) ----------
+
+/**
+ * Re-checks the cutoff with the latest verified date of birth and the schedule as it
+ * would be generated now. Throws 409 CUTOFF_EXCEEDED (or DOB_NOT_VERIFIED). A viewer on
+ * limited details (FR-55) gets a message without the terms.
+ */
+async function recheckCutoff(app, terms, now, { audience = 'reviewer', limited = false } = {}) {
+  const [staff, settings, version, pricing] = await Promise.all([
+    Staff.findById(app.applicantStaffId).lean(),
+    Settings.get(),
+    ProductVersion.findById(app.productVersionId).lean(),
+    PricingVersion.findById(app.pricingVersionId).lean(),
+  ]);
+  const startDay = localDay(now);
+  const rows = calc.schedule(terms.amount, terms.tenor, pricing.interestBps, pricing.instalmentRounding, calc.firstDueDate(startDay, settings.firstDueDay || 25));
+  const res = rules.cutoffCheck({ staff, settings, version, tenor: terms.tenor, lastDue: rows.at(-1)?.due, startDay });
+  if (res.ok) return;
+  if (limited) throw conflict("This application cannot be approved now: the applicant's retirement cutoff no longer allows its terms. Return or reject it.", res.code);
+  const lead = audience === 'applicant' ? 'You cannot accept these terms now.' : 'This application cannot be approved now.';
+  const next = audience === 'applicant' ? 'Decline them, and apply again for a shorter tenor.' : 'Return it, reject it, or (Credit Analyst) recommend a shorter tenor.';
+  throw conflict(`${lead} ${res.message} ${next}`, res.code, { cutoff: res.cutoff, maxTenor: res.maxTenor, lastDue: res.lastDue });
+}
+
 // ---------- decisions ----------
 
 /** Checks the Credit Analyst's recommended terms (FR-16, BR-11). */
@@ -156,6 +180,9 @@ async function decide(req, app, body) {
   const recommendedNow = recommended || (app.recommended?.amount ? app.recommended : null);
   const agreement = await Agreement.findById(app.currentAgreementId);
   const termsChanged = !!(recommendedNow && (recommendedNow.amount !== agreement.terms.amount || recommendedNow.tenor !== agreement.terms.tenor));
+
+  // D-82: every approval re-checks the cutoff with the latest verified date of birth.
+  if (action === 'approve') await recheckCutoff(app, recommendedNow || agreement.terms, now, { limited: limited && stage === 'credit' });
 
   let outcome;
   await withTransaction(async (session) => {
@@ -291,6 +318,7 @@ async function acceptRevised(req, app, body) {
   }
 
   const now = new Date();
+  await recheckCutoff(app, app.approved, now, { audience: 'applicant' }); // D-82
   const number = await appSvc.nextRef('MKT');
   const name = fullName(staff);
   const approvals = await approvalsFor(app);

@@ -87,6 +87,8 @@ const SELF_SERVICE = [
   /^GET \/permissions$/,
   /^\w+ \/delegations/,
   /^\w+ \/account\//,
+  // The submitter withdraws their own date of birth change; checked in the service (D-82).
+  /^POST \/dob-verifications\/:id\/withdraw$/,
 ];
 
 describe('every API route is guarded', () => {

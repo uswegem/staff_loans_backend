@@ -325,7 +325,7 @@ describe('probation verification (NS-01)', () => {
     const joined = new Date(Date.now() - 60 * 24 * 3600 * 1000);
     await Staff.updateOne(
       { staffNo: 'LFB0596' },
-      { $set: { dateJoined: joined, 'personal.maritalStatus': 'Single', 'personal.dob': new Date('1998-05-20'), 'personal.nida': '19980520411080003126', 'personal.poBox': 'P.O. Box 902', 'personal.residence': 'Dodoma', 'bank.accountNo': '4010 3341 0596', nextOfKin: [{ name: 'Mwanaidi Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Dodoma' }], payDeclaredAt: new Date() } }
+      { $set: { dateJoined: joined, 'personal.maritalStatus': 'Single', 'personal.dob': new Date('1998-05-20'), dateOfBirth: { value: '1998-05-20', verifiedAt: new Date() }, 'personal.nida': '19980520411080003126', 'personal.poBox': 'P.O. Box 902', 'personal.residence': 'Dodoma', 'bank.accountNo': '4010 3341 0596', nextOfKin: [{ name: 'Mwanaidi Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Dodoma' }], payDeclaredAt: new Date() } }
     );
     const rehema = await signIn('LFB0596');
     const id = await applyAndSign(rehema, PL(), { amount: 1000000, tenor: 12, purpose: 'Rent deposit', probationReason: 'Relocated for this job.' });

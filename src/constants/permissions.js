@@ -21,6 +21,7 @@ const PERMISSIONS = Object.freeze([
   { id: 'disb.confirm', group: 'Operations', label: 'Confirm disbursements', kind: 'disburse' },
   { id: 'staff.view', group: 'Staff records', label: 'View staff records' },
   { id: 'staff.manage', group: 'Staff records', label: 'Maintain staff records and salaries' },
+  { id: 'staff.verifyDob', group: 'Staff records', label: 'Verify staff dates of birth (not their own submissions)' },
   { id: 'reports.view', group: 'Reports', label: 'View reports' },
   { id: 'reports.export', group: 'Reports', label: 'Export reports' },
   { id: 'products.view', group: 'Administration', label: 'View products, pricing and pending changes' },

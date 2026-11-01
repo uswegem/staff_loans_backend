@@ -39,7 +39,10 @@ async function completeness(staff, session) {
   const keys = await mandatoryKeys(session);
   const doc = typeof staff.toObject === 'function' ? staff.toObject() : staff;
   const required = PROFILE_FIELDS.filter(([k]) => keys.includes(k));
-  const missing = required.filter(([k]) => !filled(getPath(doc, k))).map(([key, label, tab]) => ({ key, label, tab }));
+  // D-82: a date of birth counts as given once it is verified or waiting for verification;
+  // whether it is verified is a separate rule with its own message.
+  const value = (k) => (k === 'personal.dob' ? doc.dateOfBirth?.value || doc.dateOfBirth?.pending?.proposed : getPath(doc, k));
+  const missing = required.filter(([k]) => !filled(value(k))).map(([key, label, tab]) => ({ key, label, tab }));
   return { complete: missing.length === 0, done: required.length - missing.length, total: required.length, missing };
 }
 

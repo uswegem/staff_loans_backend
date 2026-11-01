@@ -119,10 +119,12 @@ describe('live checks (BR-03 to BR-06, BR-14, BR-15)', () => {
     expect(res.body.data.checks.checks).toEqual(expect.arrayContaining([typeof message === 'string' ? message : expect.stringMatching(message)]));
   });
 
-  it('the loan must end before retirement (BR-05)', async () => {
-    const joseph = await signIn('LFB0002'); // retires 2036-04-18
+  it('the loan must end by the retirement cutoff from the verified date of birth (D-82)', async () => {
+    const joseph = await signIn('LFB0002'); // verified date of birth 1976-04-18: cutoff 2036-02-18
     const { res } = await draft(joseph, HE(), { amount: 50000000, tenor: 120, purpose: 'House', productFields: { kind: 'Construction', place: 'Mbweni' } });
-    expect(res.body.data.checks.checks).toContain('The loan must be repaid before your retirement date. Shorten the tenor.');
+    const max = res.body.data.retirement.maxTenor;
+    expect(res.body.data.retirement).toMatchObject({ dateOfBirth: '1976-04-18', cutoff: '2036-02-18' });
+    expect(res.body.data.checks.checks).toContainEqual(expect.stringMatching(new RegExp(`^Your last instalment would be due on \\d{4}-\\d{2}-25, after your cutoff of 2036-02-18 \\(60 days before you turn 60\\)\\. The longest tenor you can take is ${max} months\\.$`)));
   });
 
   it('product fields are checked (FR-06)', async () => {
@@ -356,6 +358,7 @@ describe('probation (NS-01)', () => {
           dateJoined: joined,
           'personal.maritalStatus': 'Single',
           'personal.dob': new Date('1998-05-20'),
+          dateOfBirth: { value: '1998-05-20', verifiedAt: new Date() },
           'personal.nida': '19980520411080003126',
           'personal.poBox': 'P.O. Box 902, Dodoma',
           'personal.residence': 'Area D, Dodoma',

@@ -43,6 +43,10 @@ router.put(
       inactivityTimeoutMin: Joi.number().integer().min(1).max(240),
       lockoutThreshold: Joi.number().integer().min(3).max(10),
       payslipMaxAgeDays: Joi.number().integer().min(1).max(120),
+      retirementAge: Joi.number().integer().min(40).max(75),
+      retirementBufferDays: Joi.number().integer().min(0).max(365),
+      dobMinAge: Joi.number().integer().min(14).max(30),
+      dobMaxAge: Joi.number().integer().min(40).max(75),
       payslipRules: Joi.object({
         basicLabels: Joi.array().items(Joi.string().trim().min(2).max(40)).min(1).max(20),
         lfbLabels: Joi.array().items(Joi.string().trim().min(2).max(40)).min(1).max(20),

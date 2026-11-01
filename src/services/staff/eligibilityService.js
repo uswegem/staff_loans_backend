@@ -6,6 +6,8 @@
 
 const { liveProducts } = require('../products/productService');
 const { completeness } = require('./profileService');
+const { cutoffProblem, cutoffFor } = require('./retirement');
+const Settings = require('../../models/Settings');
 const { addMonths, localDay, localMidnight } = require('../../utils/dates');
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -53,9 +55,12 @@ function coolingMessage(name, c) {
 async function eligibilityFor(staff, now = new Date()) {
   const profile = await completeness(staff);
   const products = await liveProducts(now);
+  const settings = await Settings.get();
   const items = products.map(({ product, version }) => {
     const reasons = [];
-    if (!profile.complete) reasons.push(`You can apply once your profile is complete. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`);
+    if (!profile.complete && !profile.missing.every((m) => m.key === 'personal.dob')) reasons.push(`You can apply once your profile is complete. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`);
+    const cut = cutoffProblem(staff, version, settings, localDay(now));
+    if (cut) reasons.push(cut);
     const c = cooling(staff, product._id, version.reapplyCoolingMonths, now);
     const waiting = c && c.daysRemaining > 0;
     if (waiting) reasons.push(coolingMessage(version.name, c));
@@ -72,7 +77,7 @@ async function eligibilityFor(staff, now = new Date()) {
       daysRemaining: waiting ? c.daysRemaining : 0,
     };
   });
-  return { profile, products: items };
+  return { profile, products: items, cutoff: cutoffFor(staff, settings) };
 }
 
 module.exports = { eligibilityFor, cooling, coolingMessage, lastSuccessfulByProduct };

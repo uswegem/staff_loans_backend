@@ -68,9 +68,18 @@ const staffSchema = new Schema(
     workPhone: String,
     status: { type: String, enum: ['active', 'exited', 'deactivated'], default: 'active', index: true },
     exitDate: Date,
+    // The HR-verified date of birth: the only one loan rules may use (D-82). It changes
+    // only when People and Culture approve a DobChange; pending is that open change.
+    dateOfBirth: {
+      value: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ },
+      verifiedAt: Date,
+      verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      changeId: { type: Schema.Types.ObjectId, ref: 'DobChange' },
+      pending: { changeId: { type: Schema.Types.ObjectId, ref: 'DobChange' }, proposed: String, submittedAt: Date, submittedBy: { type: Schema.Types.ObjectId, ref: 'User' } },
+    },
     personal: {
       maritalStatus: String,
-      dob: Date,
+      dob: Date, // mirrors the verified date of birth; not edited directly since D-82
       nida: { type: String, match: /^\d{20}$/ },
       nationality: String,
       mobile: String,

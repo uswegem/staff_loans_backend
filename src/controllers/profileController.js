@@ -7,6 +7,9 @@
 const Staff = require('../models/Staff');
 const Salary = require('../models/Salary');
 const audit = require('../services/audit/auditService');
+const dobService = require('../services/staff/dobService');
+const Settings = require('../models/Settings');
+const { cutoffFor } = require('../services/staff/retirement');
 const { completeness, normaliseNida, formatNida } = require('../services/staff/profileService');
 const { eligibilityFor } = require('../services/staff/eligibilityService');
 const { probationFor, fullName } = require('../services/staff/staffService');
@@ -23,13 +26,16 @@ async function ownStaff(req) {
 const day = (d) => (d ? localDay(d) : null);
 
 async function view(req, staff) {
-  const [salary, probation, profile] = await Promise.all([Salary.inForce(staff._id), probationFor(staff), completeness(staff)]);
+  const [salary, probation, profile, dateOfBirth, settings] = await Promise.all([Salary.inForce(staff._id), probationFor(staff), completeness(staff), dobService.statusOf(staff), Settings.get()]);
   const route = routeFor(req.auth.permissions, staff);
   const o = staff.toObject();
   return {
     staffNo: o.staffNo,
     fullName: fullName(o),
-    personal: { ...o.personal, dob: day(o.personal?.dob), nida: formatNida(o.personal?.nida) },
+    // personal.dob is the verified date of birth only; a proposed one is in dateOfBirth.pending (D-82).
+    personal: { ...o.personal, dob: o.dateOfBirth?.value || null, nida: formatNida(o.personal?.nida) },
+    dateOfBirth,
+    retirement: { cutoff: cutoffFor(o, settings), age: settings.retirementAge, bufferDays: settings.retirementBufferDays },
     workPhone: o.workPhone || '',
     bank: o.bank || {},
     nextOfKin: o.nextOfKin || [],
@@ -87,12 +93,15 @@ const ProfileController = {
       nida = normaliseNida(b.nida);
       if (!nida) throw badRequest('Check the highlighted fields.', { nida: ['A NIDA number has 20 digits, for example 19890712-14112-00004-21.'] });
     }
-    if (b.dob && b.dob >= localDay()) throw badRequest('Check the highlighted fields.', { dob: ['Date of birth must be in the past.'] });
+    // D-82: a new date of birth is proposed for verification; the verified one stays in force.
+    const current = await ownStaff(req);
+    if (b.dob && b.dob !== current.dateOfBirth?.value && b.dob !== current.dateOfBirth?.pending?.proposed) {
+      await dobService.submit(req, current._id, b.dob, 'profile');
+    }
     await saveSection(req, res, { keys: ['personal', 'workPhone'], name: 'personal', label: 'personal details' }, (staff) => {
       ['maritalStatus', 'nationality', 'mobile', 'homePhone', 'poBox', 'residence'].forEach((k) => {
         if (b[k] !== undefined) staff.set(`personal.${k}`, b[k]);
       });
-      if (b.dob !== undefined) staff.set('personal.dob', b.dob ? localMidnight(b.dob) : null);
       if (b.nida !== undefined) staff.set('personal.nida', nida || undefined);
       if (b.workPhone !== undefined) staff.workPhone = b.workPhone;
     });

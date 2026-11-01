@@ -153,6 +153,9 @@ async function fullView(req, app, actor) {
       employmentType: staff.employmentType,
       dateJoined: localDay(staff.dateJoined),
       retirementDate: staff.retirementDate ? localDay(staff.retirementDate) : null,
+      dateOfBirth: staff.dateOfBirth?.value || null, // verified only (D-82)
+      dateOfBirthPending: staff.dateOfBirth?.pending?.proposed || null,
+      cutoff: result.cutoff,
       contractEndDate: staff.contractEndDate ? localDay(staff.contractEndDate) : null,
       nida: formatNida(staff.personal?.nida),
       mobile: staff.personal?.mobile,

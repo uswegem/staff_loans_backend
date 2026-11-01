@@ -55,6 +55,18 @@ Sample accounts all use `SEED_PASSWORD`. Reviewers, OPS, administrators and the 
 | `npm run calc:check` | Checks the web app's copy of the loan calculator matches this one (`calc:sync` regenerates it) |
 | `node scripts/e2e-server.js` | API for the Playwright runs: in-memory replica set, sample data, port 4100. The web app's `npm run e2e` starts it for you. |
 
+## Upgrading an existing installation
+
+### Date of birth verification (0.10.0)
+
+MongoDB needs no schema migration; run this once after deploying, with the API's `.env`:
+
+```powershell
+node scripts/dob-verification-setup.js
+```
+
+It gives the Head of People and Culture and People and Culture Manager roles the new permission `staff.verifyDob` (seeded roles are never updated automatically), and sends every date of birth entered before this release to People and Culture's queue as a pending change. It is safe to run again. Until People and Culture verify a staff member's date of birth, that person cannot start or submit a loan application. Loans and applications already in the system are not changed; applications still in review are checked against the cutoff at their next approval.
+
 ## Troubleshooting
 
 - **Tests time out or MongoDB says "server monitor timeout".** The in-memory `mongod` stalls when the machine is busy. Close other heavy jobs and run one suite with `npx jest tests/integration/review.test.js`. A stray `mongod.exe` from an interrupted run can be stopped in Task Manager.

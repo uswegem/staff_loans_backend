@@ -1362,6 +1362,118 @@
         }
       }
     },
+    "/dob-verifications": {
+      "get": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Dates of birth waiting for People and Culture (or decided ones with ?status=); D-82",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Changes"
+          }
+        }
+      }
+    },
+    "/dob-verifications/{id}/approve": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Verify a proposed date of birth; not by its submitter or the staff member concerned; audited",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified"
+          },
+          "403": {
+            "description": "Own submission or own record"
+          }
+        }
+      }
+    },
+    "/dob-verifications/{id}/reject": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Reject a proposed date of birth with a reason; audited",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rejected"
+          },
+          "400": {
+            "description": "No reason"
+          }
+        }
+      }
+    },
+    "/dob-verifications/{id}/withdraw": {
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "The submitter withdraws a pending date of birth",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawn"
+          }
+        }
+      }
+    },
+    "/staff/{id}/date-of-birth": {
+      "get": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "Verified and pending date of birth of a staff record",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Staff"
+        ],
+        "summary": "People and Culture propose a date of birth; it waits for verification",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Pending"
+          }
+        }
+      }
+    },
     "/disbursements": {
       "get": {
         "tags": [
