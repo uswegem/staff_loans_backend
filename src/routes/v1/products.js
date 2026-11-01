@@ -20,7 +20,6 @@ const productValues = {
   description: text(400).allow(''),
   minAmount: whole.min(1),
   maxAmount: whole.min(1),
-  salaryMultiple: Joi.number().greater(0).max(100),
   minTenor: whole.min(1),
   maxTenor: whole.min(1),
   minServiceMonths: whole.min(0),
@@ -46,7 +45,7 @@ const productValues = {
   reapplyCoolingMonths: whole.min(0).max(60),
   agreementTemplateId: objectId.allow(null),
 };
-const REQUIRED_ON_CREATE = ['name', 'minAmount', 'maxAmount', 'salaryMultiple', 'minTenor', 'maxTenor', 'minServiceMonths', 'maxConcurrent', 'eligibleCategories', 'repaymentMethods'];
+const REQUIRED_ON_CREATE = ['name', 'minAmount', 'maxAmount', 'minTenor', 'maxTenor', 'minServiceMonths', 'maxConcurrent', 'eligibleCategories', 'repaymentMethods'];
 const createValues = Joi.object(productValues).fork(REQUIRED_ON_CREATE, (s) => s.required());
 const partialValues = Joi.object(productValues);
 

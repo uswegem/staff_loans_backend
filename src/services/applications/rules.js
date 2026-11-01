@@ -29,19 +29,34 @@ function runningLoans(apps, excludeId, today) {
   });
 }
 
-/** Inputs for the calculator's payslip (BRD 10 steps 1 to 3). */
-function payInputs({ staff, salary, apps, excludeId, today }) {
-  const declaredLfb = (staff.existingLfbLoans || []).reduce((s, l) => s + (l.instalment || 0), 0);
-  const slas = runningLoans(apps, excludeId, today).reduce((s, a) => s + (a.approved.instalment || 0), 0);
-  return {
-    basic: salary?.basic || 0,
-    allowances: salary?.allowances || 0,
-    commission: salary?.commission || 0,
-    medical: staff.deductions?.medical || 0,
-    otherDeductions: staff.deductions?.other || 0,
-    existingLfbInstalments: declaredLfb + slas,
-    otherBankInstalments: (staff.otherLoans || []).reduce((s, l) => s + (l.instalment || 0), 0),
-  };
+/** Calculator inputs: Basic Pay and LFB deductions as read from the payslip (D-78). */
+function payInputs(payslip) {
+  return { basic: payslip?.basic || 0, lfbDeductions: payslip?.lfbDeductions || 0 };
+}
+
+/** Days from one calendar day to another (both 'YYYY-MM-DD'). */
+const daysBetween = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+
+/** D-79: the payslip must be attached and at most payslipMaxAgeDays old. */
+function payslipProblem(payslip, settings, today) {
+  if (!payslip?.fileId) return 'Attach your latest payslip. Basic Pay and LFB deductions are read from it.';
+  const maxAge = settings.payslipMaxAgeDays || 45;
+  const age = daysBetween(payslip.payDate, today);
+  if (age > maxAge) return `Your payslip is dated ${payslip.payDate}, ${age} days ago. Attach one not older than ${maxAge} days.`;
+  if (age < -31) return `Your payslip is dated ${payslip.payDate}, in the future. Attach your latest payslip.`;
+  return null;
+}
+
+/**
+ * The longest tenor this person may take: the product maximum, cut short so the last
+ * instalment falls before retirement or contract end (BR-04, BR-05).
+ */
+function longestTenor(version, staff, startDay, dueDay) {
+  const first = calc.firstDueDate(startDay, dueDay);
+  const ends = [staff.retirementDate, staff.contractEndDate].filter(Boolean).map(day);
+  let n = version.maxTenor;
+  while (n >= version.minTenor && ends.some((end) => calc.addMonthsToDay(first, n - 1) > end)) n -= 1;
+  return n >= version.minTenor ? n : 0;
 }
 
 /**
@@ -102,25 +117,24 @@ function fieldErrors(input, version, { onProbation }) {
   if (input.topUp?.on) {
     if (!version.topUpAllowed) e['topUp.on'] = `${version.name} cannot be topped up.`;
     if (blank(input.topUp.loanRef)) e['topUp.loanRef'] = 'Enter the loan being topped up.';
-    if (!(input.topUp.instalment > 0)) e['topUp.instalment'] = 'Enter the monthly instalment of the loan being topped up.';
   }
   if (onProbation && blank(input.probationReason)) e.probationReason = 'Say why you are applying during probation. People and Culture will verify it.';
   return e;
 }
 
-/** Amount, tenor and affordability (BR-03 to BR-06). */
-function loanChecks(input, version, staff, salary, q) {
+/** Amount, tenor and affordability (BR-03 to BR-06, D-78). */
+function loanChecks(input, version, staff, q) {
   const out = [];
   const { amount, tenor } = input;
   if (amount && amount < version.minAmount) out.push(`The minimum for ${version.name} is ${tzs(version.minAmount)}.`);
   if (amount && amount > version.maxAmount) out.push(`The maximum for ${version.name} is ${tzs(version.maxAmount)}.`);
-  const cap = Math.floor((salary?.basic || 0) * version.salaryMultiple);
-  if (amount && amount > cap) out.push(`You can borrow up to ${version.salaryMultiple}× your basic salary: ${tzs(cap)}.`);
   if (tenor && (tenor < version.minTenor || tenor > version.maxTenor)) out.push(`Choose a tenor between ${version.minTenor} and ${version.maxTenor} months.`);
   const lastDue = q.schedule.at(-1)?.due;
   if (lastDue && staff.retirementDate && lastDue > day(staff.retirementDate)) out.push('The loan must be repaid before your retirement date. Shorten the tenor.');
   if (lastDue && staff.contractEndDate && lastDue > day(staff.contractEndDate)) out.push('The loan must be repaid before your contract ends. Shorten the tenor.');
-  if (amount && tenor && !q.pass) out.push(`The instalment of ${tzs(q.instalment)} is above your limit of ${tzs(q.maxInstalment)} (${q.rates.affordabilityBps / 100}% of adjusted net pay). Lower the amount or lengthen the tenor.`);
+  if (input.payslip && amount && tenor && !q.pass) {
+    out.push(`The instalment of ${tzs(q.instalment)} is above your limit of ${tzs(q.maxInstalment)} (${q.rates.affordabilityBps / 100}% of adjusted net pay). Borrow up to ${tzs(q.maxAmountAtTenor)} over ${tenor} months, or up to ${tzs(q.maxAmount)} over ${q.maxTenor} months.`);
+  }
   return out;
 }
 
@@ -131,20 +145,28 @@ function loanChecks(input, version, staff, salary, q) {
  */
 function evaluate(ctx, input) {
   const elig = eligibility({ ...ctx, topUp: input.topUp });
-  const pay = payInputs({ ...ctx, excludeId: ctx.appId });
+  const pay = payInputs(input.payslip);
+  const dueDay = ctx.settings.firstDueDay || 25;
   const q = calc.quote({
     amount: input.amount || 0,
     tenor: input.tenor || 0,
     topUp: !!input.topUp?.on,
-    topUpInstalment: input.topUp?.instalment || 0,
     pay,
     pricing: ctx.pricing,
     startDay: ctx.today,
-    dueDay: ctx.settings.firstDueDay || 25,
+    dueDay,
+    maxTenor: longestTenor(ctx.version, ctx.staff, ctx.today, dueDay),
+    maxAmountCap: ctx.version.maxAmount,
   });
   const fields = fieldErrors(input, ctx.version, elig);
-  const checks = loanChecks(input, ctx.version, ctx.staff, ctx.salary, q);
+  const slip = payslipProblem(input.payslip, ctx.settings, ctx.today);
+  if (slip) fields.payslip = slip;
+  const checks = loanChecks(input, ctx.version, ctx.staff, q);
   const flags = elig.onProbation ? ['Applied during probation: verify the reason (NS-01).'] : [];
+  // People and Culture's salary record is the check on the payslip (D-79).
+  if (input.payslip?.basic && ctx.salary?.basic && input.payslip.basic !== ctx.salary.basic) {
+    flags.push(`Basic Pay on the payslip (${tzs(input.payslip.basic)}) differs from the staff record (${tzs(ctx.salary.basic)}): confirm with Payroll.`);
+  }
   return {
     eligibility: elig.messages,
     fieldErrors: fields,
@@ -158,4 +180,4 @@ function evaluate(ctx, input) {
   };
 }
 
-module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, runningLoans, monthsBetweenDays };
+module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, payslipProblem, longestTenor, runningLoans, monthsBetweenDays };

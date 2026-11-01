@@ -5,14 +5,13 @@
 const calc = require('../../src/services/calc/loanCalculator');
 const { PRICING } = require('../../seed/products');
 
-const neema = { basic: 1850000, allowances: 220000, commission: 0, medical: 0, otherDeductions: 0, existingLfbInstalments: 0, otherBankInstalments: 0 };
+const neema = { basic: 1850000, lfbDeductions: 0 };
 
-describe('payslip and limit (BRD 10 steps 1 to 5)', () => {
-  const q = calc.quote({ amount: 4500000, tenor: 36, pay: neema, pricing: PRICING, startDay: '2026-10-29' });
+describe('payslip and limit (D-78)', () => {
+  const q = calc.quote({ amount: 4500000, tenor: 36, pay: neema, pricing: PRICING, startDay: '2026-10-29', maxTenor: 60, maxAmountCap: 300000000 });
 
-  it('matches the prototype worked example', () => {
-    expect(q.payslip).toMatchObject({ basic: 1850000, pension: 185000, taxable: 1665000, tax: 327500, net: 1337500 });
-    expect(q.adjusted).toBe(1337500);
+  it('matches the worked example', () => {
+    expect(q.payslip).toEqual({ basic: 1850000, pension: 185000, taxable: 1665000, tax: 327500, totalDeductions: 512500, net: 1337500, lfbDeductions: 0, adjusted: 1337500 });
     expect(q.maxInstalment).toBe(668750);
     expect(q.instalment).toBe(136900);
     expect(q.totalInterest).toBe(428351);
@@ -22,25 +21,43 @@ describe('payslip and limit (BRD 10 steps 1 to 5)', () => {
     expect(q.pass).toBe(true);
   });
 
-  it('ignores allowances (decision 26)', () => {
-    const more = calc.quote({ amount: 4500000, tenor: 36, pay: { ...neema, allowances: 5000000 }, pricing: PRICING, startDay: '2026-10-29' });
-    expect(more.maxInstalment).toBe(q.maxInstalment);
+  it('pension is 10% of basic; taxable pay is basic less pension; net pay is basic less pension and PAYE', () => {
+    const p = calc.payslip({ basic: 1000000 }, PRICING);
+    expect(p).toMatchObject({ pension: 100000, taxable: 900000, tax: 103000, totalDeductions: 203000, net: 797000 }); // PAYE 68,000 + 25% × 140,000
   });
 
-  it('subtracts existing staff loans, medical aid, other deductions and other bank loans', () => {
-    const p = calc.payslip({ ...neema, existingLfbInstalments: 100000, medical: 20000, otherDeductions: 5000, otherBankInstalments: 150000 }, PRICING);
-    expect(p.net).toBe(1337500 - 100000 - 25000 - 150000);
+  it('adds LFB deductions back to net pay (Adjusted Net Pay = Net Pay + LFB deductions)', () => {
+    const p = calc.payslip({ basic: 1850000, lfbDeductions: 200000 }, PRICING);
+    expect(p.adjusted).toBe(1537500);
+    expect(calc.quote({ amount: 1000000, tenor: 12, pay: { basic: 1850000, lfbDeductions: 200000 }, pricing: PRICING }).maxInstalment).toBe(768750);
   });
 
-  it('adds back the instalment of the loan being topped up (step 4, BR-09)', () => {
-    const t = calc.quote({ amount: 4500000, tenor: 36, topUp: true, topUpInstalment: 90000, pay: { ...neema, existingLfbInstalments: 90000 }, pricing: PRICING, startDay: '2026-10-29' });
-    expect(t.addBack).toBe(90000);
-    expect(t.adjusted).toBe(1337500);
+  it('a top-up changes only the processing fee rate', () => {
+    const t = calc.quote({ amount: 4500000, tenor: 36, topUp: true, pay: neema, pricing: PRICING, startDay: '2026-10-29' });
+    expect(t.maxInstalment).toBe(668750);
     expect(t.processingFee).toBe(22500); // 0.5% on a top-up
   });
+});
 
-  it('commission is taxable pay', () => {
-    expect(calc.payslip({ basic: 1000000, commission: 200000 }, PRICING).taxable).toBe(1100000);
+describe('maximum amount by reverse calculation (D-78)', () => {
+  it('is the largest amount whose instalment fits the limit over the longest tenor', () => {
+    const q = calc.quote({ amount: 0, tenor: 0, pay: neema, pricing: PRICING, maxTenor: 60, maxAmountCap: 300000000 });
+    expect(q.maxTenor).toBe(60);
+    expect(calc.instalment(q.maxAmount, 60, PRICING.interestBps, PRICING.instalmentRounding)).toBeLessThanOrEqual(668750);
+    expect(calc.instalment(q.maxAmount + 1000, 60, PRICING.interestBps, PRICING.instalmentRounding)).toBeGreaterThan(668750);
+    expect(q.maxAmount).toBe(34588000);
+  });
+
+  it('is capped at the product maximum and follows the chosen tenor', () => {
+    expect(calc.maxAmount(668750, 60, 600, 100, { cap: 5000000 })).toBe(5000000);
+    const q = calc.quote({ amount: 4500000, tenor: 36, pay: neema, pricing: PRICING, maxTenor: 60, maxAmountCap: 300000000 });
+    expect(q.maxAmountAtTenor).toBeLessThan(q.maxAmount);
+    expect(calc.instalment(q.maxAmountAtTenor, 36, 600, 100)).toBeLessThanOrEqual(668750);
+  });
+
+  it('is 0 without pay or tenor', () => {
+    expect(calc.maxAmount(0, 60, 600)).toBe(0);
+    expect(calc.maxAmount(500000, 0, 600)).toBe(0);
   });
 });
 

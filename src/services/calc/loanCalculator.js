@@ -5,9 +5,15 @@
 // (scripts/sync-calc.js). Money is integer shillings; rates are basis points
 // (DECISIONS D-07). Dates are calendar days as 'YYYY-MM-DD' strings.
 //
-// Worked example (prototype handover, Neema Mushi, TZS 4,500,000 over 36 months):
-// pension 185,000; PAYE 327,500; net 1,337,500; limit 668,750; instalment 136,900;
-// total interest 428,351; processing 45,000; insurance 81,000.
+// Affordability (DECISIONS D-78, from the bank's instruction of 30 Oct 2026):
+//   Pension = 10% of Basic Pay; Taxable Pay = Basic Pay − Pension; PAYE on Taxable Pay
+//   (Tanzania bands); Total Deductions = Pension + PAYE; Net Pay = Basic Pay − Total
+//   Deductions; Adjusted Net Pay = Net Pay + LFB deductions; Maximum Instalment = 50%
+//   of Adjusted Net Pay. Basic Pay and LFB deductions come from the applicant's payslip.
+//
+// Worked example (Neema Mushi, basic 1,850,000, no LFB deductions, TZS 4,500,000 over
+// 36 months): pension 185,000; PAYE 327,500; net 1,337,500; limit 668,750; instalment
+// 136,900; total interest 428,351; processing 45,000; insurance 81,000.
 
 const BPS = 10000;
 
@@ -21,21 +27,23 @@ function paye(taxable, bands) {
 }
 
 /**
- * The payslip steps (BRD 10, steps 1 to 3). Allowances are ignored (decision 26).
- * pay: { basic, allowances, commission, medical, otherDeductions, existingLfbInstalments, otherBankInstalments }
+ * The payslip steps. pay: { basic, lfbDeductions }, both read from the payslip.
+ * Returns every figure the calculator shows, in order.
  */
 function payslip(pay, pricing) {
   const basic = pay.basic || 0;
-  const commission = pay.commission || 0;
+  const lfbDeductions = pay.lfbDeductions || 0;
   const pension = Math.round((basic * pricing.pensionBps) / BPS);
-  const taxable = basic + commission - pension;
+  const taxable = basic - pension;
   const tax = paye(taxable, pricing.payeBands);
-  const existingLfb = pay.existingLfbInstalments || 0;
-  const declared = (pay.medical || 0) + (pay.otherDeductions || 0);
-  const otherBank = pay.otherBankInstalments || 0;
-  const net = basic - pension - tax - existingLfb - declared - otherBank;
-  return { basic, allowances: pay.allowances || 0, commission, pension, taxable, tax, existingLfb, declared, otherBank, net };
+  const totalDeductions = pension + tax;
+  const net = basic - totalDeductions;
+  const adjusted = net + lfbDeductions;
+  return { basic, pension, taxable, tax, totalDeductions, net, lfbDeductions, adjusted };
 }
+
+/** Maximum instalment: the affordability share of adjusted net pay, whole shillings. */
+const maxInstalmentFor = (adjusted, affordabilityBps) => Math.max(0, Math.floor((adjusted * affordabilityBps) / BPS));
 
 /** Monthly instalment on a reducing balance, rounded up (BR-14). */
 function instalment(principal, months, interestBps, rounding = 100) {
@@ -43,6 +51,19 @@ function instalment(principal, months, interestBps, rounding = 100) {
   const r = interestBps / BPS / 12;
   const raw = r === 0 ? principal / months : (principal * r) / (1 - (1 + r) ** -months);
   return Math.ceil(raw / rounding) * rounding;
+}
+
+/**
+ * Reverse calculation: the largest amount, in whole steps of `step` shillings, whose
+ * rounded instalment over `months` stays within `maxInst`, capped at `cap`.
+ */
+function maxAmount(maxInst, months, interestBps, rounding = 100, { cap = Infinity, step = 1000 } = {}) {
+  if (!(maxInst > 0) || !(months > 0)) return 0;
+  const r = interestBps / BPS / 12;
+  const pv = r === 0 ? maxInst * months : (maxInst * (1 - (1 + r) ** -months)) / r;
+  let amount = Math.min(cap, Math.floor(pv / step) * step);
+  while (amount > 0 && instalment(amount, months, interestBps, rounding) > maxInst) amount -= step;
+  return Math.max(0, amount);
 }
 
 // ---------- calendar days ----------
@@ -93,14 +114,17 @@ function schedule(principal, months, interestBps, rounding, firstDue) {
 }
 
 /**
- * Full quote (BRD 10 steps 1 to 6, BR-14, BR-15).
- * { amount, tenor, topUp, topUpInstalment, pay, pricing, startDay, dueDay }
+ * Full quote (BR-14, BR-15, D-78). A top-up changes only the processing fee rate: the
+ * old loan's instalment is already among the LFB deductions on the payslip.
+ * { amount, tenor, topUp, pay, pricing, startDay, dueDay, maxTenor, maxAmountCap }
+ * maxTenor: the longest tenor this person may take (product maximum, cut short by
+ * retirement or contract end); maxAmountCap: the product's maximum amount.
  */
-function quote({ amount, tenor, topUp = false, topUpInstalment = 0, pay, pricing, startDay, dueDay = 25 }) {
+function quote({ amount, tenor, topUp = false, pay, pricing, startDay, dueDay = 25, maxTenor = 0, maxAmountCap = Infinity }) {
   const ps = payslip(pay, pricing);
-  const addBack = topUp ? topUpInstalment || 0 : 0;
-  const adjusted = ps.net + addBack;
-  const maxInstalment = Math.max(0, Math.floor((adjusted * pricing.affordabilityBps) / BPS));
+  const { adjusted } = ps;
+  const maxInstalment = maxInstalmentFor(adjusted, pricing.affordabilityBps);
+  const limitTenor = maxTenor || tenor || 0;
   const inst = instalment(amount, tenor, pricing.interestBps, pricing.instalmentRounding);
   const first = startDay ? firstDueDate(startDay, dueDay) : null;
   const rows = amount && tenor && first ? schedule(amount, tenor, pricing.interestBps, pricing.instalmentRounding, first) : [];
@@ -109,9 +133,12 @@ function quote({ amount, tenor, topUp = false, topUpInstalment = 0, pay, pricing
   const insuranceFee = Math.round((amount * pricing.insuranceBps * tenor) / (BPS * 12));
   return {
     payslip: ps,
-    addBack,
     adjusted,
     maxInstalment,
+    // Reverse calculation (D-78): at the longest tenor allowed, and at the chosen one.
+    maxTenor: limitTenor,
+    maxAmount: maxAmount(maxInstalment, limitTenor, pricing.interestBps, pricing.instalmentRounding, { cap: maxAmountCap }),
+    maxAmountAtTenor: tenor ? maxAmount(maxInstalment, tenor, pricing.interestBps, pricing.instalmentRounding, { cap: maxAmountCap }) : 0,
     instalment: inst,
     pass: inst > 0 && inst <= maxInstalment,
     headroom: maxInstalment - inst,
@@ -132,4 +159,4 @@ function quote({ amount, tenor, topUp = false, topUpInstalment = 0, pay, pricing
   };
 }
 
-module.exports = { paye, payslip, instalment, schedule, quote, addMonthsToDay, firstDueDate };
+module.exports = { paye, payslip, maxInstalmentFor, maxAmount, instalment, schedule, quote, addMonthsToDay, firstDueDate };

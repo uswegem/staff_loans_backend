@@ -29,7 +29,7 @@ const REQUIRED = ['ref', 'fullName', 'staffNo', 'requestClause', 'effectClause',
 async function sampleInput() {
   const pricing = (await livePricing()) || { interestBps: 600, processingFeeBps: 100, processingFeeTopUpBps: 50, insuranceBps: 60, affordabilityBps: 5000, pensionBps: 1000, instalmentRounding: 100, payeBands: [] };
   const today = localDay();
-  const pay = { basic: 1850000, allowances: 220000, commission: 0, medical: 0, otherDeductions: 0, otherBankInstalments: 0, existingLfbInstalments: 0 };
+  const pay = { basic: 1850000, lfbDeductions: 0 };
   const q = calc.quote({ amount: 4500000, tenor: 36, pay, pricing, startDay: today, dueDay: 25 });
   return {
     ref: 'SL-0000-00000',

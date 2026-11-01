@@ -11,13 +11,15 @@ const { ROUTES, STAGES } = require('../services/workflow/routes');
 // The four routes are fixed by the BRD (7.3); shown read-only on the workflow screen.
 const ROUTE_VIEW = Object.values(ROUTES).map((r) => ({ key: r.key, label: r.label, stages: r.stages.map((k) => STAGES[k].short || STAGES[k].label), limitedCredit: r.limitedCredit }));
 
-const EDITABLE = ['stageTargetHours', 'ceoTargetHours', 'workingDays', 'dayStartMinutes', 'dayEndMinutes', 'revisedTermsExpiryDays', 'approvalSlaDays', 'probationMonths', 'maxUploadMb', 'firstDueDay', 'inactivityTimeoutMin', 'lockoutThreshold'];
+const EDITABLE = ['stageTargetHours', 'ceoTargetHours', 'workingDays', 'dayStartMinutes', 'dayEndMinutes', 'revisedTermsExpiryDays', 'approvalSlaDays', 'probationMonths', 'maxUploadMb', 'firstDueDay', 'inactivityTimeoutMin', 'lockoutThreshold', 'payslipMaxAgeDays'];
+const { rulesFrom: payslipRules } = require('../services/payslip/payslipReader');
 
 function view(s) {
   const out = {};
   EDITABLE.forEach((k) => {
     out[k] = s[k];
   });
+  out.payslipRules = payslipRules(s);
   out.version = s.version;
   out.updatedAt = s.updatedAt;
   return out;
@@ -38,6 +40,7 @@ const SettingsController = {
     EDITABLE.forEach((k) => {
       if (req.body[k] !== undefined) s[k] = req.body[k];
     });
+    if (req.body.payslipRules) s.payslipRules = { ...payslipRules(s), ...req.body.payslipRules };
     s.version += 1;
     s.updatedBy = req.auth.user._id;
     await s.save();

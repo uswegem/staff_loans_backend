@@ -110,15 +110,15 @@ const ProfileController = {
     });
   },
 
-  /** Pay and deductions: saving needs the confirmation tick (prototype, decision 19). */
+  /**
+   * Existing staff loans taken outside SLAS (decision 19). They count towards the running
+   * loans per product (BR-07) and start the reapply wait (NS-02). Affordability reads the
+   * LFB deductions from the payslip instead (D-78, D-80).
+   */
   async pay(req, res) {
     const b = req.body;
-    if (!b.confirm) throw badRequest('Tick the confirmation to save.', { confirm: ['Tick the confirmation to save.'] }, 'CONFIRMATION_REQUIRED');
-    await saveSection(req, res, { keys: ['deductions', 'otherLoans', 'existingLfbLoans', 'payDeclaredAt'], name: 'pay', label: 'pay and deductions' }, (staff) => {
-      staff.deductions = b.deductions;
-      staff.otherLoans = b.otherLoans;
+    await saveSection(req, res, { keys: ['existingLfbLoans'], name: 'pay', label: 'existing staff loans' }, (staff) => {
       staff.existingLfbLoans = b.existingLfbLoans.map((l) => ({ ...l, disbursedOn: l.disbursedOn ? localMidnight(l.disbursedOn) : undefined }));
-      staff.payDeclaredAt = new Date();
     });
   },
 };

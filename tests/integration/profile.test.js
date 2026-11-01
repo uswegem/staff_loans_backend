@@ -48,7 +48,7 @@ describe('my profile', () => {
     const res = await api(rehema.token).get('/me/profile/completeness');
     expect(res.body.data.complete).toBe(false);
     expect(res.body.data.missing.map((m) => m.label)).toEqual(
-      expect.arrayContaining(['Marital status', 'Date of birth', 'NIDA number', 'P.O. Box', 'Account number', 'Next of kin name', 'Confirm deductions and other loans'])
+      expect.arrayContaining(['Marital status', 'Date of birth', 'NIDA number', 'P.O. Box', 'Account number', 'Next of kin name'])
     );
     expect(res.body.data.missing.find((m) => m.key === 'personal.mobile')).toBeUndefined();
   });
@@ -59,8 +59,10 @@ describe('my profile', () => {
     expect((await r.patch('/me/profile/personal', { maritalStatus: 'Single', dob: '1998-05-20', nida: '19980520-41108-00031-26', poBox: 'P.O. Box 902, Dodoma', residence: 'Area D, Dodoma' })).status).toBe(200);
     expect((await r.patch('/me/profile/bank', { accountNo: '4010 3341 0596' })).status).toBe(200);
     expect((await r.patch('/me/profile/kin', { nextOfKin: [{ name: 'Mwanaidi Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Kikuyu, Dodoma' }] })).status).toBe(200);
-    const pay = await r.patch('/me/profile/pay', { deductions: { medical: 0, other: 0 }, otherLoans: [], existingLfbLoans: [], confirm: true });
-    expect(pay.body.data.completeness).toMatchObject({ complete: true, done: 16, total: 16 });
+    const kin = await r.get('/me/profile/completeness');
+    expect(kin.body.data).toMatchObject({ complete: true, done: 15, total: 15 });
+    // Existing staff loans are optional and need no confirmation tick (D-80).
+    expect((await r.patch('/me/profile/pay', { existingLfbLoans: [] })).status).toBe(200);
     const staff = await Staff.findOne({ staffNo: 'LFB0596' });
     expect(staff.personal.nida).toBe('19980520411080003126');
     expect(await AuditLog.countDocuments({ action: { $in: ['profile.personal', 'profile.bank', 'profile.kin', 'profile.pay'] } })).toBe(4);
@@ -73,11 +75,11 @@ describe('my profile', () => {
     expect(res.body.details.nida[0]).toBe('A NIDA number has 20 digits, for example 19890712-14112-00004-21.');
   });
 
-  it('saving pay needs the confirmation tick', async () => {
+  it('existing staff loans are kept for the running-loan count and the reapply wait (BR-07, NS-02)', async () => {
     const neema = await signIn('LFB0412');
-    const res = await api(neema.token).patch('/me/profile/pay', { otherLoans: [{ lender: 'CRDB', type: 'personal', instalment: 150000 }] });
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Tick the confirmation to save.');
+    const res = await api(neema.token).patch('/me/profile/pay', { existingLfbLoans: [{ description: 'Paper loan 2025', instalment: 90000 }] });
+    expect(res.status).toBe(200);
+    expect((await Staff.findOne({ staffNo: 'LFB0412' })).existingLfbLoans[0].description).toBe('Paper loan 2025');
   });
 
   it('employment fields cannot be changed through the profile', async () => {

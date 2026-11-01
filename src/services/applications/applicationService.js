@@ -71,6 +71,7 @@ function inputOf(app) {
     repayment: app.repayment || { method: 'payroll' },
     topUp: app.topUp || { on: false },
     probationReason: app.probation?.reason,
+    payslip: app.payslip?.fileId ? app.payslip : null,
   };
 }
 
@@ -133,6 +134,8 @@ async function view(req, app) {
     schedule: app.schedule?.length ? app.schedule : null,
     scheduleBasis: app.scheduleBasis || null,
     disbursement: app.disbursement?.date ? { date: localDay(app.disbursement.date), transactionRef: app.disbursement.transactionRef || null } : null,
+    payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [], readAt: app.payslip.readAt } : null,
+    payslipMaxAgeDays: ctx.settings.payslipMaxAgeDays || 45,
     documents: docs.map(DOC_VIEW),
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
     history: decisions.map((d) => ({ action: d.action, stage: d.stage, comment: d.comment, at: d.at, cycle: d.cycle, mine: String(d.actorId) === String(req.auth.user._id) })),
@@ -152,7 +155,6 @@ function pick(v) {
     description: v.description,
     minAmount: v.minAmount,
     maxAmount: v.maxAmount,
-    salaryMultiple: v.salaryMultiple,
     minTenor: v.minTenor,
     maxTenor: v.maxTenor,
     topUpAllowed: v.topUpAllowed,
@@ -348,8 +350,9 @@ async function signAndSubmit(req, app, body) {
         station: ctx.staff.station,
         dateJoined: ctx.staff.dateJoined,
         retirementDate: ctx.staff.retirementDate,
-        salary: ctx.salary ? { basic: ctx.salary.basic, allowances: ctx.salary.allowances, commission: ctx.salary.commission, effectiveFrom: ctx.salary.effectiveFrom } : null,
+        salary: ctx.salary ? { basic: ctx.salary.basic, allowances: ctx.salary.allowances, effectiveFrom: ctx.salary.effectiveFrom } : null,
         pay: result.pay,
+        payslip: { fileId: fresh.payslip.fileId, payDate: fresh.payslip.payDate, basic: fresh.payslip.basic, lfbDeductions: fresh.payslip.lfbDeductions, lfbLines: fresh.payslip.lfbLines },
       },
       ruleFlags: result.flags,
       recommended: undefined,

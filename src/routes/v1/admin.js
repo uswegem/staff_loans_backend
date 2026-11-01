@@ -42,6 +42,12 @@ router.put(
       firstDueDay: Joi.number().integer().min(1).max(31),
       inactivityTimeoutMin: Joi.number().integer().min(1).max(240),
       lockoutThreshold: Joi.number().integer().min(3).max(10),
+      payslipMaxAgeDays: Joi.number().integer().min(1).max(120),
+      payslipRules: Joi.object({
+        basicLabels: Joi.array().items(Joi.string().trim().min(2).max(40)).min(1).max(20),
+        lfbLabels: Joi.array().items(Joi.string().trim().min(2).max(40)).min(1).max(20),
+        dateLabels: Joi.array().items(Joi.string().trim().min(2).max(40)).min(1).max(20),
+      }),
     }).min(1),
   }),
   asyncHandler(SettingsController.update)

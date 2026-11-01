@@ -30,7 +30,7 @@ const versionSchema = new Schema(
     description: { type: String, trim: true, default: '' },
     minAmount: { type: Number, required: true },
     maxAmount: { type: Number, required: true },
-    salaryMultiple: { type: Number, required: true },
+    salaryMultiple: Number, // no longer used: the maximum amount comes from the reverse calculation (D-78)
     minTenor: { type: Number, required: true },
     maxTenor: { type: Number, required: true },
     minServiceMonths: { type: Number, required: true },

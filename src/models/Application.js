@@ -47,6 +47,16 @@ const applicationSchema = new Schema(
     probation: { onProbation: Boolean, reason: String, verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' }, verifiedAt: Date }, // NS-01
     consents: { truth: Boolean, deduct: Boolean, crb: Boolean, sms: Boolean, at: Date },
     documentIds: { type: [{ type: Schema.Types.ObjectId, ref: 'StoredFile' }], default: [] },
+    // The latest payslip and the figures read from it (D-78, D-79). Only the reader sets them.
+    payslip: {
+      fileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' },
+      originalName: String,
+      payDate: String, // YYYY-MM-DD
+      basic: Number,
+      lfbDeductions: Number,
+      lfbLines: { type: [{ _id: false, label: String, amount: Number }], default: undefined },
+      readAt: Date,
+    },
 
     // Review (M5)
     crb: { outcome: String, reportDate: Date, fileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' } },

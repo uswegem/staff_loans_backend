@@ -261,7 +261,6 @@ describe('deactivation and new products (FR-62, FR-57)', () => {
         name: 'Emergency Loan',
         minAmount: 500000,
         maxAmount: 300000000,
-        salaryMultiple: 2,
         minTenor: 1,
         maxTenor: 12,
         minServiceMonths: 3,

@@ -15,6 +15,8 @@ const { STATUS, EDITABLE } = require('../constants/statuses');
 const { withTransaction } = require('../config/db');
 const { badRequest, conflict, notFound } = require('../utils/errors');
 const workflow = require('../services/workflow/workflowService');
+const payslipReader = require('../services/payslip/payslipReader');
+const Staff = require('../models/Staff');
 
 /**
  * Files and agreements: the applicant, or a reviewer with the full view. Never a
@@ -100,6 +102,34 @@ const ApplicationController = {
       return f;
     });
     res.status(201).json({ success: true, data: svc.DOC_VIEW(file) });
+  },
+
+  /**
+   * The latest payslip (D-79): a PDF from the payroll system. Basic Pay, LFB deductions
+   * and the pay date are read from it; nothing is saved when they cannot be read. A new
+   * payslip replaces the previous one.
+   */
+  async setPayslip(req, res) {
+    const app = await svc.own(req, req.params.id);
+    if (!EDITABLE.includes(app.status)) throw conflict('The payslip can be changed while the application is a draft or returned to you.', 'NOT_EDITABLE');
+    if (!req.file) throw badRequest('Choose your payslip.', { payslip: ['Choose your payslip.'] });
+    if (!/\.pdf$/i.test(req.file.originalname)) throw badRequest('Attach the payslip PDF from the payroll system. Photos and scans cannot be read.', { payslip: ['PDF only.'] }, 'PAYSLIP_NOT_PDF');
+    const settings = await Settings.get();
+    if (req.file.size > settings.maxUploadMb * 1024 * 1024) throw badRequest(`Files can be up to ${settings.maxUploadMb} MB.`, { payslip: [`Files can be up to ${settings.maxUploadMb} MB.`] }, 'FILE_TOO_LARGE');
+    const staff = await Staff.findById(app.applicantStaffId).lean();
+    const out = await payslipReader.read(req.file.buffer, { staff, rules: payslipReader.rulesFrom(settings) });
+    if (out.problem) {
+      await audit.record({ req, action: 'payslip.unreadable', description: `${app.ref}: payslip ${req.file.originalname} not accepted (${out.problem.code})`, entity: 'Application', entityId: String(app._id), appRef: app.ref, status: 'failed' });
+      throw badRequest(out.problem.message, { payslip: [out.problem.message] }, out.problem.code);
+    }
+    await withTransaction(async (session) => {
+      const f = await fileStore.store(req.file.buffer, { kind: 'payslip', label: 'Latest payslip', originalName: req.file.originalname, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id }, { session });
+      if (app.payslip?.fileId) await StoredFile.updateOne({ _id: app.payslip.fileId }, { $set: { removedAt: new Date() } }, { session });
+      const payslip = { fileId: f._id, originalName: f.originalName, payDate: out.payDate, basic: out.basic, lfbDeductions: out.lfbDeductions, lfbLines: out.lfbLines, readAt: new Date() };
+      await Application.updateOne({ _id: app._id }, { $set: { payslip } }, { session });
+      await audit.record({ req, action: 'payslip.upload', description: `${app.ref}: payslip dated ${out.payDate} read (Basic Pay ${out.basic.toLocaleString('en-US')}, LFB deductions ${out.lfbDeductions.toLocaleString('en-US')})`, entity: 'Application', entityId: String(app._id), appRef: app.ref, before: app.payslip?.fileId ? { payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions } : undefined, after: { fileId: String(f._id), sha256: f.sha256, payDate: out.payDate, basic: out.basic, lfbDeductions: out.lfbDeductions } }, { session });
+    });
+    res.status(201).json({ success: true, data: await svc.view(req, await Application.findById(app._id)) });
   },
 
   async removeDocument(req, res) {

@@ -23,7 +23,6 @@ const PROFILE_FIELDS = Object.freeze([
   ['nextOfKin.0.relationship', 'Relationship', 'kin'],
   ['nextOfKin.0.phone', 'Next of kin phone', 'kin'],
   ['nextOfKin.0.address', 'Next of kin address', 'kin'],
-  ['payDeclaredAt', 'Confirm deductions and other loans', 'pay'],
 ]);
 const PROFILE_KEYS = PROFILE_FIELDS.map((f) => f[0]);
 

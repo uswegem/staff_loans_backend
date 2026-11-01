@@ -386,7 +386,7 @@
         "tags": [
           "Profile"
         ],
-        "summary": "Save deductions and other loans; needs the confirmation tick",
+        "summary": "Save existing staff loans taken outside SLAS (BR-07, NS-02)",
         "security": [
           {
             "bearer": []
@@ -1744,6 +1744,29 @@
         "responses": {
           "201": {
             "description": "Document"
+          }
+        }
+      }
+    },
+    "/applications/{id}/payslip": {
+      "post": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Attach the latest payslip PDF; Basic Pay, LFB deductions and pay date are read from it (D-78, D-79)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Application with the payslip figures"
+          },
+          "400": {
+            "description": "Payslip not readable",
+            "not yours": null,
+            "or not a PDF": null
           }
         }
       }

@@ -38,6 +38,8 @@ const uploadOne = (req, res, next) => upload.single('file')(req, res, (err) => n
  *   post: { tags: [Applications], summary: "Withdraw before final approval; voids the agreement (FR-11)", security: [{ bearer: [] }], responses: { 200: { description: Withdrawn } } }
  * /applications/{id}/documents:
  *   post: { tags: [Applications], summary: "Attach an optional document: PDF, JPG or PNG (FR-09)", security: [{ bearer: [] }], responses: { 201: { description: Document } } }
+ * /applications/{id}/payslip:
+ *   post: { tags: [Applications], summary: "Attach the latest payslip PDF; Basic Pay, LFB deductions and pay date are read from it (D-78, D-79)", security: [{ bearer: [] }], responses: { 201: { description: Application with the payslip figures }, 400: { description: Payslip not readable, not yours, or not a PDF } } }
  * /applications/{id}/documents/{fileId}:
  *   delete: { tags: [Applications], summary: "Remove a document from a draft or returned application", security: [{ bearer: [] }], responses: { 200: { description: Removed } } }
  * /files/{id}:
@@ -85,6 +87,7 @@ router.post(
 );
 router.post('/applications/:id/withdraw', requireAll('loan.viewOwn'), validate({ ...idParams, body: Joi.object({ reason: Joi.string().trim().max(500).allow('') }) }), asyncHandler(ApplicationController.withdraw));
 router.post('/applications/:id/documents', requireAll('loan.apply'), validate(idParams), uploadOne, asyncHandler(ApplicationController.addDocument));
+router.post('/applications/:id/payslip', requireAll('loan.apply'), validate(idParams), uploadOne, asyncHandler(ApplicationController.setPayslip));
 router.delete('/applications/:id/documents/:fileId', requireAll('loan.apply'), validate({ params: Joi.object({ id: objectId.required(), fileId: objectId.required() }) }), asyncHandler(ApplicationController.removeDocument));
 router.get('/files/:id', validate(idParams), asyncHandler(ApplicationController.file));
 router.get('/agreements/:id', validate(idParams), asyncHandler(ApplicationController.agreement));

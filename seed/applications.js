@@ -22,6 +22,8 @@ const calendar = require('../src/services/calendar/calendarService');
 const wt = require('../src/services/calendar/workingTime');
 const { STAGES, routeFor } = require('../src/services/workflow/routes');
 const { localDay } = require('../src/utils/dates');
+const payslipReader = require('../src/services/payslip/payslipReader');
+const { samplePayslip } = require('./samplePayslip');
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -111,7 +113,11 @@ async function seedSampleApplications({ users, products: byCode }) {
     const salary = await Salary.inForce(staff._id);
     const { product, version } = await products.liveProductVersion(byCode[s.p]._id);
     const submittedAt = s.submittedWh != null ? wt.subtractWorkingHours(cal, now, s.submittedWh) : new Date(now.getTime() - s.submittedDays * DAY);
-    const pay = rules.payInputs({ staff, salary, apps: [], today: localDay(submittedAt) });
+    // A fictional payslip dated a few days before submission, read as an upload would be.
+    const payDate = localDay(new Date(submittedAt.getTime() - 5 * DAY));
+    const slipPdf = await samplePayslip({ staff: { fullName: fullName(staff), staffNo: staff.staffNo, title: staff.title, department: staff.department }, basic: salary.basic, allowances: salary.allowances, payDate, pricing });
+    const read = await payslipReader.read(slipPdf, { staff });
+    const pay = rules.payInputs(read);
     const q = calc.quote({ amount: s.amount, tenor: s.tenor, pay, pricing, startDay: localDay(submittedAt), dueDay: settings.firstDueDay });
     const repayment = s.repayment === 'account' ? { method: 'account', bank: staff.bank.bank, branch: staff.bank.branch, accountName: staff.bank.accountName, accountNo: staff.bank.accountNo } : { method: 'payroll' };
     const permissions = s.a === 'LFB0002' ? ['review.ceo'] : s.a === 'LFB0051' ? ['review.hr'] : [];
@@ -161,6 +167,9 @@ async function seedSampleApplications({ users, products: byCode }) {
       acceptance: { userId: id(s.a), staffNo: staff.staffNo, fullName: fullName(staff), at: submittedAt, ip: ip(s.a) },
     });
     app.currentAgreementId = agreement._id;
+    const slipFile = await fileStore.store(slipPdf, { kind: 'payslip', label: 'Latest payslip', originalName: `payslip-${payDate}.pdf`, applicationId: app._id, ownerUserId: id(s.a), uploadedBy: id(s.a) });
+    app.payslip = { fileId: slipFile._id, originalName: slipFile.originalName, payDate: read.payDate, basic: read.basic, lfbDeductions: read.lfbDeductions, lfbLines: read.lfbLines, readAt: submittedAt };
+    app.applicantSnapshot = { ...app.applicantSnapshot, payslip: { fileId: slipFile._id, payDate: read.payDate, basic: read.basic, lfbDeductions: read.lfbDeductions, lfbLines: read.lfbLines } };
 
     await Decision.create({ applicationId: app._id, cycle: 0, action: 'create', actorId: id(s.a), at: new Date(submittedAt.getTime() - HOUR) });
     await Decision.create({ applicationId: app._id, cycle: 1, action: 'submit', actorId: id(s.a), comment: `${s.amount.toLocaleString('en-US')} over ${s.tenor} months, agreement ${number}`, at: submittedAt, ip: ip(s.a) });

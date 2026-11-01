@@ -157,12 +157,13 @@ async function fullView(req, app, actor) {
       nida: formatNida(staff.personal?.nida),
       mobile: staff.personal?.mobile,
       nextOfKin: staff.nextOfKin?.[0] || null,
-      otherLoans: staff.otherLoans || [],
       existingLfbLoans: (staff.existingLfbLoans || []).map((l) => ({ description: l.description, instalment: l.instalment })),
-      salaryAtSubmission: app.applicantSnapshot?.salary || null,
+      salaryAtSubmission: app.applicantSnapshot?.salary || null, // People and Culture's record, to check the payslip against
       runningLoans: running.map((r) => ({ ref: r.ref, amount: r.approved?.amount, status: r.status })),
     },
     documents: docs.filter((d) => d.kind === 'document').map(appSvc.DOC_VIEW),
+    // D-79: what affordability used, and the payslip it was read from.
+    payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [] } : null,
     crbReport: docs.find((d) => d.kind === 'crb_report') ? appSvc.DOC_VIEW(docs.find((d) => d.kind === 'crb_report')) : null,
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
     history: decisions.map((d) => ({

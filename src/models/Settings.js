@@ -21,6 +21,10 @@ const settingsSchema = new mongoose.Schema(
     firstDueDay: { type: Number, default: 25, min: 1, max: 31 }, // instalments fall on this day of the month (D-48)
     inactivityTimeoutMin: { type: Number, default: 15, min: 1 },
     lockoutThreshold: { type: Number, default: 5, min: 3, max: 10 },
+    // The payslip attached to an application must be at most this old at submission (D-79).
+    payslipMaxAgeDays: { type: Number, default: 45, min: 1, max: 120 },
+    // Labels the payslip reader looks for; empty means the reader's defaults (D-79).
+    payslipRules: { basicLabels: { type: [String], default: undefined }, lfbLabels: { type: [String], default: undefined }, dateLabels: { type: [String], default: undefined } },
     // Profile fields that must be filled before applying (decision 7, FR-05); keys from PROFILE_FIELDS.
     mandatoryProfileFields: { type: [String], default: undefined },
     version: { type: Number, default: 1 },

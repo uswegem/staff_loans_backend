@@ -11,7 +11,6 @@ const PRODUCT_FIELDS = [
   ['description', 'Description'],
   ['minAmount', 'Minimum amount (TZS)'],
   ['maxAmount', 'Maximum amount (TZS)'],
-  ['salaryMultiple', 'Maximum salary multiple (× basic)'],
   ['minTenor', 'Minimum tenor (months)'],
   ['maxTenor', 'Maximum tenor (months)'],
   ['minServiceMonths', 'Minimum service (months)'],
@@ -41,9 +40,6 @@ function validateProduct(v) {
   posInt('minAmount', 'Minimum amount');
   posInt('maxAmount', 'Maximum amount');
   if (Number.isInteger(v.minAmount) && Number.isInteger(v.maxAmount) && v.minAmount >= v.maxAmount) add(errors, 'maxAmount', 'The maximum amount must be above the minimum.');
-  if (!(typeof v.salaryMultiple === 'number' && v.salaryMultiple > 0 && Math.round(v.salaryMultiple * 100) === v.salaryMultiple * 100)) {
-    add(errors, 'salaryMultiple', 'The salary multiple must be above 0, with at most two decimals.');
-  }
   posInt('minTenor', 'Minimum tenor');
   posInt('maxTenor', 'Maximum tenor');
   if (Number.isInteger(v.minTenor) && Number.isInteger(v.maxTenor) && v.minTenor > v.maxTenor) add(errors, 'maxTenor', 'The maximum tenor must not be below the minimum.');

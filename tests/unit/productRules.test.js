@@ -43,10 +43,10 @@ describe('product validation (FR-58)', () => {
     expect(validateProduct({ ...base, minTenor: 24, maxTenor: 12 }).maxTenor).toBeDefined();
   });
 
-  it('salary multiple is above 0 with at most two decimals', () => {
-    expect(validateProduct({ ...base, salaryMultiple: 0 }).salaryMultiple).toBeDefined();
-    expect(validateProduct({ ...base, salaryMultiple: 1.234 }).salaryMultiple).toBeDefined();
-    expect(validateProduct({ ...base, salaryMultiple: 1.5 })).toEqual({});
+  it('no longer needs a salary multiple: the reverse calculation sets the maximum amount (D-78)', () => {
+    const noMultiple = { ...base };
+    delete noMultiple.salaryMultiple;
+    expect(validateProduct(noMultiple)).toEqual({});
   });
 
   it('needs a category and a repayment method', () => {

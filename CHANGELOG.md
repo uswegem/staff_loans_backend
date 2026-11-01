@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 – Affordability from the payslip (31 Oct 2026)
+
+- New affordability method (DECISIONS A-01 to A-05, D-78): Pension 10% of Basic Pay; PAYE on Basic Pay less Pension; Net Pay = Basic Pay − Pension − PAYE; Adjusted Net Pay = Net Pay + LFB deductions; Maximum Instalment = 50%. Medical aid, other deductions, other-bank loans and commission no longer count.
+- Maximum amount by reverse calculation over the longest allowed tenor, capped at the product maximum; the salary multiple is dropped from products and rules.
+- Latest payslip required on every application (`POST /applications/{id}/payslip`, PDF only): Basic Pay, LFB deductions and the pay date are read with PDF.js 6.4.299; the payslip must name the applicant and be at most 45 days old (setting). Labels are settings, so a new payroll layout needs no code change (D-79).
+- Reviewers see the payslip and its figures; a Basic Pay that differs from the staff record is flagged.
+- Profile Pay tab keeps only existing staff loans (D-80). Seeds attach fictional payslips. `npm test` runs Jest with `--experimental-vm-modules` for PDF.js.
+
 ## 0.8.0 – Milestone 8: Hardening (30 Oct 2026)
 
 - E2E API (`scripts/e2e-server.js`): in-memory replica set with the sample data, for the Playwright runs in the web app repo.

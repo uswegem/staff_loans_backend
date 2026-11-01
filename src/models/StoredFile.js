@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 
 const fileSchema = new mongoose.Schema(
   {
-    kind: { type: String, enum: ['document', 'crb_report', 'agreement_pdf'], required: true },
+    kind: { type: String, enum: ['document', 'payslip', 'crb_report', 'agreement_pdf'], required: true },
     applicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Application' },
     ownerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     label: { type: String, trim: true, maxlength: 160 },

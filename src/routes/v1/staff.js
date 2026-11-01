@@ -34,7 +34,7 @@ const staffNo = Joi.string().trim().uppercase().pattern(/^LFB\d{4}$/).messages({
  * /me/profile/kin:
  *   patch: { tags: [Profile], summary: "Save next of kin (one to three)", security: [{ bearer: [] }], responses: { 200: { description: Profile } } }
  * /me/profile/pay:
- *   patch: { tags: [Profile], summary: "Save deductions and other loans; needs the confirmation tick", security: [{ bearer: [] }], responses: { 200: { description: Profile } } }
+ *   patch: { tags: [Profile], summary: "Save existing staff loans taken outside SLAS (BR-07, NS-02)", security: [{ bearer: [] }], responses: { 200: { description: Profile } } }
  */
 router.get('/me/profile', asyncHandler(ProfileController.get));
 router.get('/me/profile/completeness', asyncHandler(ProfileController.completeness));
@@ -73,10 +73,7 @@ router.patch(
   '/me/profile/pay',
   validate({
     body: Joi.object({
-      deductions: Joi.object({ medical: money.default(0), other: money.default(0) }).default({ medical: 0, other: 0 }),
-      otherLoans: Joi.array().items(Joi.object({ lender: text(80).required(), type: Joi.string().valid('personal', 'mortgage', 'vehicle', 'other').required(), instalment: money.required() })).max(20).default([]),
-      existingLfbLoans: Joi.array().items(Joi.object({ description: text(120), instalment: money.required(), outstanding: money, productId: objectId.allow(null), disbursedOn: day.allow('', null) })).max(20).default([]),
-      confirm: Joi.boolean().default(false),
+      existingLfbLoans: Joi.array().items(Joi.object({ description: text(120), instalment: money.allow(null), outstanding: money, productId: objectId.allow(null), disbursedOn: day.allow('', null) })).max(20).default([]),
     }),
   }),
   asyncHandler(ProfileController.pay)

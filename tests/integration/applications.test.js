@@ -18,6 +18,7 @@ const User = require('../../src/models/User');
 const AuditLog = require('../../src/models/AuditLog');
 const fileStore = require('../../src/services/files/fileStore');
 const { localDay } = require('../../src/utils/dates');
+const { attachPayslip } = require('../flows');
 
 let products;
 const api = (token) => ({
@@ -30,12 +31,17 @@ const CONSENTS = { truth: true, deduct: true, crb: true, sms: true };
 const PL = () => String(products.PL._id);
 const HE = () => String(products.HE._id);
 
-async function draft(person, productId, terms) {
+/** A draft with the applicant's latest payslip attached (D-79) unless payslip is false. */
+async function draft(person, productId, terms, { payslip = true } = {}) {
   const a = api(person.token);
   const created = await a.post('/applications', { productId });
   if (created.status !== 201) throw new Error(`create failed ${JSON.stringify(created.body)}`);
   const id = created.body.data.id;
-  const res = terms ? await a.patch(`/applications/${id}`, terms) : created;
+  if (payslip) {
+    const slip = await attachPayslip(person, id, payslip === true ? {} : payslip);
+    if (slip.status !== 201) throw new Error(`payslip failed ${JSON.stringify(slip.body)}`);
+  }
+  const res = terms ? await a.patch(`/applications/${id}`, terms) : await a.get(`/applications/${id}`);
   return { id, res };
 }
 
@@ -63,12 +69,13 @@ describe('starting an application (FR-05)', () => {
     expect(res.body.message).toMatch(/^You can apply once your profile is complete\. Missing: .*NIDA number/);
   });
 
-  it('a draft gets a reference and shows the calculator inputs from the profile', async () => {
+  it('a draft gets a reference and shows the calculator inputs read from the payslip', async () => {
     const neema = await signIn('LFB0412');
     const { res } = await draft(neema, PL());
     expect(res.body.data.ref).toMatch(/^SL-\d{4}-00001$/);
     expect(res.body.data.status).toBe('draft');
-    expect(res.body.data.payInputs).toMatchObject({ basic: 1850000, allowances: 220000 });
+    expect(res.body.data.payInputs).toEqual({ basic: 1850000, lfbDeductions: 0 });
+    expect(res.body.data.payslip).toMatchObject({ basic: 1850000, lfbDeductions: 0, payDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
     expect(res.body.data.checks.fieldErrors).toMatchObject({ amount: 'Enter the amount you want to borrow.', tenor: 'Enter the tenor in months.', purpose: 'Say what the loan is for.' });
     expect(res.body.data.route.key).toBe('nonmgmt');
   });
@@ -103,9 +110,8 @@ describe('live checks (BR-03 to BR-06, BR-14, BR-15)', () => {
 
   it.each([
     [{ amount: 400000, tenor: 12 }, 'The minimum for Personal Loan is TZS 500,000.'],
-    [{ amount: 15000000, tenor: 60 }, 'You can borrow up to 8× your basic salary: TZS 14,800,000.'],
     [{ amount: 2000000, tenor: 72 }, 'Choose a tenor between 6 and 60 months.'],
-    [{ amount: 14000000, tenor: 6 }, /^The instalment of TZS 2,3\d\d,\d00 is above your limit of TZS 668,750 \(50% of adjusted net pay\)\. Lower the amount or lengthen the tenor\.$/],
+    [{ amount: 14000000, tenor: 6 }, 'The instalment of TZS 2,374,400 is above your limit of TZS 668,750 (50% of adjusted net pay). Borrow up to TZS 3,942,000 over 6 months, or up to TZS 34,588,000 over 60 months.'],
   ])('%j → %s', async (terms, message) => {
     const neema = await signIn('LFB0412');
     const { res } = await draft(neema, PL(), { ...terms, purpose: 'Test' });
@@ -133,11 +139,74 @@ describe('live checks (BR-03 to BR-06, BR-14, BR-15)', () => {
     expect(res.body.data.repayment).toMatchObject({ method: 'account', bank: 'Letshego Faidika Bank', accountNo: '4010 2283 1170' });
   });
 
-  it('a top-up adds back the old instalment and charges 0.5% (BR-09)', async () => {
-    await Staff.updateOne({ staffNo: 'LFB0412' }, { $set: { existingLfbLoans: [{ description: 'Personal loan 2024', instalment: 90000 }] } });
+  it('a top-up charges 0.5%; the old loan is already among the LFB deductions (BR-09, D-78)', async () => {
     const neema = await signIn('LFB0412');
-    const { res } = await draft(neema, PL(), { ...NEEMA_TERMS, topUp: { on: true, loanRef: 'Personal loan 2024', instalment: 90000 } });
-    expect(res.body.data.quote).toMatchObject({ addBack: 90000, maxInstalment: 668750, processingFee: 22500 });
+    const { res } = await draft(neema, PL(), { ...NEEMA_TERMS, topUp: { on: true, loanRef: 'Personal loan 2024' } }, { payslip: { lfbLines: [{ label: 'STAFF LOAN', amount: 90000 }] } });
+    expect(res.body.data.quote).toMatchObject({ adjusted: 1427500, maxInstalment: 713750, processingFee: 22500 });
+  });
+
+  it('the maximum amount is the reverse calculation over the longest tenor, capped by the product', async () => {
+    const neema = await signIn('LFB0412');
+    const { res } = await draft(neema, PL(), NEEMA_TERMS);
+    expect(res.body.data.quote).toMatchObject({ maxTenor: 60, maxAmount: 34588000 });
+    const sa = await draft(neema, String(products.SA._id), { amount: 600000, tenor: 3, purpose: 'Rent', repaymentMethod: 'payroll' });
+    expect(sa.res.body.data.quote.maxAmount).toBeLessThanOrEqual(sa.res.body.data.product.maxAmount);
+  });
+});
+
+describe('payslip (D-78, D-79)', () => {
+  it('is required, and Basic Pay and LFB deductions are read from it', async () => {
+    const neema = await signIn('LFB0412');
+    const { id, res } = await draft(neema, PL(), NEEMA_TERMS, { payslip: false });
+    expect(res.body.data.checks.fieldErrors.payslip).toBe('Attach your latest payslip. Basic Pay and LFB deductions are read from it.');
+    expect(res.body.data.checks.canSubmit).toBe(false);
+    const up = await attachPayslip(neema, id, { basic: 2000000, lfbLines: [{ label: 'STAFF LOAN', amount: 100000 }, { label: 'LFB LOAN', amount: 50000 }] });
+    expect(up.status).toBe(201);
+    expect(up.body.data.payslip).toMatchObject({ basic: 2000000, lfbDeductions: 150000 });
+    expect(up.body.data.payInputs).toEqual({ basic: 2000000, lfbDeductions: 150000 });
+    // Basic 2,000,000: pension 200,000; PAYE 128,000 + 30% × 800,000 = 368,000; net 1,432,000; + LFB 150,000.
+    expect(up.body.data.quote.payslip).toMatchObject({ pension: 200000, taxable: 1800000, tax: 368000, totalDeductions: 568000, net: 1432000, adjusted: 1582000 });
+    expect(up.body.data.quote.maxInstalment).toBe(791000);
+    expect(await AuditLog.countDocuments({ action: 'payslip.upload' })).toBe(1);
+  });
+
+  it('must be at most 45 days old (configurable)', async () => {
+    const neema = await signIn('LFB0412');
+    // The payslip shows its pay month; it counts from the last day of that month.
+    const { res } = await draft(neema, PL(), NEEMA_TERMS, { payslip: { payDate: localDay(new Date(Date.now() - 80 * 24 * 3600 * 1000)) } });
+    const { payDate } = res.body.data.payslip;
+    const age = Math.round((Date.parse(`${localDay()}T00:00:00Z`) - Date.parse(`${payDate}T00:00:00Z`)) / 86400000);
+    expect(age).toBeGreaterThan(45);
+    expect(res.body.data.checks.fieldErrors.payslip).toBe(`Your payslip is dated ${payDate}, ${age} days ago. Attach one not older than 45 days.`);
+    await Settings.updateOne({ _id: 'global' }, { $set: { payslipMaxAgeDays: 120 } });
+    const again = await api(neema.token).get(`/applications/${res.body.data.id}`);
+    expect(again.body.data.checks.fieldErrors.payslip).toBeUndefined();
+  });
+
+  it('refuses images, someone else\'s payslip, and keeps the previous one when a new one cannot be read', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    const photo = await request(app()).post(`/api/v1/applications/${id}/payslip`).set(authed(neema.token)).attach('file', Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(50000)]), 'payslip.jpg');
+    expect(photo.body.code).toBe('PAYSLIP_NOT_PDF');
+    const juma = await signIn('LFB0233');
+    const theirs = await attachPayslip(juma, id); // Juma's payslip, sent to Neema's draft by Neema
+    expect(theirs.status).toBe(404);
+    const { samplePayslip } = require('../../seed/samplePayslip');
+    const { PRICING } = require('../../seed/products');
+    const other = await samplePayslip({ staff: { fullName: 'Juma Kassim', staffNo: 'LFB0233' }, basic: 9000000, payDate: localDay(), pricing: PRICING });
+    const wrong = await request(app()).post(`/api/v1/applications/${id}/payslip`).set(authed(neema.token)).attach('file', other, 'payslip.pdf');
+    expect(wrong.body.code).toBe('PAYSLIP_NOT_YOURS');
+    const kept = await api(neema.token).get(`/applications/${id}`);
+    expect(kept.body.data.payslip.basic).toBe(1850000);
+  });
+
+  it('flags a Basic Pay that differs from the staff record for reviewers', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS, { payslip: { basic: 1900000 } });
+    await signAndSubmit(neema, id);
+    const a = await Application.findById(id);
+    expect(a.ruleFlags).toContain('Basic Pay on the payslip (TZS 1,900,000) differs from the staff record (TZS 1,850,000): confirm with Payroll.');
+    expect(a.applicantSnapshot.payslip).toMatchObject({ basic: 1900000, lfbDeductions: 0 });
   });
 });
 
