@@ -1052,6 +1052,84 @@
         }
       }
     },
+    "/reference-data/countries": {
+      "get": {
+        "tags": [
+          "Reference data"
+        ],
+        "summary": "Countries for the nationality list; Tanzania is the default",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Countries"
+          }
+        }
+      }
+    },
+    "/reference-data/regions": {
+      "get": {
+        "tags": [
+          "Reference data"
+        ],
+        "summary": "Tanzania regions",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Region names"
+          }
+        }
+      }
+    },
+    "/reference-data/regions/{region}/districts": {
+      "get": {
+        "tags": [
+          "Reference data"
+        ],
+        "summary": "Districts in a region",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "District names"
+          },
+          "404": {
+            "description": "Unknown region"
+          }
+        }
+      }
+    },
+    "/reference-data/regions/{region}/districts/{district}/wards": {
+      "get": {
+        "tags": [
+          "Reference data"
+        ],
+        "summary": "Wards in a district",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ward names"
+          },
+          "404": {
+            "description": "Unknown region or district"
+          }
+        }
+      }
+    },
     "/products": {
       "get": {
         "tags": [
@@ -1744,6 +1822,24 @@
         "responses": {
           "200": {
             "description": "Profile"
+          }
+        }
+      }
+    },
+    "/auth/preferences": {
+      "patch": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Save my interface language (en, sw) and theme (light, dark) (D-94)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved preferences"
           }
         }
       }

@@ -27,7 +27,6 @@ const newStaff = {
   category: 'Non-management',
   employmentType: 'Permanent',
   dateJoined: '2026-03-02',
-  retirementDate: '2062-02-14',
   lineManagerStaffNo: 'LFB0188',
   lfbAccountNo: '4010 3341 0700',
   salary: { basic: 1150000, allowances: 100000, effectiveFrom: '2026-03-02' },
@@ -59,8 +58,11 @@ describe('staff records (FR-01)', () => {
   });
 
   it('checks dates and contract rules', async () => {
-    const r1 = await api(grace.token).post('/staff', { ...newStaff, retirementDate: '2025-01-01' });
-    expect(r1.body.details.retirementDate).toBeDefined();
+    // D-98: the retirement date is not entered; one sent anyway is ignored.
+    const r1 = await api(grace.token).post('/staff', { ...newStaff, staffNo: 'LFB0701', retirementDate: '2025-01-01' });
+    expect(r1.status).toBe(201);
+    expect(r1.body.data).not.toHaveProperty('retirementDate');
+    expect((await Staff.findOne({ staffNo: 'LFB0701' }).lean()).retirementDate).toBeUndefined();
     const r2 = await api(grace.token).post('/staff', { ...newStaff, employmentType: 'Contract' });
     expect(r2.body.details.contractEndDate).toBeDefined();
     const r3 = await api(grace.token).post('/staff', { ...newStaff, staffNo: 'LFB0412' });
@@ -146,7 +148,9 @@ describe('Excel bulk upload (FR-02)', () => {
     expect(byNo.LFB0412.outcome).toBe('update');
     expect(byNo.LFB0412.changes.join()).toMatch(/basic 1,850,000 → 1,950,000/);
     expect(byNo.LFB0188.outcome).toBe('unchanged');
-    expect(byNo['06-LFB2'].problems).toEqual(expect.arrayContaining(['Staff number must be the employee code on the payslip, for example AT637', 'Category must be Management or Non-management', 'Retirement date must be after the date joined']));
+    expect(byNo['06-LFB2'].problems).toEqual(expect.arrayContaining(['Staff number must be the employee code on the payslip, for example AT637', 'Category must be Management or Non-management']));
+    // D-98: a Retirement date column from an older file is ignored.
+    expect(byNo['06-LFB2'].problems.join()).not.toMatch(/Retirement/);
     expect(byNo.LFB0613.problems).toContain('Contract end date is required for contract staff');
     // Nothing has changed yet.
     expect(await Staff.exists({ staffNo: 'LFB0612' })).toBeNull();

@@ -76,6 +76,59 @@ function readStaff(file = CSV) {
   return rows;
 }
 
+/**
+ * Creates or updates each staff member (by staff number) and their account, and gives
+ * them their roles. Existing staff are updated (or, with updateExisting false, left as
+ * they are), never duplicated; an existing account keeps its password.
+ * Returns { created, updated, unchanged, usersCreated, assignments }.
+ */
+async function loadStaffRows(staffRows, { password, roleByCode, source, updateExisting = true }) {
+  const hash = await (async () => {
+    const probe = new User({ staffNo: 'AT0', mustChangePassword: true });
+    await credentials.forUser(probe).setPassword(probe, password, { skipHistory: true });
+    return { passwordHash: probe.passwordHash, passwordChangedAt: probe.passwordChangedAt };
+  })();
+  const loaded = { created: 0, updated: 0, unchanged: 0, usersCreated: 0, assignments: [] };
+  for (const r of staffRows) {
+    /* eslint-disable no-await-in-loop */
+    const fields = { firstName: r.firstName, lastName: r.lastName, title: r.title, department: r.department, category: categoryFor(r.title), status: 'active' };
+    const existing = await Staff.findOne({ staffNo: r.staffNo });
+    let staff;
+    if (existing && !updateExisting) {
+      staff = existing;
+      loaded.unchanged += 1;
+    } else if (existing) {
+      existing.set(fields);
+      existing.gender = r.gender;
+      await existing.save();
+      staff = existing;
+      loaded.updated += 1;
+    } else {
+      // Date of birth left empty: the staff member enters it and People and Culture verify it (D-82).
+      staff = await Staff.create({ staffNo: r.staffNo, ...fields, gender: r.gender, bank: { bank: 'Letshego Faidika Bank', accountName: `${r.firstName} ${r.lastName}` } });
+      loaded.created += 1;
+    }
+    let user = await User.findOne({ staffNo: r.staffNo });
+    if (!user) {
+      user = await User.create({ staffNo: r.staffNo, staffId: staff._id, mustChangePassword: true, ...hash });
+      await AuditLog.create({ action: 'user.create', description: `User created for ${r.staffNo} (${r.firstName} ${r.lastName}) by ${source}; temporary password, change forced at first sign-in`, entity: 'User', entityId: String(user._id), after: { staffNo: r.staffNo, roles: ['staff', ...(ROLES_BY_STAFF_NO[r.staffNo] || [])] } });
+      loaded.usersCreated += 1;
+    }
+    const wanted = ['staff', ...(ROLES_BY_STAFF_NO[r.staffNo] || [])];
+    const sod = rbac.checkUserRoles(wanted.map((c) => roleByCode[c]));
+    if (sod.length) throw new Error(`${r.staffNo}: segregation of duties: ${JSON.stringify(sod)}`);
+    for (const code of wanted) {
+      const role = roleByCode[code];
+      const has = await RoleAssignment.exists({ userId: user._id, roleId: role._id, revokedAt: null });
+      if (!has) await RoleAssignment.create({ userId: user._id, roleId: role._id });
+      if (code !== 'staff') loaded.assignments.push(`${r.firstName} ${r.lastName} (${r.staffNo}): ${role.name}`);
+    }
+    /* eslint-enable no-await-in-loop */
+  }
+
+  return loaded;
+}
+
 /** CEO and the Heads are management (BRD 7.3); everyone else non-management. */
 const categoryFor = (title) => (/^(Chief Executive Officer|Head of )/i.test(title) ? 'Management' : 'Non-management');
 
@@ -184,45 +237,7 @@ async function run({ dryRun = false, ownConnection = true, file = CSV } = {}) {
   const roleByCode = Object.fromEntries((await Role.find().lean()).map((r) => [r.code, r]));
 
   // Load staff and accounts first.
-  const hash = await (async () => {
-    const probe = new User({ staffNo: 'AT0', mustChangePassword: true });
-    await credentials.forUser(probe).setPassword(probe, password, { skipHistory: true });
-    return { passwordHash: probe.passwordHash, passwordChangedAt: probe.passwordChangedAt };
-  })();
-  const loaded = { created: 0, updated: 0, usersCreated: 0, assignments: [] };
-  for (const r of staffRows) {
-    /* eslint-disable no-await-in-loop */
-    const fields = { firstName: r.firstName, lastName: r.lastName, title: r.title, department: r.department, category: categoryFor(r.title), status: 'active' };
-    const existing = await Staff.findOne({ staffNo: r.staffNo });
-    let staff;
-    if (existing) {
-      existing.set(fields);
-      existing.gender = r.gender;
-      await existing.save();
-      staff = existing;
-      loaded.updated += 1;
-    } else {
-      // Date of birth left empty: the staff member enters it and People and Culture verify it (D-82).
-      staff = await Staff.create({ staffNo: r.staffNo, ...fields, gender: r.gender, bank: { bank: 'Letshego Faidika Bank', accountName: `${r.firstName} ${r.lastName}` } });
-      loaded.created += 1;
-    }
-    let user = await User.findOne({ staffNo: r.staffNo });
-    if (!user) {
-      user = await User.create({ staffNo: r.staffNo, staffId: staff._id, mustChangePassword: true, ...hash });
-      await AuditLog.create({ action: 'user.create', description: `User created for ${r.staffNo} (${r.firstName} ${r.lastName}) by the data reset; temporary password, change forced at first sign-in`, entity: 'User', entityId: String(user._id), after: { staffNo: r.staffNo, roles: ['staff', ...(ROLES_BY_STAFF_NO[r.staffNo] || [])] } });
-      loaded.usersCreated += 1;
-    }
-    const wanted = ['staff', ...(ROLES_BY_STAFF_NO[r.staffNo] || [])];
-    const sod = rbac.checkUserRoles(wanted.map((c) => roleByCode[c]));
-    if (sod.length) throw new Error(`${r.staffNo}: segregation of duties: ${JSON.stringify(sod)}`);
-    for (const code of wanted) {
-      const role = roleByCode[code];
-      const has = await RoleAssignment.exists({ userId: user._id, roleId: role._id, revokedAt: null });
-      if (!has) await RoleAssignment.create({ userId: user._id, roleId: role._id });
-      if (code !== 'staff') loaded.assignments.push(`${r.firstName} ${r.lastName} (${r.staffNo}): ${role.name}`);
-    }
-    /* eslint-enable no-await-in-loop */
-  }
+  const loaded = await loadStaffRows(staffRows, { password, roleByCode, source: 'the data reset' });
 
   // Then delete the old data.
   const deleted = {};
@@ -270,4 +285,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { run, readStaff, categoryFor, syncRoles, ROLES_BY_STAFF_NO };
+module.exports = { run, readStaff, loadStaffRows, categoryFor, syncRoles, describeTarget, ROLES_BY_STAFF_NO, CSV };

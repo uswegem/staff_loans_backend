@@ -6,7 +6,8 @@
 
 const { liveProducts } = require('../products/productService');
 const { completeness } = require('./profileService');
-const { cutoffProblem, cutoffFor } = require('./retirement');
+const { cutoffProblem, cutoffFor, dobProblem } = require('./retirement');
+const Salary = require('../../models/Salary');
 const Settings = require('../../models/Settings');
 const { addMonths, localDay, localMidnight } = require('../../utils/dates');
 
@@ -52,13 +53,34 @@ function coolingMessage(name, c) {
   return `You applied for a ${name} on ${pretty(localDay(c.lastAppliedAt))}. You can apply for this product again from ${pretty(c.nextEligibleDate)} (${c.daysRemaining} ${c.daysRemaining === 1 ? 'day' : 'days'}).`;
 }
 
+/**
+ * What People and Culture must record before this person can apply for any product:
+ * the employment record (D-91) and a salary in force. The same checks block starting,
+ * submitting and approving an application (rules.eligibility).
+ */
+function recordProblems(staff, salary) {
+  const out = [];
+  if (!staff.dateJoined || !staff.employmentType) out.push('People and Culture must complete your employment record (date joined and employment type) before you can apply.');
+  if (!salary) out.push('People and Culture must record your salary before you can apply.');
+  return out;
+}
+
+/**
+ * Everything that stops this person applying for any loan, once their own profile is
+ * complete: the records above and an unverified date of birth. Empty when nothing does.
+ */
+function applyBlockers(staff, salary) {
+  const noDob = dobProblem(staff);
+  return [...(noDob ? [noDob] : []), ...recordProblems(staff, salary)];
+}
+
 async function eligibilityFor(staff, now = new Date()) {
-  const profile = await completeness(staff);
-  const products = await liveProducts(now);
-  const settings = await Settings.get();
+  const [profile, products, settings, salary] = await Promise.all([completeness(staff), liveProducts(now), Settings.get(), Salary.inForce(staff._id)]);
+  const records = recordProblems(staff, salary);
   const items = products.map(({ product, version }) => {
     const reasons = [];
     if (!profile.complete && !profile.missing.every((m) => m.key === 'personal.dob')) reasons.push(`You can apply once your profile is complete. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`);
+    reasons.push(...records);
     const cut = cutoffProblem(staff, version, settings, localDay(now));
     if (cut) reasons.push(cut);
     const c = cooling(staff, product._id, version.reapplyCoolingMonths, now);
@@ -77,7 +99,8 @@ async function eligibilityFor(staff, now = new Date()) {
       daysRemaining: waiting ? c.daysRemaining : 0,
     };
   });
-  return { profile, products: items, cutoff: cutoffFor(staff, settings) };
+  // blockers: what stops every product being applied for, once the profile is complete.
+  return { profile, products: items, cutoff: cutoffFor(staff, settings), blockers: applyBlockers(staff, salary) };
 }
 
-module.exports = { eligibilityFor, cooling, coolingMessage, lastSuccessfulByProduct };
+module.exports = { eligibilityFor, cooling, coolingMessage, lastSuccessfulByProduct, recordProblems, applyBlockers };

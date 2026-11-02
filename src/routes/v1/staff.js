@@ -9,12 +9,33 @@ const StaffController = require('../../controllers/staffController');
 const { requireAll, requireAny } = require('../../middleware/permission');
 const { validate } = require('../../middleware/validate');
 const { badRequest, asyncHandler } = require('../../utils/errors');
+const { normalisePhone, normaliseNida, PHONE_MESSAGE, NIDA_MESSAGE, ACCOUNT_NO, ACCOUNT_NO_MESSAGE, BRANCH_MESSAGE } = require('../../utils/formats');
+const { normaliseCountry } = require('../../constants/countries');
 
 const router = express.Router();
 const objectId = Joi.string().hex().length(24);
 const day = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).messages({ 'string.pattern.base': 'Use a date like 2026-11-01.' });
 const text = (max) => Joi.string().trim().max(max).allow('');
-const phone = Joi.string().trim().max(30).pattern(/^[+\d][\d\s()-]{5,}$/).allow('').messages({ 'string.pattern.base': 'Enter a phone number, for example +255 713 448 902.' });
+// D-93: Tanzanian numbers only, stored as +255 and nine digits; 0754…, 255754… and
+// +255 754… are accepted and normalised. NIDA is stored with its hyphens.
+const phone = Joi.string()
+  .trim()
+  .max(30)
+  .allow('')
+  .custom((v, h) => (v === '' ? v : normalisePhone(v) || h.error('phone.format')))
+  .messages({ 'phone.format': PHONE_MESSAGE });
+const nida = Joi.string()
+  .trim()
+  .max(30)
+  .allow('')
+  .custom((v, h) => (v === '' ? v : normaliseNida(v) || h.error('nida.format')))
+  .messages({ 'nida.format': NIDA_MESSAGE });
+const nationality = Joi.string()
+  .trim()
+  .allow('')
+  .custom((v, h) => (v === '' ? v : normaliseCountry(v) || h.error('country.unknown')))
+  .messages({ 'country.unknown': 'Choose a country from the list.' });
+const address = Joi.object({ region: text(60), district: text(60), ward: text(60), street: text(120), house: text(60) });
 const money = Joi.number().integer().min(0).max(10_000_000_000);
 const staffNo = Joi.string().trim().uppercase().pattern(STAFF_NO).messages({ 'string.pattern.base': STAFF_NO_MESSAGE });
 
@@ -46,18 +67,28 @@ router.patch(
     body: Joi.object({
       maritalStatus: Joi.string().valid('Single', 'Married', 'Divorced', 'Widowed', ''),
       dob: day.allow('', null),
-      nida: Joi.string().trim().max(30).allow(''),
-      nationality: text(60),
+      nida,
+      nationality,
       mobile: phone,
       homePhone: phone,
       workPhone: phone,
-      poBox: text(80),
-      residence: text(160),
+      address,
     }).min(1),
   }),
   asyncHandler(ProfileController.personal)
 );
-router.patch('/me/profile/bank', validate({ body: Joi.object({ bank: text(80), branch: text(80), accountName: text(120), accountNo: text(40) }).min(1) }), asyncHandler(ProfileController.bank));
+router.patch(
+  '/me/profile/bank',
+  validate({
+    body: Joi.object({
+      bank: text(80),
+      branch: text(80).pattern(/^$|[A-Za-z].*[A-Za-z]/).messages({ 'string.pattern.base': BRANCH_MESSAGE }),
+      accountName: text(120),
+      accountNo: text(40).pattern(ACCOUNT_NO).messages({ 'string.pattern.base': ACCOUNT_NO_MESSAGE }),
+    }).min(1),
+  }),
+  asyncHandler(ProfileController.bank)
+);
 router.patch(
   '/me/profile/kin',
   validate({
@@ -96,7 +127,6 @@ const hrBody = {
   dateJoined: day,
   probationEndDate: day.allow('', null),
   contractEndDate: day.allow('', null),
-  retirementDate: day,
   email: Joi.string().trim().lowercase().email({ tlds: false }).max(120).allow(''),
   workPhone: phone,
   lfbAccountNo: text(40),
@@ -169,7 +199,7 @@ router.get(
 router.post(
   '/staff',
   requireAll('staff.manage'),
-  validate({ body: Joi.object({ ...hrBody, staffNo: staffNo.required(), mobile: phone, salary: salaryBody.required() }).fork(['firstName', 'lastName', 'title', 'station', 'category', 'employmentType', 'dateJoined', 'retirementDate'], (s) => s.required()) }),
+  validate({ body: Joi.object({ ...hrBody, staffNo: staffNo.required(), mobile: phone, salary: salaryBody.required() }).fork(['firstName', 'lastName', 'title', 'station', 'category', 'employmentType', 'dateJoined'], (s) => s.required()) }),
   asyncHandler(StaffController.create)
 );
 router.get('/staff/:id', requireAny('staff.view', 'staff.manage'), validate(idParams), asyncHandler(StaffController.get));

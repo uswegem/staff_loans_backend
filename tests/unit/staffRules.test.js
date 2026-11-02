@@ -7,13 +7,15 @@ const { cooling } = require('../../src/services/staff/eligibilityService');
 const { probationInfo } = require('../../src/services/staff/staffService');
 const { addMonths } = require('../../src/utils/dates');
 
-describe('NIDA number (decision 7)', () => {
+describe('NIDA number (decision 7, D-93)', () => {
+  // Stored with its hyphens; 20 digits typed or pasted in any grouping are accepted.
   it.each([
-    ['19890712-14112-00004-21', '19890712141120000421'],
-    ['19890712141120000421', '19890712141120000421'],
-    ['  19890712-14112-0000421 ', '19890712141120000421'],
-  ])('accepts %s', (input, digits) => {
-    expect(normaliseNida(input)).toBe(digits);
+    ['19890712-14112-00004-21', '19890712-14112-00004-21'],
+    ['19890712141120000421', '19890712-14112-00004-21'],
+    ['  19890712-14112-0000421 ', '19890712-14112-00004-21'],
+    ['19800630-13140-0000420', '19800630-13140-00004-20'],
+  ])('accepts %s', (input, stored) => {
+    expect(normaliseNida(input)).toBe(stored);
   });
 
   it.each(['1989071214112000042', '19890712-14112-00004-2X', '19891332-14112-00004-21', '18000101141120000421', ''])('refuses %s', (input) => {

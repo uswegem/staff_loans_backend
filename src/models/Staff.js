@@ -5,12 +5,17 @@
 
 const mongoose = require('mongoose');
 const { STAFF_NO } = require('../constants/staffNo');
+const { phoneOrRaw, nidaOrRaw } = require('../utils/formats');
 
 const { Schema } = mongoose;
 
+// Phone numbers and NIDA are kept in one format (D-93): a value that normalises is
+// stored normalised; anything else is kept as given so the owner sees it as invalid.
+const phone = { type: String, set: phoneOrRaw };
+
 const kinSchema = new Schema(
   // First name and surname (D-85); `name` is the pre-D-85 full name, split by scripts/split-names.js.
-  { firstName: String, lastName: String, name: String, relationship: String, address: String, phone: String, employer: String },
+  { firstName: String, lastName: String, name: String, relationship: String, address: String, phone, employer: String },
   { _id: false }
 );
 
@@ -54,7 +59,7 @@ const staffSchema = new Schema(
     title: String,
     department: { type: String, index: true },
     station: String,
-    stationHead: { name: String, phone: String },
+    stationHead: { name: String, phone },
     lineManagerId: { type: Schema.Types.ObjectId, ref: 'Staff' },
     category: { type: String, enum: ['Management', 'Non-management'], required: true, index: true },
     // People and Culture complete these; until then the staff member cannot apply (D-91).
@@ -63,11 +68,13 @@ const staffSchema = new Schema(
     gender: { type: String, enum: ['Male', 'Female'] },
     probationEndDate: Date,
     contractEndDate: Date,
+    // No longer entered (D-98): the retirement date is worked out from the verified date of
+    // birth (services/staff/retirement.js). Earlier values are kept and not used.
     retirementDate: Date,
     incomeClass: { type: String, enum: ['fixed', 'commission'], default: 'fixed' },
     email: { type: String, lowercase: true, trim: true },
     lfbAccountNo: { type: String, trim: true }, // maintained by People and Culture (FR-01); pre-fills the profile bank details
-    workPhone: String,
+    workPhone: phone,
     status: { type: String, enum: ['active', 'exited', 'deactivated'], default: 'active', index: true },
     exitDate: Date,
     // The HR-verified date of birth: the only one loan rules may use (D-82). It changes
@@ -82,12 +89,15 @@ const staffSchema = new Schema(
     personal: {
       maritalStatus: String,
       dob: Date, // mirrors the verified date of birth; not edited directly since D-82
-      nida: { type: String, match: /^\d{20}$/ },
+      nida: { type: String, set: nidaOrRaw }, // YYYYMMDD-XXXXX-XXXXX-XX (D-93)
       nationality: String,
-      mobile: String,
-      homePhone: String,
-      poBox: String,
-      residence: String,
+      mobile: phone,
+      homePhone: phone,
+      // No longer asked for (D-93); earlier answers are kept and may be empty.
+      poBox: { type: String, default: null },
+      residence: { type: String, default: null },
+      // Structured address (D-93): region, district and ward from the location list.
+      address: { region: String, district: String, ward: String, street: String, house: String },
     },
     bank: { bank: String, branch: String, accountName: String, accountNo: String },
     nextOfKin: { type: [kinSchema], default: [] },

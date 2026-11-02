@@ -87,10 +87,18 @@ router.post('/logout', requireCsrf, asyncHandler(AuthController.logout));
  * @openapi
  * /auth/me:
  *   get: { tags: [Auth], summary: "Current user, roles and permissions (FR-52)", security: [{ bearer: [] }], responses: { 200: { description: Profile } } }
+ * /auth/preferences:
+ *   patch: { tags: [Auth], summary: "Save my interface language (en, sw) and theme (light, dark) (D-94)", security: [{ bearer: [] }], responses: { 200: { description: Saved preferences } } }
  * /auth/change-password:
  *   post: { tags: [Auth], summary: Change own password (policy Q2), security: [{ bearer: [] }], responses: { 200: { description: Changed } } }
  */
 router.get('/me', authenticate, asyncHandler(AuthController.me));
+router.patch(
+  '/preferences',
+  authenticate,
+  validate({ body: Joi.object({ language: Joi.string().valid('en', 'sw'), theme: Joi.string().valid('light', 'dark') }).min(1) }),
+  asyncHandler(AuthController.preferences)
+);
 router.post(
   '/change-password',
   authenticate,

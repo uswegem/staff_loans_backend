@@ -59,6 +59,7 @@ async function profileFor(user) {
       mustChangePassword: user.mustChangePassword,
       mfaEnabled: !!user.mfa?.enabled,
       lastLoginAt: user.lastLoginAt,
+      preferences: { language: user.preferences?.language || 'en', theme: user.preferences?.theme || 'light' },
     },
     roles: eff.roles,
     permissions: [...eff.permissions].sort(),
@@ -251,6 +252,14 @@ const AuthController = {
     });
     setSessionCookies(res, rawToken, csrf);
     res.json({ success: true, data: { accessToken: tokenService.signAccess(user, session._id), expiresIn: config.accessTokenTtlSec, ...(await profileFor(user)) } });
+  },
+
+  /** Saves the interface language and theme (D-94). */
+  async preferences(req, res) {
+    const set = Object.fromEntries(Object.entries(req.body).map(([k, v]) => [`preferences.${k}`, v]));
+    await User.updateOne({ _id: req.auth.user._id }, { $set: set });
+    const user = await User.findById(req.auth.user._id);
+    res.json({ success: true, data: { preferences: { language: user.preferences?.language || 'en', theme: user.preferences?.theme || 'light' } } });
   },
 
   async me(req, res) {

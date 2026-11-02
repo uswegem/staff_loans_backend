@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.0 – Profile formats, address, language and theme (2 Nov 2026)
+
+- Phone numbers stored as +255 and nine digits; NIDA stored with hyphens; nationality from a country list (`GET /reference-data/countries`) (D-93).
+- Region → District → Ward list copied from MMS (`LocationRegion`, `seed/referenceData.js`), served by `GET /reference-data/regions…` and checked on save; P.O. Box and free-text residence no longer asked for or counted; `{{residence}}` uses the structured address (D-93).
+- Completeness returns the required keys; a stored value in the wrong format counts as missing. Branch and account number checks.
+- `npm run upgrade` loads the location list and normalises existing values (`scripts/profile-formats.js`, `--fix-phone`).
+- Swahili API messages for `Accept-Language: sw`; notifications shown in the reader's language; `PATCH /auth/preferences` saves language and theme (D-94).
+- `npm run staff:load` adds staff without deleting anything (D-95). RP-05 is "Report Filter".
+- A missing salary blocks applying; `GET /me/eligibility` returns `blockers` and `GET /me/profile` returns `applyBlockers` (unverified date of birth, employment record, salary) (D-97).
+- The retirement date is worked out from the verified date of birth and is no longer taken by the staff form, the API or the Excel upload; the template example row lines up with its headings again (D-98).
+
 ## 0.11.0 – Salary deduction, combined cap, Legal and product approvals (2 Nov 2026)
 
 - Every loan is repaid by salary deduction; account debit, required and optional documents and disbursement conditions are removed from products (dropped from the schema), applications, disbursement and reports (D-84).

@@ -65,6 +65,8 @@ const NO_INPUT = new Set([
   'GET /products',
   'GET /applications',
   'GET /products/available',
+  'GET /reference-data/countries',
+  'GET /reference-data/regions',
   // Multipart upload: the file is checked by type and content, and each row by the import service.
   'POST /staff/import',
 ]);
@@ -85,6 +87,8 @@ const SELF_SERVICE = [
   /^GET \/products$/,
   /^GET \/pricing$/,
   /^GET \/permissions$/,
+  // Countries and the Region → District → Ward list for the profile (D-93).
+  /^GET \/reference-data\//,
   /^\w+ \/delegations/,
   /^\w+ \/account\//,
   // The submitter withdraws their own date of birth change; checked in the service (D-82).

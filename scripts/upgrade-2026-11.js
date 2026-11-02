@@ -13,6 +13,9 @@
 //  4. System roles are synced to the catalogue; the retired Product Checker role and its
 //     assignments are removed (D-89).
 //  5. The date of birth setup (scripts/dob-verification-setup.js).
+//  6. Profile formats and the location list (scripts/profile-formats.js, D-93): NIDA with
+//     hyphens, phone numbers as +255 and nine digits, nationality from the country list.
+//     A number confirmed as entered wrongly: --fix-phone <as stored>=<correct number>.
 //
 // Usage: npm run upgrade
 
@@ -22,6 +25,7 @@ const { connect } = require('../src/config/db');
 const { run: splitNames } = require('./split-names');
 const { run: dobSetup } = require('./dob-verification-setup');
 const { syncRoles } = require('./reset-staff-and-products');
+const { run: profileFormats, phoneFixes } = require('./profile-formats');
 
 async function run() {
   const { db } = mongoose.connection;
@@ -36,7 +40,8 @@ async function run() {
   }
   const roles = await syncRoles(db);
   const dob = await dobSetup();
-  return { names, templates: templates.modifiedCount, versions, roles, dob };
+  const formats = await profileFormats(db, { fixes: phoneFixes() });
+  return { names, templates: templates.modifiedCount, versions, roles, dob, formats };
 }
 
 if (require.main === module) {
@@ -49,6 +54,11 @@ if (require.main === module) {
       Object.entries(r.versions).forEach(([k, n]) => console.log(`${k}: ${n}`));
       console.log(`Roles: created ${r.roles.created.join(', ') || 'none'}; updated ${r.roles.updated.join(', ') || 'none'}; removed ${r.roles.removed.join(', ') || 'none'}.`);
       console.log(`Date of birth setup: ${r.dob.pendingOpened} birthdates sent for verification.`);
+      const f = r.formats;
+      console.log(`Locations: ${f.reference.regions} regions, ${f.reference.districts} districts, ${f.reference.wards} wards${f.reference.loaded ? ' loaded' : ' already there'}.`);
+      console.log(`Profile formats: NIDA hyphenated ${f.nida}; phone numbers normalised ${f.phones}; nationality mapped ${f.nationality}; required-field settings updated: ${f.settings ? 'yes' : 'no'}.`);
+      f.fixed.forEach((x) => console.log(`  corrected ${x.staffNo} ${x.field}: ${x.from} → ${x.to}`));
+      f.invalid.forEach((x) => console.log(`  left for the staff member to correct: ${x.staffNo} ${x.field} "${x.value}"`));
       return mongoose.disconnect();
     })
     .catch(async (err) => {

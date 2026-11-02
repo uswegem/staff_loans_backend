@@ -22,5 +22,6 @@ router.use('/', require('./dob'));
 router.use('/', require('./templates'));
 router.use('/', require('./roles'));
 router.use('/', require('./admin'));
+router.use('/', require('./reference'));
 
 module.exports = router;

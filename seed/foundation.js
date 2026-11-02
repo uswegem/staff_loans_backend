@@ -13,6 +13,7 @@ const Holiday = require('../src/models/Holiday');
 const local = require('../src/services/auth/localCredentialProvider');
 const { DEFAULT_ROLES } = require('../src/constants/systemRoles');
 const { PEOPLE, toStaffDoc } = require('./data/people');
+const { seedReferenceData } = require('./referenceData');
 
 const HOLIDAYS = [
   { date: '2026-12-09', name: 'Independence Day' },
@@ -44,6 +45,7 @@ async function seedFoundation({ password, mustChangePassword = false } = {}) {
     await Holiday.updateOne({ date: h.date }, { $setOnInsert: h }, { upsert: true });
   }
   const roles = await seedRoles();
+  await seedReferenceData();
   const hash = await local.hash(password);
 
   // Bulk upserts keep the seed fast enough to run before every integration test.
@@ -68,9 +70,10 @@ async function seedFoundation({ password, mustChangePassword = false } = {}) {
   return { roles, users };
 }
 
-/** System data only: settings, holidays and roles. No people, products or applications. */
+/** System data only: settings, holidays, roles and the location list. No people, products or applications. */
 async function seedSystem() {
   await Settings.get();
+  await seedReferenceData();
   for (const h of HOLIDAYS) {
     // eslint-disable-next-line no-await-in-loop
     await Holiday.updateOne({ date: h.date }, { $setOnInsert: h }, { upsert: true });

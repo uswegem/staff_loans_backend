@@ -9,6 +9,7 @@ const AgreementTemplate = require('../../models/AgreementTemplate');
 const { render, sentence } = require('./renderer');
 const { amountInWords, tshs, dateSw } = require('./swahili');
 const { notFound } = require('../../utils/errors');
+const { addressLine } = require('../reference/locationService');
 
 const pctSw = (bps) => `${Number.parseFloat((bps / 100).toFixed(2))}%`;
 
@@ -25,8 +26,10 @@ function values(input, templateVersion) {
     ref: input.ref,
     fullName: [staff.firstName, staff.lastName].filter(Boolean).join(' '),
     staffNo: staff.staffNo,
+    // P.O. Box is no longer collected (D-93): only an earlier answer appears here.
     poBox: staff.personal?.poBox || '—',
-    residence: staff.personal?.residence || '—',
+    // D-93: the structured address (house/plot, street, ward, district, region) fills {{residence}}.
+    residence: addressLine(staff.personal?.address) || '—',
     mobile: staff.personal?.mobile || '—',
     productName: input.product.name,
     amount: tshs(amount),

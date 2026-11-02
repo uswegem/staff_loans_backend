@@ -5,16 +5,24 @@
 // which are mandatory (default: all, as in the prototype).
 
 const Settings = require('../../models/Settings');
+const { NIDA, PHONE, normaliseNida } = require('../../utils/formats');
+const { normaliseCountry } = require('../../constants/countries');
 
-/** [key, label, tab] — tabs match the prototype profile (personal, bank, kin, pay). */
+/**
+ * [key, label, tab] — tabs match the prototype profile (personal, bank, kin, pay).
+ * P.O. Box and the free-text residence are no longer asked for (D-93): the address is
+ * region, district, ward and street; house or plot number is optional and not listed.
+ */
 const PROFILE_FIELDS = Object.freeze([
   ['personal.maritalStatus', 'Marital status', 'personal'],
   ['personal.dob', 'Date of birth', 'personal'],
   ['personal.nida', 'NIDA number', 'personal'],
   ['personal.nationality', 'Nationality', 'personal'],
   ['personal.mobile', 'Mobile phone', 'personal'],
-  ['personal.poBox', 'P.O. Box', 'personal'],
-  ['personal.residence', 'Residence (village/street)', 'personal'],
+  ['personal.address.region', 'Region', 'personal'],
+  ['personal.address.district', 'District', 'personal'],
+  ['personal.address.ward', 'Ward', 'personal'],
+  ['personal.address.street', 'Street', 'personal'],
   ['bank.bank', 'Bank', 'bank'],
   ['bank.branch', 'Branch', 'bank'],
   ['bank.accountName', 'Account name', 'bank'],
@@ -27,6 +35,17 @@ const PROFILE_FIELDS = Object.freeze([
 ]);
 const PROFILE_KEYS = PROFILE_FIELDS.map((f) => f[0]);
 
+/**
+ * Fields with a format: a value in the wrong format (an earlier entry the upgrade could
+ * not normalise) counts as missing, so the staff member corrects it before applying.
+ */
+const FORMAT_CHECKS = Object.freeze({
+  'personal.nida': (v) => NIDA.test(v),
+  'personal.mobile': (v) => PHONE.test(v),
+  'personal.nationality': (v) => normaliseCountry(v) === v,
+  'nextOfKin.0.phone': (v) => PHONE.test(v),
+});
+
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 const filled = (v) => !(v === undefined || v === null || (typeof v === 'string' && v.trim() === ''));
 
@@ -35,7 +54,7 @@ async function mandatoryKeys(session) {
   return s.mandatoryProfileFields?.length ? s.mandatoryProfileFields.filter((k) => PROFILE_KEYS.includes(k)) : PROFILE_KEYS;
 }
 
-/** { complete, done, total, missing: [{ key, label, tab }] } */
+/** { complete, done, total, required: [keys], missing: [{ key, label, tab, invalid? }] } */
 async function completeness(staff, session) {
   const keys = await mandatoryKeys(session);
   const doc = typeof staff.toObject === 'function' ? staff.toObject() : staff;
@@ -43,27 +62,18 @@ async function completeness(staff, session) {
   // D-82: a date of birth counts as given once it is verified or waiting for verification;
   // whether it is verified is a separate rule with its own message.
   const value = (k) => (k === 'personal.dob' ? doc.dateOfBirth?.value || doc.dateOfBirth?.pending?.proposed : getPath(doc, k));
-  const missing = required.filter(([k]) => !filled(value(k))).map(([key, label, tab]) => ({ key, label, tab }));
-  return { complete: missing.length === 0, done: required.length - missing.length, total: required.length, missing };
+  const missing = required
+    .map(([key, label, tab]) => {
+      const v = value(key);
+      if (!filled(v)) return { key, label, tab };
+      if (FORMAT_CHECKS[key] && !FORMAT_CHECKS[key](v)) return { key, label, tab, invalid: true };
+      return null;
+    })
+    .filter(Boolean);
+  return { complete: missing.length === 0, done: required.length - missing.length, total: required.length, required: required.map(([k]) => k), missing };
 }
 
-/**
- * NIDA: 20 digits, format YYYYMMDD-XXXXX-XXXXX-XX, with or without dashes (decision 7).
- * Returns the 20 digits, or null when the value is not a valid NIDA number.
- */
-function normaliseNida(value) {
-  if (typeof value !== 'string') return null;
-  const t = value.trim();
-  if (!/^\d{8}-?\d{5}-?\d{5}-?\d{2}$/.test(t)) return null;
-  const digits = t.replace(/-/g, '');
-  const y = +digits.slice(0, 4);
-  const m = +digits.slice(4, 6);
-  const d = +digits.slice(6, 8);
-  const date = new Date(Date.UTC(y, m - 1, d));
-  if (y < 1900 || date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
-  return digits;
-}
-
-const formatNida = (digits) => (digits ? `${digits.slice(0, 8)}-${digits.slice(8, 13)}-${digits.slice(13, 18)}-${digits.slice(18)}` : null);
+/** The stored NIDA format for display; values that do not normalise are shown as stored. */
+const formatNida = (value) => (value ? normaliseNida(value) || value : null);
 
 module.exports = { PROFILE_FIELDS, PROFILE_KEYS, completeness, normaliseNida, formatNida, mandatoryKeys };

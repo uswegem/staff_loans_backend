@@ -5,7 +5,7 @@
 // pricing supply every value; nothing here branches on a product.
 
 const calc = require('../calc/loanCalculator');
-const { cooling, coolingMessage } = require('../staff/eligibilityService');
+const { cooling, coolingMessage, recordProblems } = require('../staff/eligibilityService');
 const { probationInfo } = require('../staff/staffService');
 const { cutoffFor, cutoffRule, cutoffProblem } = require('../staff/retirement');
 const { OPEN } = require('../../constants/statuses');
@@ -98,7 +98,7 @@ function cutoffCheck({ staff, settings, version, tenor, lastDue, startDay }) {
 
 /**
  * Can this staff member start (or keep) an application for this product?
- * ctx: { staff, profile, settings, product, version, apps, appId, topUp, today }
+ * ctx: { staff, salary, profile, settings, product, version, apps, appId, topUp, today }
  */
 function eligibility(ctx) {
   const { staff, profile, version: v, settings, apps, today } = ctx;
@@ -106,8 +106,8 @@ function eligibility(ctx) {
   if (staff.status !== 'active') out.push('Your staff record is not active. Contact People and Culture.');
   // When the date of birth is all that is missing, its own message (below) says what to do (D-82).
   if (!profile.complete && !profile.missing.every((m) => m.key === 'personal.dob')) out.push(`You can apply once your profile is complete. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`);
-  // D-91: People and Culture must complete the employment record first.
-  if (!staff.dateJoined || !staff.employmentType) out.push('People and Culture must complete your employment record (date joined and employment type) before you can apply.');
+  // D-91, D-97: People and Culture must complete the employment record and record a salary first.
+  out.push(...recordProblems(staff, ctx.salary));
   if (staff.employmentType === 'Contract' && !v.contractStaffAllowed) out.push(`${v.name} is for permanent staff only.`);
   if (!v.eligibleCategories.includes(staff.category)) out.push(`${v.name} is not open to ${staff.category.toLowerCase()} staff.`);
 

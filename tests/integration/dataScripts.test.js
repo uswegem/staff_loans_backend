@@ -1,6 +1,7 @@
 'use strict';
 
-// One-off data scripts: the name split (D-85) and the staff and products reset (D-92).
+// One-off data scripts: the name split (D-85), the staff and products reset (D-92) and
+// the staff loader (D-95).
 
 const fs = require('fs');
 const os = require('os');
@@ -17,6 +18,7 @@ const ProductVersion = require('../../src/models/ProductVersion');
 const AuditLog = require('../../src/models/AuditLog');
 const splitNames = require('../../scripts/split-names');
 const reset = require('../../scripts/reset-staff-and-products');
+const loadStaff = require('../../scripts/load-staff');
 
 // A fictional staff table in the real format; the real one is not in the repository.
 const EXAMPLE = path.join(__dirname, '..', '..', 'seed', 'data', 'lfb-staff.example.csv');
@@ -101,6 +103,55 @@ describe('staff and products reset (D-92)', () => {
     expect(second.deleted.staffs).toBe(0);
     expect(await Staff.countDocuments()).toBe(rows.length);
     expect(await codes('AT656')).toEqual(['staff', 'sys_admin']);
+  });
+
+  it('the staff loader adds new staff only, leaves existing records alone and is safe to run again (D-95)', async () => {
+    // Four fictional staff with the titles of those added on 2 Nov 2026 (no role matches them).
+    const file = path.join(os.tmpdir(), `slas-load-${process.pid}.csv`);
+    fs.writeFileSync(
+      file,
+      `${fs.readFileSync(EXAMPLE, 'utf8').trimEnd()}\nBaraka,Mfano,AT961,Male,,Head of Operations\nDaudi,Mfano,AT962,Male,,Risk Lead\nElia,Mfano,AT963,Male,,AML and Compliance Business Partner\nFuraha,Mfano,AT964,Female,,Data Protection Officer\n`
+    );
+    await reset.run({ ownConnection: false, file: EXAMPLE });
+    await Staff.updateOne({ staffNo: 'AT656' }, { $set: { title: 'Changed in the app by People and Culture' } });
+    const staffBefore = await Staff.countDocuments();
+
+    const dry = await loadStaff.run({ dryRun: true, ownConnection: false, file });
+    expect(dry.toAdd).toEqual([
+      'Baraka Mfano (AT961), Head of Operations',
+      'Daudi Mfano (AT962), Risk Lead',
+      'Elia Mfano (AT963), AML and Compliance Business Partner',
+      'Furaha Mfano (AT964), Data Protection Officer',
+    ]);
+    expect(await Staff.countDocuments()).toBe(staffBefore);
+
+    const first = await loadStaff.run({ ownConnection: false, file });
+    expect(first.loaded).toMatchObject({ created: 4, usersCreated: 4 });
+    // No role is guessed from these titles: Staff only.
+    expect(first.noExtraRole).toEqual(['AT961 Head of Operations', 'AT962 Risk Lead', 'AT963 AML and Compliance Business Partner', 'AT964 Data Protection Officer']);
+    const baraka = await Staff.findOne({ staffNo: 'AT961' }).lean();
+    expect(baraka).toMatchObject({ firstName: 'Baraka', lastName: 'Mfano', gender: 'Male', title: 'Head of Operations', category: 'Management' });
+    // Nothing is invented: no date of birth, NIDA or employment dates.
+    expect(baraka.dateOfBirth?.value).toBeUndefined();
+    expect(baraka.personal?.nida).toBeUndefined();
+    expect(baraka.dateJoined).toBeUndefined();
+    expect((await User.findOne({ staffNo: 'AT961' })).mustChangePassword).toBe(true);
+    // Existing records are left as People and Culture keep them.
+    expect((await Staff.findOne({ staffNo: 'AT656' })).title).toBe('Changed in the app by People and Culture');
+
+    const second = await loadStaff.run({ ownConnection: false, file });
+    expect(second.toAdd).toEqual([]);
+    expect(await Staff.countDocuments({ staffNo: { $in: ['AT961', 'AT962', 'AT963', 'AT964'] } })).toBe(4);
+    expect(await User.countDocuments({ staffNo: { $in: ['AT961', 'AT962', 'AT963', 'AT964'] } })).toBe(4);
+    fs.rmSync(file, { force: true });
+  });
+
+  it('the staff loader stops, changing nothing, when a row lacks a required value', async () => {
+    const file = path.join(os.tmpdir(), `slas-load-bad-${process.pid}.csv`);
+    fs.writeFileSync(file, 'First Name,Surname,Staff No,Gender,Department,Title\nAmina,,AT950,Female,,Teller\n');
+    await expect(loadStaff.run({ ownConnection: false, file })).rejects.toThrow('AT950: Surname is empty');
+    expect(await Staff.countDocuments({ staffNo: 'AT950' })).toBe(0);
+    fs.rmSync(file, { force: true });
   });
 
   it('stops on duplicate staff numbers before changing anything', () => {

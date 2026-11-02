@@ -23,6 +23,7 @@ const { STAGES, ROUTES } = require('../workflow/routes');
 const { STATUS } = require('../../constants/statuses');
 const { formatNida } = require('../staff/profileService');
 const { localDay } = require('../../utils/dates');
+const { retirementDateFor } = require('../staff/retirement');
 
 const fullName = (s) => (s ? [s.firstName, s.lastName].filter(Boolean).join(' ') : '');
 const stageName = (k) => (k ? STAGES[k].short || STAGES[k].label : null);
@@ -151,7 +152,7 @@ async function fullView(req, app, actor) {
       category: staff.category,
       employmentType: staff.employmentType,
       dateJoined: localDay(staff.dateJoined),
-      retirementDate: staff.retirementDate ? localDay(staff.retirementDate) : null,
+      retirementDate: retirementDateFor(staff, ctx.settings), // from the verified date of birth (D-98)
       dateOfBirth: staff.dateOfBirth?.value || null, // verified only (D-82)
       dateOfBirthPending: staff.dateOfBirth?.pending?.proposed || null,
       cutoff: result.cutoff,

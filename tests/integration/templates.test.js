@@ -46,6 +46,9 @@ describe('agreement templates (FR-40, D-88)', () => {
     expect(ok.status).toBe(200);
     expect(ok.body.data.blocks[0]).toMatchObject({ type: 'h1' });
     expect(ok.body.data.blocks.some((b) => b.type === 'table')).toBe(true);
+    // D-93: {{residence}} is the structured address (house/plot, street, ward, district, region).
+    const text = JSON.stringify(ok.body.data.blocks);
+    expect(text).toContain('12, Mtaa wa Mfano, Buguruni, Ilala, Dar-Es-Salaam');
   });
 
   it('an upload waits as Pending Legal Approval and is not used until the Head of Legal approves it', async () => {

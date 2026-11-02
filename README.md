@@ -58,10 +58,19 @@ The fictional sample people of the prototype (LFB0412 and others) are now only i
 | `npm run openapi` | Writes `openapi.json` from the route annotations; this is the API contract the frontend follows |
 | `npm run calc:check` | Checks the web app's copy of the loan calculator matches this one (`calc:sync` regenerates it) |
 | `npm run reset:staff` | Replaces staff and products with the staff table (D-92). `-- --dry-run` lists the counts only. Refuses production or a remote database; backs up first to `<upload dir>/../backups/reset-<time>`. Needs `RESET_TEMP_PASSWORD`. Safe to run again. |
-| `npm run upgrade` | Brings an existing database up to this release (names, templates, product approvals, roles, date of birth setup). Safe to run again. |
+| `npm run upgrade` | Brings an existing database up to this release (names, templates, product approvals, roles, date of birth setup, location list, profile formats). `-- --fix-phone <as stored>=<correct>` corrects a confirmed wrong number. Safe to run again. |
+| `npm run staff:load` | Adds new staff from the staff table without deleting anything (D-95). `-- --dry-run` lists them. Needs `RESET_TEMP_PASSWORD`. Safe to run again. |
 | `node scripts/e2e-server.js` | API for the Playwright runs: in-memory replica set, sample data, port 4100. The web app's `npm run e2e` starts it for you. |
 
 ## Upgrading an existing installation
+
+### Profile formats, address, language and theme (0.12.0)
+
+1. Back up the database and the upload folder.
+2. Deploy the API and the web app, then run `npm run upgrade` once. It loads the Region → District → Ward list (26 regions, 158 districts, 3,964 wards), hyphenates NIDA numbers, normalises phone numbers, maps "Tanzanian" to Tanzania, and lists values it could not fix; staff correct those on their profile.
+3. Staff with an earlier residence must enter region, district, ward and street before they can apply.
+4. Add new staff with `npm run staff:load` (dry run first).
+5. People and Culture record each staff member's date joined, employment type and salary (Staff records, or Upload from Excel). Without them nobody can apply (D-97). No retirement date is needed: it comes from the verified date of birth (D-98).
 
 ### Salary deduction, combined cap, Legal and product approvals (0.11.0)
 

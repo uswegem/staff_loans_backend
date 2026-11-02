@@ -8,6 +8,7 @@ const swaggerUi = require('swagger-ui-express');
 const { config } = require('./config/env');
 const requestContext = require('./middleware/requestContext');
 const { errorHandler, notFoundHandler } = require('./middleware/error');
+const { i18nResponses } = require('./i18n');
 
 function buildApp() {
   const app = express();
@@ -15,6 +16,7 @@ function buildApp() {
   app.set('trust proxy', config.trustProxy);
 
   app.use(requestContext);
+  app.use(i18nResponses); // Swahili messages when asked for (D-94)
   app.use(helmet());
   if (config.corsOrigin) {
     app.use(cors({ origin: config.corsOrigin.split(','), credentials: true }));

@@ -29,6 +29,7 @@ const { STATUS, EDITABLE, WITHDRAWABLE } = require('../../constants/statuses');
 const { withTransaction } = require('../../config/db');
 const { localDay } = require('../../utils/dates');
 const { AppError, badRequest, conflict, notFound } = require('../../utils/errors');
+const { retirementDateFor } = require('../staff/retirement');
 
 const fullName = (s) => [s.firstName, s.lastName].filter(Boolean).join(' ');
 
@@ -357,7 +358,7 @@ async function signAndSubmit(req, app, body) {
         title: ctx.staff.title,
         station: ctx.staff.station,
         dateJoined: ctx.staff.dateJoined,
-        retirementDate: ctx.staff.retirementDate,
+        retirementDate: retirementDateFor(ctx.staff, ctx.settings), // from the verified date of birth (D-98)
         dateOfBirth: ctx.staff.dateOfBirth?.value || null, // verified value used (D-82)
         cutoff: result.cutoff,
         salary: ctx.salary ? { basic: ctx.salary.basic, allowances: ctx.salary.allowances, effectiveFrom: ctx.salary.effectiveFrom } : null,

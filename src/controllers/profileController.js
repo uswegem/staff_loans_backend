@@ -9,9 +9,10 @@ const Salary = require('../models/Salary');
 const audit = require('../services/audit/auditService');
 const dobService = require('../services/staff/dobService');
 const Settings = require('../models/Settings');
-const { cutoffFor } = require('../services/staff/retirement');
-const { completeness, normaliseNida, formatNida } = require('../services/staff/profileService');
-const { eligibilityFor } = require('../services/staff/eligibilityService');
+const { cutoffFor, retirementDateFor } = require('../services/staff/retirement');
+const { completeness, formatNida } = require('../services/staff/profileService');
+const { checkAddress } = require('../services/reference/locationService');
+const { eligibilityFor, applyBlockers } = require('../services/staff/eligibilityService');
 const { probationFor, fullName } = require('../services/staff/staffService');
 const { routeFor, describeRoute } = require('../services/workflow/routes');
 const { localDay, localMidnight } = require('../utils/dates');
@@ -54,13 +55,16 @@ async function view(req, staff) {
       category: o.category,
       employmentType: o.employmentType,
       dateJoined: day(o.dateJoined),
-      retirementDate: day(o.retirementDate),
+      retirementDate: retirementDateFor(o, settings), // from the verified date of birth (D-98)
       contractEndDate: day(o.contractEndDate),
       probation,
     },
     salary: salary ? { basic: salary.basic, allowances: salary.allowances, commission: salary.commission, effectiveFrom: day(salary.effectiveFrom) } : null,
     route: { key: route.key, label: route.label, description: describeRoute(route), limitedCredit: route.limitedCredit },
     completeness: profile,
+    // What stops applying once the profile is complete: date of birth not verified, or no
+    // employment record or salary from People and Culture (D-97).
+    applyBlockers: applyBlockers(o, salary),
   };
 }
 
@@ -90,11 +94,11 @@ const ProfileController = {
   },
 
   async personal(req, res) {
+    // Phone numbers, NIDA and nationality arrive normalised by the route (D-93).
     const b = req.body;
-    let nida;
-    if (b.nida) {
-      nida = normaliseNida(b.nida);
-      if (!nida) throw badRequest('Check the highlighted fields.', { nida: ['A NIDA number has 20 digits, for example 19890712-14112-00004-21.'] });
+    if (b.address) {
+      const problems = await checkAddress(b.address);
+      if (Object.keys(problems).length) throw badRequest('Check the highlighted fields.', Object.fromEntries(Object.entries(problems).map(([k, v]) => [`address.${k}`, v])));
     }
     // D-82: a new date of birth is proposed for verification; the verified one stays in force.
     const current = await ownStaff(req);
@@ -102,10 +106,11 @@ const ProfileController = {
       await dobService.submit(req, current._id, b.dob, 'profile');
     }
     await saveSection(req, res, { keys: ['personal', 'workPhone'], name: 'personal', label: 'personal details' }, (staff) => {
-      ['maritalStatus', 'nationality', 'mobile', 'homePhone', 'poBox', 'residence'].forEach((k) => {
+      ['maritalStatus', 'nationality', 'mobile', 'homePhone'].forEach((k) => {
         if (b[k] !== undefined) staff.set(`personal.${k}`, b[k]);
       });
-      if (b.nida !== undefined) staff.set('personal.nida', nida || undefined);
+      if (b.nida !== undefined) staff.set('personal.nida', b.nida || undefined);
+      if (b.address !== undefined) staff.set('personal.address', { ...b.address });
       if (b.workPhone !== undefined) staff.workPhone = b.workPhone;
     });
   },

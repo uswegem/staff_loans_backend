@@ -17,7 +17,7 @@ const { badRequest, notFound, conflict } = require('../utils/errors');
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const day = (d) => (d ? localDay(d) : null);
-const DATE_FIELDS = ['dateJoined', 'probationEndDate', 'contractEndDate', 'retirementDate'];
+const DATE_FIELDS = ['dateJoined', 'probationEndDate', 'contractEndDate'];
 
 async function load(id) {
   const s = await Staff.findById(id);
@@ -40,7 +40,6 @@ function checkHr(f) {
   const add = (k, m) => (errors[k] = errors[k] || []).push(m);
   const d = (k) => (f[k] ? localDay(f[k]) : null);
   if (d('dateJoined') && d('dateJoined') > localDay()) add('dateJoined', 'Date joined cannot be in the future.');
-  if (d('retirementDate') && d('dateJoined') && d('retirementDate') <= d('dateJoined')) add('retirementDate', 'Retirement date must be after the date joined.');
   if (d('probationEndDate') && d('dateJoined') && d('probationEndDate') < d('dateJoined')) add('probationEndDate', 'Probation end date must not be before the date joined.');
   if (f.employmentType === 'Contract' && !f.contractEndDate) add('contractEndDate', 'Contract end date is required for contract staff.');
   if (d('contractEndDate') && d('dateJoined') && d('contractEndDate') <= d('dateJoined')) add('contractEndDate', 'Contract end date must be after the date joined.');

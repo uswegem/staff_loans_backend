@@ -10,6 +10,7 @@ const { STAFF_NO } = require('../../constants/staffNo');
 const Staff = require('../../models/Staff');
 const Salary = require('../../models/Salary');
 const { localDay, localMidnight } = require('../../utils/dates');
+const { normalisePhone, PHONE_MESSAGE } = require('../../utils/formats');
 
 const MAX_ROWS = 5000;
 
@@ -29,7 +30,6 @@ const COLUMNS = Object.freeze([
   ['dateJoined', 'Date joined', 'Required for new staff. A date, for example 15/01/2024.', true],
   ['probationEndDate', 'Probation end date', 'Optional. Blank means the probation period in the settings, counted from the date joined.', false],
   ['contractEndDate', 'Contract end date', 'Required when the employment type is Contract.', false],
-  ['retirementDate', 'Retirement date', 'Required for new staff. Must be after the date joined.', true],
   ['email', 'Email', 'Optional.', false],
   ['workPhone', 'Work phone', 'Optional.', false],
   ['mobile', 'Mobile phone', 'Optional. Only fills an empty mobile number; staff keep their own up to date.', false],
@@ -52,7 +52,9 @@ const label = (k) => COLUMNS.find((c) => c[0] === k)[1];
 
 function templateWorkbook() {
   const wb = XLSX.utils.book_new();
-  const example = ['LFB0612', 'Baraka', '', 'Mwakyusa', 'Teller', 'Branch Network', 'Mbeya Branch', 'Faraji Nyoni', '+255 787 021 554', 'LFB0188', 'Non-management', 'Permanent', '03/11/2026', '', '', '14/02/2062', 'baraka.mwakyusa@example.lfb', '', '+255 744 100 200', '4010 3341 0612', 1150000, 100000, '', '', '', '03/11/2026', 'Yes'];
+  // Built by column so the example always lines up with the headings.
+  const sample = { staffNo: 'AT901', firstName: 'Baraka', lastName: 'Mwakyusa', title: 'Teller', department: 'Branch Network', station: 'Mbeya Branch', stationHeadName: 'Faraji Nyoni', stationHeadPhone: '+255787021554', lineManager: 'AT188', category: 'Non-management', employmentType: 'Permanent', dateJoined: '03/11/2026', email: 'baraka.mwakyusa@example.lfb', mobile: '+255744100200', lfbAccountNo: '4010 3341 0612', basic: 1150000, allowances: 100000, salaryEffective: '03/11/2026', active: 'Yes' };
+  const example = COLUMNS.map(([k]) => sample[k] ?? '');
   const ws = XLSX.utils.aoa_to_sheet([HEADERS, example]);
   ws['!cols'] = HEADERS.map((h) => ({ wch: Math.max(14, h.length + 2) }));
   XLSX.utils.book_append_sheet(wb, ws, 'Staff records');
@@ -63,6 +65,7 @@ function templateWorkbook() {
     ['How it works', 'One row per staff member. Existing staff numbers are updated; new ones are added with an incomplete profile, which the staff member completes. Blank cells keep what is on file. Rows are checked first and nothing changes until you confirm. Delete the example row before uploading.'],
     ['Sign-in', 'Uploading a staff record does not create a sign-in. A System Administrator adds it in Users and roles.'],
     ['Dates', 'Use day/month/year (15/01/2024), year-month-day (2024-01-15) or an Excel date.'],
+    ['Retirement', 'Not entered here: the retirement date is worked out from the date of birth People and Culture verify.'],
   ]);
   ins['!cols'] = [{ wch: 28 }, { wch: 110 }];
   XLSX.utils.book_append_sheet(wb, ins, 'Instructions');
@@ -197,8 +200,18 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
     workPhone: pick('workPhone', ex.workPhone),
     lfbAccountNo: pick('lfbAccountNo', ex.lfbAccountNo),
   };
+  // Phone numbers in the stored format (D-93); one that does not normalise is an error.
+  const phoneCell = (k) => {
+    if (blank(raw[k])) return null;
+    const p = normalisePhone(String(raw[k]));
+    if (!p) problems.push(`${label(k)}: ${PHONE_MESSAGE}`);
+    return p;
+  };
+  const newPhones = { stationHeadPhone: phoneCell('stationHeadPhone'), workPhone: phoneCell('workPhone'), mobile: phoneCell('mobile') };
+  if (newPhones.stationHeadPhone) rec.stationHead.phone = newPhones.stationHeadPhone;
+  if (newPhones.workPhone) rec.workPhone = newPhones.workPhone;
   if (!existing) {
-    COLUMNS.filter((c) => c[3] && c[0] !== 'staffNo' && !['category', 'employmentType', 'dateJoined', 'retirementDate', 'basic'].includes(c[0])).forEach(([k, h]) => {
+    COLUMNS.filter((c) => c[3] && c[0] !== 'staffNo' && !['category', 'employmentType', 'dateJoined', 'basic'].includes(c[0])).forEach(([k, h]) => {
       if (!rec[k]) problems.push(`${h} is required for new staff`);
     });
   }
@@ -215,14 +228,12 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
   if (!rec.employmentType) problems.push('Employment type is required for new staff');
 
   const dates = {};
-  for (const k of ['dateJoined', 'probationEndDate', 'contractEndDate', 'retirementDate']) {
+  for (const k of ['dateJoined', 'probationEndDate', 'contractEndDate']) {
     const d = cellDate(raw[k]);
     if (d === 'bad') problems.push(`${label(k)} is not a date`);
     dates[k] = d && d !== 'bad' ? d : dayOf(ex[k]);
   }
   if (!dates.dateJoined) problems.push('Date joined is required');
-  if (!dates.retirementDate) problems.push('Retirement date is required');
-  if (dates.dateJoined && dates.retirementDate && dates.retirementDate <= dates.dateJoined) problems.push('Retirement date must be after the date joined');
   if (dates.dateJoined && dates.dateJoined > today) problems.push('Date joined cannot be in the future');
   if (dates.probationEndDate && dates.dateJoined && dates.probationEndDate < dates.dateJoined) problems.push('Probation end date must not be before the date joined');
   if (rec.employmentType === 'Contract' && !dates.contractEndDate) problems.push('Contract end date is required for contract staff');
@@ -265,7 +276,7 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
 
   if (problems.length) return { outcome: 'error', problems, changes: [], staffNo, name };
 
-  const mobile = text(raw.mobile);
+  const { mobile } = newPhones;
   if (!existing) {
     return {
       outcome: 'new',
@@ -298,7 +309,7 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
   });
   if (rec.category !== ex.category) changes.push(`category to ${rec.category}`);
   if ((rec.stationHead.name || null) !== (ex.stationHead?.name || null) || (rec.stationHead.phone || null) !== (ex.stationHead?.phone || null)) changes.push('head of station');
-  ['dateJoined', 'probationEndDate', 'contractEndDate', 'retirementDate'].forEach((k) => {
+  ['dateJoined', 'probationEndDate', 'contractEndDate'].forEach((k) => {
     if (!sameDay(rec[k], ex[k])) changes.push(label(k).toLowerCase());
   });
   if (rec.lineManagerStaffNo && rec.lineManagerStaffNo !== ex.lineManagerStaffNo) changes.push('line manager');

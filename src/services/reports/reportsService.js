@@ -316,7 +316,7 @@ const REPORTS = {
   turnaround: { id: 'RP-02', name: 'Turnaround by stage and approver', view: ['reports.view'], build: turnaround, filters: ['dates', 'product', 'department', 'branch', 'category'] },
   decisions: { id: 'RP-03', name: 'Approvals, returns and rejections', view: ['reports.view'], build: decisions, filters: ['dates', 'product', 'department', 'branch', 'category'] },
   disbursed: { id: 'RP-04', name: 'Disbursed loans register', view: ['reports.view', 'disb.confirm'], export: ['reports.export', 'disb.confirm'], build: disbursed, filters: ['dates', 'product', 'department', 'branch', 'category'] },
-  summary: { id: 'RP-05', name: 'Approved and disbursed by product, branch and category', view: ['reports.view'], build: summary, filters: ['dates', 'groupBy', 'product', 'department', 'branch', 'category'] },
+  summary: { id: 'RP-05', name: 'Report Filter', view: ['reports.view'], build: summary, filters: ['dates', 'groupBy', 'product', 'department', 'branch', 'category'] },
   agreements: { id: 'RP-06', name: 'Agreement register', view: ['reports.view'], build: agreements, filters: ['dates', 'product', 'department', 'branch', 'category'] },
   access: { id: 'RP-07', name: 'Users, roles and permissions', view: ['admin.users', 'admin.roles', 'audit.view'], export: ['admin.users', 'admin.roles', 'audit.view'], build: access, filters: [] },
   audit: { id: 'RP-10', name: 'Audit log extract', view: ['audit.view'], export: ['audit.view'], build: auditExtract, filters: ['dates', 'q', 'action'] },

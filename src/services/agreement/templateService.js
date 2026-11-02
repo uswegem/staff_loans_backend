@@ -37,7 +37,7 @@ async function sampleInput() {
     ref: 'SL-0000-00000',
     kind: 'original',
     agreementNumber: 'MKT-0000-00000',
-    staff: { firstName: 'Mfano', lastName: 'Mwajiriwa', staffNo: 'LFB0000', personal: { poBox: 'S.L.P. 1', residence: 'Dar es Salaam', mobile: '+255 700 000 000' } },
+    staff: { firstName: 'Mfano', lastName: 'Mwajiriwa', staffNo: 'LFB0000', personal: { poBox: 'S.L.P. 1', address: { house: '12', street: 'Mtaa wa Mfano', ward: 'Buguruni', district: 'Ilala', region: 'Dar-Es-Salaam' }, mobile: '+255700000000' } },
     product: { name: 'Mkopo wa mfano' }, // sample name; code never names a real product
     quote: q,
     amount: 4500000,

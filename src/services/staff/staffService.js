@@ -17,7 +17,7 @@ const LFB_BANK = 'Letshego Faidika Bank';
 
 // Fields People and Culture maintain (FR-01). Personal, bank, next-of-kin and pay
 // declarations belong to the staff member's profile.
-const HR_FIELDS = ['firstName', 'lastName', 'gender', 'title', 'department', 'station', 'stationHead', 'lineManagerId', 'category', 'employmentType', 'dateJoined', 'probationEndDate', 'contractEndDate', 'retirementDate', 'email', 'workPhone', 'lfbAccountNo', 'incomeClass'];
+const HR_FIELDS = ['firstName', 'lastName', 'gender', 'title', 'department', 'station', 'stationHead', 'lineManagerId', 'category', 'employmentType', 'dateJoined', 'probationEndDate', 'contractEndDate', 'email', 'workPhone', 'lfbAccountNo', 'incomeClass'];
 
 const fullName = (s) => [s.firstName, s.lastName].filter(Boolean).join(' ');
 

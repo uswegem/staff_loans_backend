@@ -205,7 +205,7 @@ describe('identity-only details for the Credit Analyst (FR-55, D-86)', () => {
 
   it('the review screen returns only first name, surname, NIDA number and mobile', async () => {
     const res = await api(juma.token).get(`/review/${id}`);
-    expect(res.body.data).toMatchObject({ limited: true, applicant: { firstName: 'Daniel', lastName: 'Mrema', mobile: '+255 754 067 390', nida: expect.stringMatching(/^\d{8}-\d{5}-\d{5}-\d{2}$/) }, panel: { canRecommend: false, needsCrb: true } });
+    expect(res.body.data).toMatchObject({ limited: true, applicant: { firstName: 'Daniel', lastName: 'Mrema', mobile: '+255754067390', nida: expect.stringMatching(/^\d{8}-\d{5}-\d{5}-\d{2}$/) }, panel: { canRecommend: false, needsCrb: true } });
     expect(Object.keys(res.body.data.applicant).sort()).toEqual(['firstName', 'lastName', 'mobile', 'nida']);
     assertLimited(res.body, { ...DANIEL, productName: 'Personal Loan' });
     expect((await AuditLog.findOne({ action: 'review.view' })).limited).toBe(true);
@@ -286,7 +286,7 @@ describe('probation verification (NS-01)', () => {
     const joined = new Date(Date.now() - 60 * 24 * 3600 * 1000);
     await Staff.updateOne(
       { staffNo: 'LFB0596' },
-      { $set: { dateJoined: joined, 'personal.maritalStatus': 'Single', 'personal.dob': new Date('1998-05-20'), dateOfBirth: { value: '1998-05-20', verifiedAt: new Date() }, 'personal.nida': '19980520411080003126', 'personal.poBox': 'P.O. Box 902', 'personal.residence': 'Dodoma', 'bank.accountNo': '4010 3341 0596', nextOfKin: [{ firstName: 'Mwanaidi', lastName: 'Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Dodoma' }], payDeclaredAt: new Date() } }
+      { $set: { dateJoined: joined, 'personal.maritalStatus': 'Single', 'personal.dob': new Date('1998-05-20'), dateOfBirth: { value: '1998-05-20', verifiedAt: new Date() }, 'personal.nida': '19980520-41108-00031-26', 'personal.address': { region: 'Dodoma', district: 'Dodoma', ward: 'Ipagala', street: 'Area D' }, 'bank.accountNo': '4010 3341 0596', nextOfKin: [{ firstName: 'Mwanaidi', lastName: 'Ally', relationship: 'Parent', phone: '+255715660214', address: 'Dodoma' }], payDeclaredAt: new Date() } }
     );
     const rehema = await signIn('LFB0596');
     const id = await applyAndSign(rehema, PL(), { amount: 1000000, tenor: 12, purpose: 'Rent deposit', probationReason: 'Relocated for this job.' });

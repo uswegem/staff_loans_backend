@@ -33,6 +33,11 @@ const userSchema = new mongoose.Schema(
       lastUsedStep: Number,
     },
     lastLoginAt: Date,
+    // Interface language and theme (D-94), kept per user so they follow the person to any device.
+    preferences: {
+      language: { type: String, enum: ['en', 'sw'], default: 'en' },
+      theme: { type: String, enum: ['light', 'dark'], default: 'light' },
+    },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
