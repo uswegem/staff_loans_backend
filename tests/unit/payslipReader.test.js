@@ -7,7 +7,7 @@ const { PDFDocument, StandardFonts } = require('pdf-lib');
 const reader = require('../../src/services/payslip/payslipReader');
 const calc = require('../../src/services/calc/loanCalculator');
 const { samplePayslip } = require('../../seed/samplePayslip');
-const { PRICING } = require('../../seed/products');
+const { PRICING } = require('../fixtures/products');
 
 const STAFF = { fullName: 'Neema Mushi', firstName: 'Neema', lastName: 'Mushi', staffNo: 'LFB0412', title: 'Customer Service Officer', department: 'Branch Network' };
 

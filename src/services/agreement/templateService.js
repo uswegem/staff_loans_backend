@@ -1,11 +1,13 @@
 'use strict';
 
-// Agreement template versions (FR-40, prototype #/admin/templates). An administrator
-// loads a new version after Legal approves the text. A version is in use from its
-// effective date; the newest effective version is the current one, so a version can
-// be loaded ahead of time without a job. Each agreement keeps the version it was
-// signed on (FR-61). Template text uses the SLAS markup (renderer.js); it is checked
-// by rendering a sample agreement before it is saved.
+// Agreement template versions (FR-40, D-88). The Legal Officer (admin.templates) uploads
+// or edits a version, which waits as "Pending Legal Approval"; the Head of Legal
+// (templates.approve) approves it, or rejects it with a reason. Nobody approves a version
+// they uploaded or edited. Only approved versions generate agreements; the version in use
+// is the newest approved one whose effective date has come, so editing an approved
+// version (a new version) leaves the current one in use until the new one is approved.
+// Template text uses the SLAS markup (renderer.js) and is checked by rendering a sample
+// agreement before it is saved.
 
 const AgreementTemplate = require('../../models/AgreementTemplate');
 const Agreement = require('../../models/Agreement');
@@ -14,9 +16,9 @@ const calc = require('../calc/loanCalculator');
 const { values, scheduleTable } = require('./agreementService');
 const { render } = require('./renderer');
 const { livePricing } = require('../products/productService');
-const { fullName } = require('../review/reviewView');
+const { namesOf } = require('../review/reviewView');
 const { localDay, localMidnight } = require('../../utils/dates');
-const { badRequest, conflict } = require('../../utils/errors');
+const { badRequest, conflict, forbidden, notFound } = require('../../utils/errors');
 
 /**
  * Values every agreement must show (BRD 8 pre-filled fields). {{requestClause}} states
@@ -63,60 +65,119 @@ async function check(body, version = 'preview') {
 
 const preview = (body) => check(body);
 
+const STATE_LABEL = { pending_legal_approval: 'Pending Legal Approval', approved: 'Approved', rejected: 'Rejected' };
+
 async function list() {
   const now = new Date();
-  const rows = await AgreementTemplate.find().sort({ effectiveFrom: -1, createdAt: -1 }).lean();
+  const rows = await AgreementTemplate.find().sort({ createdAt: -1 }).lean();
   const current = await AgreementTemplate.active();
   const counts = new Map((await Agreement.aggregate([{ $group: { _id: '$templateVersion', n: { $sum: 1 } } }])).map((r) => [r._id, r.n]));
-  const loaders = await require('../review/reviewView').namesOf(rows.map((r) => r.loadedBy).filter(Boolean));
-  return rows.map((t) => ({
-    id: String(t._id),
-    version: t.version,
-    state: current && String(current._id) === String(t._id) ? 'current' : t.effectiveFrom && t.effectiveFrom > now ? 'scheduled' : 'retired',
-    effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null,
-    legalApproved: t.legalApproved,
-    legalApprovalRef: t.legalApprovalRef || null,
-    sample: !!t.sample,
-    note: t.note || '',
-    loadedAt: t.createdAt,
-    loadedBy: loaders.get(String(t.loadedBy))?.name || null,
-    agreements: counts.get(t.version) || 0,
-  }));
+  const names = await namesOf(rows.flatMap((r) => [r.loadedBy, r.approvedBy, r.rejectedBy]).filter(Boolean));
+  const who = (id) => (id ? names.get(String(id))?.name || null : null);
+  return rows.map((t) => {
+    let state = t.status;
+    if (t.status === 'approved') state = current && String(current._id) === String(t._id) ? 'current' : t.effectiveFrom && t.effectiveFrom > now ? 'scheduled' : 'retired';
+    return {
+      id: String(t._id),
+      version: t.version,
+      status: t.status,
+      statusLabel: STATE_LABEL[t.status],
+      state,
+      effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null,
+      sample: !!t.sample,
+      note: t.note || '',
+      basedOn: t.basedOnId ? String(t.basedOnId) : null,
+      loadedAt: t.createdAt,
+      loadedBy: who(t.loadedBy),
+      editorIds: (t.editors || []).map(String),
+      approvedBy: who(t.approvedBy),
+      approvedAt: t.approvedAt || null,
+      rejectedBy: who(t.rejectedBy),
+      rejectedAt: t.rejectedAt || null,
+      rejectionReason: t.rejectionReason || null,
+      agreements: counts.get(t.version) || 0,
+    };
+  });
 }
 
 async function get(id) {
   const t = await AgreementTemplate.findById(id).lean();
   if (!t) return null;
-  return { id: String(t._id), version: t.version, body: t.body, ...(await check(t.body, t.version)) };
+  return { id: String(t._id), version: t.version, status: t.status, statusLabel: STATE_LABEL[t.status], body: t.body, note: t.note || '', effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null, editorIds: (t.editors || []).map(String), rejectionReason: t.rejectionReason || null, ...(await check(t.body, t.version)) };
 }
 
-/** body: { version, effectiveFrom, body, legalApproved, legalApprovalRef, note } */
-async function load(req, body) {
-  if (body.legalApproved !== true) throw badRequest('Legal must approve the text before it is loaded.', { legalApproved: ['Legal approval is required.'] }, 'LEGAL_APPROVAL_REQUIRED');
-  if (await AgreementTemplate.exists({ version: body.version })) throw conflict(`Version ${body.version} is already loaded. Use a new version number.`, 'VERSION_EXISTS');
-  if (body.effectiveFrom < localDay()) throw badRequest('The date it is used from cannot be in the past.', { effectiveFrom: ['Today or later.'] }, 'DATE_INVALID');
+function checkDate(effectiveFrom) {
+  if (effectiveFrom < localDay()) throw badRequest('The date it is used from cannot be in the past.', { effectiveFrom: ['Today or later.'] }, 'DATE_INVALID');
+}
+
+/** Upload a new version (Legal Officer). body: { version, effectiveFrom, body, note } */
+async function upload(req, body) {
+  if (await AgreementTemplate.exists({ version: body.version })) throw conflict(`Version ${body.version} already exists. Use a new version number.`, 'VERSION_EXISTS');
+  checkDate(body.effectiveFrom);
   const checked = await check(body.body, body.version);
-  const t = await AgreementTemplate.create({
-    version: body.version,
-    status: 'active',
-    body: body.body,
-    legalApproved: true,
-    legalApprovalRef: body.legalApprovalRef || null,
-    sample: false,
-    effectiveFrom: localMidnight(body.effectiveFrom),
-    loadedBy: req.auth.user._id,
-    note: body.note || '',
-  });
-  const staffName = fullName(req.auth.staff || {});
-  await audit.record({
-    req,
-    action: 'template.load',
-    description: `Agreement template ${t.version} loaded (Legal approved${body.legalApprovalRef ? `, ${body.legalApprovalRef}` : ''}), used from ${body.effectiveFrom}${staffName ? ` by ${staffName}` : ''}`,
-    entity: 'AgreementTemplate',
-    entityId: String(t._id),
-    after: { version: t.version, effectiveFrom: body.effectiveFrom, placeholders: checked.placeholders, sampleSha256: checked.textSha256 },
-  });
+  const t = await AgreementTemplate.create({ version: body.version, status: 'pending_legal_approval', body: body.body, effectiveFrom: localMidnight(body.effectiveFrom), loadedBy: req.auth.user._id, editors: [req.auth.user._id], note: body.note || '' });
+  await audit.record({ req, action: 'template.upload', description: `Agreement template ${t.version} uploaded; pending Legal approval`, entity: 'AgreementTemplate', entityId: String(t._id), after: { version: t.version, status: t.status, effectiveFrom: body.effectiveFrom, sampleSha256: checked.textSha256 } });
   return t;
 }
 
-module.exports = { list, get, load, preview, REQUIRED };
+/**
+ * Edit (Legal Officer). A pending or rejected version is changed in place and waits for
+ * approval again; an approved version is never changed: the edit becomes a new version
+ * (body.version required), and the approved one stays in use until it is approved.
+ */
+async function edit(req, id, body) {
+  const t = await AgreementTemplate.findById(id);
+  if (!t) throw notFound('Template not found.');
+  if (body.effectiveFrom) checkDate(body.effectiveFrom);
+  const checked = await check(body.body, body.version || t.version);
+  if (t.status === 'approved') {
+    if (!body.version || body.version === t.version) throw badRequest('Give the edited text a new version number. The approved version stays in use until the new one is approved.', { version: ['A new version number is required.'] }, 'NEW_VERSION_REQUIRED');
+    if (await AgreementTemplate.exists({ version: body.version })) throw conflict(`Version ${body.version} already exists. Use a new version number.`, 'VERSION_EXISTS');
+    const next = await AgreementTemplate.create({ version: body.version, status: 'pending_legal_approval', body: body.body, effectiveFrom: localMidnight(body.effectiveFrom || localDay()), basedOnId: t._id, loadedBy: req.auth.user._id, editors: [req.auth.user._id], note: body.note || '' });
+    await audit.record({ req, action: 'template.edit', description: `Agreement template ${t.version} edited as new version ${next.version}; pending Legal approval (${t.version} stays in use)`, entity: 'AgreementTemplate', entityId: String(next._id), before: { version: t.version, status: t.status }, after: { version: next.version, status: next.status, basedOn: t.version, sampleSha256: checked.textSha256 } });
+    return next;
+  }
+  const before = { body: t.body, note: t.note, status: t.status, effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null };
+  t.body = body.body;
+  if (body.note !== undefined) t.note = body.note;
+  if (body.effectiveFrom) t.effectiveFrom = localMidnight(body.effectiveFrom);
+  t.status = 'pending_legal_approval';
+  t.rejectedBy = undefined;
+  t.rejectedAt = undefined;
+  t.rejectionReason = undefined;
+  if (!t.editors.some((e) => String(e) === String(req.auth.user._id))) t.editors.push(req.auth.user._id);
+  await t.save();
+  await audit.record({ req, action: 'template.edit', description: `Agreement template ${t.version} edited; pending Legal approval`, entity: 'AgreementTemplate', entityId: String(t._id), before, after: { body: t.body, note: t.note, status: t.status, effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null, sampleSha256: checked.textSha256 } });
+  return t;
+}
+
+async function decidable(req, id) {
+  const t = await AgreementTemplate.findById(id);
+  if (!t) throw notFound('Template not found.');
+  if (t.status !== 'pending_legal_approval') throw conflict('Only a version pending Legal approval can be approved or rejected.', 'NOT_PENDING');
+  if ([t.loadedBy, ...(t.editors || [])].some((u) => u && String(u) === String(req.auth.user._id))) throw forbidden('You uploaded or edited this version, so another approver must decide it.', 'SOD_SELF_APPROVAL');
+  return t;
+}
+
+/** Head of Legal approves: the version can generate agreements from its effective date. */
+async function approve(req, id) {
+  const t = await decidable(req, id);
+  const now = new Date();
+  const done = await AgreementTemplate.findOneAndUpdate({ _id: t._id, status: 'pending_legal_approval' }, { $set: { status: 'approved', approvedBy: req.auth.user._id, approvedAt: now } }, { new: true });
+  if (!done) throw conflict('Someone else has just decided this version. Reload the list.', 'STATE_CHANGED');
+  await audit.record({ req, action: 'template.approve', description: `Agreement template ${t.version} approved by the Head of Legal; used from ${localDay(t.effectiveFrom || now)}`, entity: 'AgreementTemplate', entityId: String(t._id), before: { status: 'pending_legal_approval' }, after: { status: 'approved', approvedAt: now } });
+  return done;
+}
+
+async function reject(req, id, reason) {
+  const why = (reason || '').trim();
+  if (!why) throw badRequest('Give a reason for the rejection.', { reason: ['Give a reason for the rejection.'] }, 'REASON_REQUIRED');
+  const t = await decidable(req, id);
+  const now = new Date();
+  const done = await AgreementTemplate.findOneAndUpdate({ _id: t._id, status: 'pending_legal_approval' }, { $set: { status: 'rejected', rejectedBy: req.auth.user._id, rejectedAt: now, rejectionReason: why } }, { new: true });
+  if (!done) throw conflict('Someone else has just decided this version. Reload the list.', 'STATE_CHANGED');
+  await audit.record({ req, action: 'template.reject', description: `Agreement template ${t.version} rejected by the Head of Legal: ${why}`, entity: 'AgreementTemplate', entityId: String(t._id), before: { status: 'pending_legal_approval' }, after: { status: 'rejected', reason: why } });
+  return done;
+}
+
+module.exports = { list, get, upload, edit, approve, reject, preview, REQUIRED };

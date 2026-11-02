@@ -2,7 +2,7 @@
 
 const { validateProduct, diff, PRODUCT_FIELDS } = require('../../src/services/products/productRules');
 const { validatePricing } = require('../../src/services/products/pricingRules');
-const { PRODUCTS, PRICING } = require('../../seed/products');
+const { PRODUCTS, PRICING } = require('../fixtures/products');
 
 const base = {
   name: 'Personal Loan',
@@ -49,9 +49,9 @@ describe('product validation (FR-58)', () => {
     expect(validateProduct(noMultiple)).toEqual({});
   });
 
-  it('needs a category and a repayment method', () => {
+  it('needs a category; repayment is always by salary deduction (D-84)', () => {
     const e = validateProduct({ ...base, eligibleCategories: [], repaymentMethods: [] });
-    expect(Object.keys(e).sort()).toEqual(['eligibleCategories', 'repaymentMethods']);
+    expect(Object.keys(e).sort()).toEqual(['eligibleCategories']);
   });
 
   it('checks application fields', () => {
@@ -65,17 +65,20 @@ describe('product validation (FR-58)', () => {
     expect(Object.keys(e).sort()).toEqual(['fields.0.options', 'fields.1.key', 'fields.1.options']);
   });
 
-  it('refuses a document listed twice', () => {
-    expect(validateProduct({ ...base, requiredDocuments: ['Payslip'], optionalDocuments: ['payslip'] }).optionalDocuments).toBeDefined();
+  it('has no document lists or OPS conditions any more (D-84)', () => {
+    expect(PRODUCT_FIELDS.map((x) => x[0])).not.toEqual(expect.arrayContaining(['requiredDocuments']));
+    expect(PRODUCT_FIELDS.map((x) => x[0])).not.toContain('optionalDocuments');
+    expect(PRODUCT_FIELDS.map((x) => x[0])).not.toContain('disbursementConditions');
+    expect(PRODUCT_FIELDS.find((x) => x[0] === 'reapplyCoolingMonths')[1]).toBe('Minimum number of Months Before Applying for Topup');
   });
 });
 
 describe('comparison with the live version (FR-58, FR-59)', () => {
   it('lists only the fields that changed, with labels', () => {
-    const d = diff(PRODUCT_FIELDS, base, { ...base, maxTenor: 72, optionalDocuments: ['Latest salary slip', 'Bank statement'] });
+    const d = diff(PRODUCT_FIELDS, base, { ...base, maxTenor: 72, minServiceMonths: 12 });
     expect(d).toEqual([
       { field: 'maxTenor', label: 'Maximum tenor (months)', before: 60, after: 72 },
-      { field: 'optionalDocuments', label: 'Optional documents', before: ['Latest salary slip'], after: ['Latest salary slip', 'Bank statement'] },
+      { field: 'minServiceMonths', label: 'Minimum service (months)', before: base.minServiceMonths, after: 12 },
     ]);
   });
 

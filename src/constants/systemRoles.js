@@ -1,8 +1,9 @@
 'use strict';
 
-// Default roles (FR-43, BRD 4 access table, prototype defaultRoles()). The seven
-// system roles can be edited but not deleted. Two custom roles are seeded:
-// Product Checker (DECISIONS D-05, Q4) and Risk and Audit Viewer (prototype).
+// Default roles (FR-43, BRD 4 access table). System roles can be edited but not deleted.
+// Product approval has two stages (D-89): Head of Credit, then Head of Risk and
+// Compliance. Agreement templates: Legal Officer uploads, Head of Legal approves (D-88).
+// The Auditor reads applications, approvals and the audit trail (D-90).
 
 const DEFAULT_ROLES = Object.freeze([
   { code: 'staff', name: 'Staff', system: true, description: 'Every active staff member.', permissions: ['loan.apply', 'loan.viewOwn'] },
@@ -10,7 +11,7 @@ const DEFAULT_ROLES = Object.freeze([
     code: 'credit_analyst',
     name: 'Credit Analyst',
     system: true,
-    description: 'First review on every route; limited details on management routes.',
+    description: 'Credit bureau check on every application; sees the applicant\'s name, NIDA and mobile only (D-86).',
     permissions: ['review.credit', 'review.delegate', 'reports.view', 'reports.export'],
   },
   {
@@ -34,14 +35,42 @@ const DEFAULT_ROLES = Object.freeze([
     name: 'System Administrator',
     system: true,
     description: 'Configures the system and prepares product changes. Cannot approve or disburse.',
-    permissions: ['products.view', 'products.make', 'admin.workflow', 'admin.users', 'admin.roles', 'admin.templates', 'audit.view', 'reports.view'],
+    permissions: ['products.view', 'products.make', 'admin.workflow', 'admin.users', 'admin.roles', 'audit.view', 'reports.view'],
   },
   {
-    code: 'product_checker',
-    name: 'Product Checker',
-    system: false,
-    description: 'Approves or rejects product and pricing changes prepared by the maker (BRD 5.1).',
-    permissions: ['products.view', 'products.check', 'reports.view'],
+    code: 'head_credit',
+    name: 'Head of Credit',
+    system: true,
+    description: 'Prepares products and pricing, and gives the first approval of changes others prepare (D-89).',
+    permissions: ['products.view', 'products.make', 'products.approveCredit', 'reports.view', 'reports.export'],
+  },
+  {
+    code: 'head_risk',
+    name: 'Head of Risk and Compliance',
+    system: true,
+    description: 'Gives the second approval of product and pricing changes, which publishes them (D-89).',
+    permissions: ['products.view', 'products.approveRisk', 'reports.view', 'reports.export'],
+  },
+  {
+    code: 'legal_officer',
+    name: 'Legal Officer',
+    system: true,
+    description: 'Uploads and edits agreement templates; they wait for the Head of Legal (D-88).',
+    permissions: ['admin.templates'],
+  },
+  {
+    code: 'head_legal',
+    name: 'Head of Legal',
+    system: true,
+    description: 'Approves or rejects agreement templates (D-88).',
+    permissions: ['templates.approve'],
+  },
+  {
+    code: 'auditor',
+    name: 'Auditor',
+    system: true,
+    description: 'Read-only: every application and its approvals, reports and the audit trail (D-90).',
+    permissions: ['loan.viewAll', 'reports.view', 'reports.export', 'audit.view'],
   },
   {
     code: 'risk_audit_viewer',

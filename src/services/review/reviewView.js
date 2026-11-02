@@ -24,12 +24,12 @@ const { STATUS } = require('../../constants/statuses');
 const { formatNida } = require('../staff/profileService');
 const { localDay } = require('../../utils/dates');
 
-const fullName = (s) => (s ? [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') : '');
+const fullName = (s) => (s ? [s.firstName, s.lastName].filter(Boolean).join(' ') : '');
 const stageName = (k) => (k ? STAGES[k].short || STAGES[k].label : null);
 
 async function namesOf(ids) {
   const users = await User.find({ _id: { $in: ids.filter(Boolean) } }).select('staffId staffNo').lean();
-  const staff = await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName middleName lastName title').lean();
+  const staff = await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName lastName title').lean();
   const byId = new Map(staff.map((s) => [String(s._id), s]));
   return new Map(users.map((u) => [String(u._id), { name: fullName(byId.get(String(u.staffId))), title: byId.get(String(u.staffId))?.title, staffNo: u.staffNo }]));
 }
@@ -52,7 +52,6 @@ function panelFor(app, actor) {
   if (!actor) return null;
   const stage = app.currentStage;
   const i = app.stages.indexOf(stage);
-  const limited = ROUTES[app.route].limitedCredit;
   return {
     stage,
     stageLabel: stageName(stage),
@@ -60,7 +59,7 @@ function panelFor(app, actor) {
     isFinal: i === app.stages.length - 1,
     nextStageLabel: stageName(app.stages[i + 1]) || null,
     needsCrb: stage === 'credit',
-    canRecommend: stage === 'credit' && !limited,
+    canRecommend: false, // the Credit Analyst no longer recommends terms (D-86)
     needsHrChecks: stage === 'hr' || stage === 'pcm',
     needsProbationCheck: (stage === 'hr' || stage === 'pcm') && !!app.probation?.onProbation,
     crbOutcomes: ['Clear', 'Adverse: minor', 'Adverse: serious', 'No record found'],
@@ -70,7 +69,7 @@ function panelFor(app, actor) {
 /** Limited details (FR-55). Allow-list only. */
 async function limitedView(auth, app, actor) {
   const [staff, mine] = await Promise.all([
-    Staff.findById(app.applicantStaffId).select('firstName middleName lastName personal.mobile personal.nida').lean(),
+    Staff.findById(app.applicantStaffId).select('firstName lastName personal.mobile personal.nida').lean(),
     Decision.find({ applicationId: app._id, actorId: auth.user._id }).sort({ at: 1 }).lean(),
   ]);
   return {
@@ -82,9 +81,9 @@ async function limitedView(auth, app, actor) {
     currentStage: app.currentStage,
     stageEnteredAt: app.stageEnteredAt,
     due: await due(app),
-    route: routeInfo(app),
     submittedAt: app.submittedAt,
-    applicant: { fullName: fullName(staff), mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
+    // D-86: identity only. No route (it shows the category), product, terms, pay or documents.
+    applicant: { firstName: staff?.firstName || '', lastName: staff?.lastName || '', mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
     crb: app.crb?.outcome ? { outcome: app.crb.outcome, reportDate: app.crb.reportDate ? localDay(app.crb.reportDate) : null } : null,
     myDecisions: mine.map((d) => ({ action: d.action, stage: d.stage, comment: d.comment, at: d.at })),
     panel: panelFor(app, actor),
@@ -193,7 +192,7 @@ async function reviewView(req, app, access) {
 
 /** A queue row: the same allow-list for limited applications. */
 async function queueRow(app, { limited, actor, names }) {
-  const staff = await Staff.findById(app.applicantStaffId).select('firstName middleName lastName title category').lean();
+  const staff = await Staff.findById(app.applicantStaffId).select('firstName lastName title category').lean();
   const base = {
     id: String(app._id),
     ref: app.ref,
@@ -202,12 +201,13 @@ async function queueRow(app, { limited, actor, names }) {
     statusLabel: STATUS[app.status],
     currentStage: app.currentStage,
     stageLabel: stageName(app.currentStage),
-    route: { key: app.route, label: ROUTES[app.route]?.label },
     due: await due(app),
-    applicant: { fullName: fullName(staff) },
+    applicant: { firstName: staff?.firstName || '', lastName: staff?.lastName || '' },
     onBehalfOf: actor?.onBehalfOf ? names?.get(actor.onBehalfOf)?.name || null : null,
   };
-  if (limited) return base;
+  if (limited) return base; // D-86: identity only
+  base.route = { key: app.route, label: ROUTES[app.route]?.label };
+  base.applicant.fullName = fullName(staff);
   const version = await ProductVersion.findById(app.productVersionId).select('name').lean();
   return { ...base, applicant: { ...base.applicant, title: staff.title, category: staff.category }, product: version?.name, amount: app.recommended?.amount || app.amount, tenor: app.recommended?.tenor || app.tenor };
 }

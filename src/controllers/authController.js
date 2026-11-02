@@ -53,7 +53,7 @@ async function profileFor(user) {
     user: {
       id: String(user._id),
       staffNo: user.staffNo,
-      fullName: staff ? [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' ') : user.staffNo,
+      fullName: staff ? [staff.firstName, staff.lastName].filter(Boolean).join(' ') : user.staffNo,
       title: staff?.title,
       department: staff?.department,
       mustChangePassword: user.mustChangePassword,

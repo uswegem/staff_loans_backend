@@ -19,11 +19,13 @@ describe('segregation of duties (FR-48, FR-60)', () => {
   });
 
   it('product maker and checker cannot be the same user', () => {
-    expect(ids(sodConflicts(['products.make', 'products.check']))).toEqual(['sod3']);
+    expect(ids(sodConflicts(['products.approveCredit', 'products.approveRisk']))).toEqual(['sod3']);
+    // The Head of Credit may prepare and give the first approval; never of their own version (D-89).
+    expect(ids(sodConflicts(['products.make', 'products.approveCredit']))).toEqual([]);
   });
 
   it('checker cannot approve loans', () => {
-    expect(ids(sodConflicts(['products.check', 'review.hr']))).toEqual(['sod1']);
+    expect(ids(sodConflicts(['products.approveRisk', 'review.hr']))).toEqual(['sod1']);
   });
 
   it('reports and staff permissions do not conflict with approving', () => {
@@ -47,7 +49,8 @@ describe('MFA requirement (FR-49)', () => {
     [['review.credit'], true],
     [['disb.confirm'], true],
     [['admin.users'], true],
-    [['products.check'], true],
+    [['products.approveCredit'], true],
+    [['templates.approve'], true],
   ])('%j → %s', (perms, expected) => {
     expect(requiresMfa(perms)).toBe(expected);
   });

@@ -5,14 +5,14 @@
 // (scripts/sync-calc.js). Money is integer shillings; rates are basis points
 // (DECISIONS D-07). Dates are calendar days as 'YYYY-MM-DD' strings.
 //
-// Affordability (DECISIONS D-78, from the bank's instruction of 30 Oct 2026):
+// Affordability (DECISIONS D-78, D-87):
 //   Pension = 10% of Basic Pay; Taxable Pay = Basic Pay − Pension; PAYE on Taxable Pay
 //   (Tanzania bands); Total Deductions = Pension + PAYE; Net Pay = Basic Pay − Total
-//   Deductions; Adjusted Net Pay = Net Pay + LFB deductions; Maximum Instalment = 50%
-//   of Adjusted Net Pay. Basic Pay and LFB deductions come from the applicant's payslip.
+//   Deductions. The combined cap is 50% of Net Pay for all running SLAS loans together,
+//   the new one included. Basic Pay comes from the applicant's payslip.
 //
-// Worked example (Neema Mushi, basic 1,850,000, no LFB deductions, TZS 4,500,000 over
-// 36 months): pension 185,000; PAYE 327,500; net 1,337,500; limit 668,750; instalment
+// Worked example (Neema Mushi, basic 1,850,000, no other SLAS loans, TZS 4,500,000 over
+// 36 months): pension 185,000; PAYE 327,500; net 1,337,500; cap 668,750; instalment
 // 136,900; total interest 428,351; processing 45,000; insurance 81,000.
 
 const BPS = 10000;
@@ -27,23 +27,39 @@ function paye(taxable, bands) {
 }
 
 /**
- * The payslip steps. pay: { basic, lfbDeductions }, both read from the payslip.
+ * The payslip steps. pay: { basic }, Basic Pay as read from the payslip.
  * Returns every figure the calculator shows, in order.
  */
 function payslip(pay, pricing) {
   const basic = pay.basic || 0;
-  const lfbDeductions = pay.lfbDeductions || 0;
   const pension = Math.round((basic * pricing.pensionBps) / BPS);
   const taxable = basic - pension;
   const tax = paye(taxable, pricing.payeBands);
   const totalDeductions = pension + tax;
   const net = basic - totalDeductions;
-  const adjusted = net + lfbDeductions;
-  return { basic, pension, taxable, tax, totalDeductions, net, lfbDeductions, adjusted };
+  return { basic, pension, taxable, tax, totalDeductions, net };
 }
 
-/** Maximum instalment: the affordability share of adjusted net pay, whole shillings. */
-const maxInstalmentFor = (adjusted, affordabilityBps) => Math.max(0, Math.floor((adjusted * affordabilityBps) / BPS));
+/** The affordability share (50%) of a salary figure, whole shillings. */
+const maxInstalmentFor = (figure, affordabilityBps) => Math.max(0, Math.floor((figure * affordabilityBps) / BPS));
+
+/**
+ * The combined cap (D-87): all of a staff member's running SLAS loans together, across
+ * every product and including approved loans not yet disbursed, plus the new loan, must
+ * not exceed 50% of Net Pay (Basic − Pension − PAYE). Net Pay here is worked out from
+ * Basic Pay, so no loan is deducted from it: existing instalments are counted in the
+ * total instead. A top-up takes the old loan's instalment (as recorded in SLAS) out of
+ * the total, because the new instalment replaces it.
+ * existing: { others, addBack } — others: the other running loans; addBack: the loan
+ * being topped up (0 when not a top-up).
+ */
+function combinedCap(net, affordabilityBps, existing = {}, newInstalment = 0) {
+  const cap = maxInstalmentFor(net, affordabilityBps);
+  const others = existing.others || 0;
+  const addBack = existing.addBack || 0;
+  const available = Math.max(0, cap - others);
+  return { basis: 'net', cap, existingTotal: others + addBack, addBack, others, available, newInstalment, remaining: available - newInstalment };
+}
 
 /** Monthly instalment on a reducing balance, rounded up (BR-14). */
 function instalment(principal, months, interestBps, rounding = 100) {
@@ -147,12 +163,13 @@ function schedule(principal, months, interestBps, rounding, firstDue) {
  * maxTenor: the longest tenor this person may take (product maximum, cut short by
  * retirement or contract end); maxAmountCap: the product's maximum amount.
  */
-function quote({ amount, tenor, topUp = false, pay, pricing, startDay, dueDay = 25, maxTenor = 0, maxAmountCap = Infinity }) {
+function quote({ amount, tenor, topUp = false, pay, existing = {}, pricing, startDay, dueDay = 25, maxTenor = 0, maxAmountCap = Infinity }) {
   const ps = payslip(pay, pricing);
-  const { adjusted } = ps;
-  const maxInstalment = maxInstalmentFor(adjusted, pricing.affordabilityBps);
   const limitTenor = maxTenor || tenor || 0;
   const inst = instalment(amount, tenor, pricing.interestBps, pricing.instalmentRounding);
+  const combined = combinedCap(ps.net, pricing.affordabilityBps, existing, inst);
+  // The new loan may use whatever the combined cap leaves (D-87).
+  const maxInstalment = combined.available;
   const first = startDay ? firstDueDate(startDay, dueDay) : null;
   const rows = amount && tenor && first ? schedule(amount, tenor, pricing.interestBps, pricing.instalmentRounding, first) : [];
   const totalInterest = rows.reduce((s, r) => s + r.interest, 0);
@@ -160,7 +177,7 @@ function quote({ amount, tenor, topUp = false, pay, pricing, startDay, dueDay = 
   const insuranceFee = Math.round((amount * pricing.insuranceBps * tenor) / (BPS * 12));
   return {
     payslip: ps,
-    adjusted,
+    combined,
     maxInstalment,
     // Reverse calculation (D-78): at the longest tenor allowed, and at the chosen one.
     maxTenor: limitTenor,
@@ -186,4 +203,4 @@ function quote({ amount, tenor, topUp = false, pay, pricing, startDay, dueDay = 
   };
 }
 
-module.exports = { paye, payslip, maxInstalmentFor, maxAmount, instalment, schedule, quote, addMonthsToDay, addDaysToDay, firstDueDate, retirementCutoff, instalmentsBefore };
+module.exports = { paye, payslip, maxInstalmentFor, combinedCap, maxAmount, instalment, schedule, quote, addMonthsToDay, addDaysToDay, firstDueDate, retirementCutoff, instalmentsBefore };

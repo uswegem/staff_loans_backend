@@ -4,7 +4,7 @@
 // prompt 4.1, 4.2, 4.3). The limited-details tests call the API as the Credit Analyst
 // and assert the hidden fields are absent.
 
-const { api, seedAll, applyAndSign, sign, decide, signIn, CRB, HR_OK, PASSWORD } = require('../flows');
+const { api, seedAll, applyAndSign, sign, decide, signIn, runningLoan, CRB, HR_OK } = require('../flows');
 const Application = require('../../src/models/Application');
 const Agreement = require('../../src/models/Agreement');
 const Decision = require('../../src/models/Decision');
@@ -13,7 +13,6 @@ const Staff = require('../../src/models/Staff');
 const User = require('../../src/models/User');
 const StoredFile = require('../../src/models/StoredFile');
 const AuditLog = require('../../src/models/AuditLog');
-const { expireRevisedTerms } = require('../../src/services/review/reviewService');
 const { localDay } = require('../../src/utils/dates');
 
 // Whole-route flows sign in four people; allow for a loaded machine.
@@ -43,7 +42,7 @@ function walk(value, keys = new Set(), strings = []) {
   return { keys, strings };
 }
 
-const HIDDEN_KEYS = ['amount', 'tenor', 'purpose', 'product', 'productFields', 'salary', 'salaryAtSubmission', 'calcAtSubmission', 'quote', 'payInputs', 'checks', 'documents', 'agreements', 'history', 'recommended', 'approved', 'repayment', 'topUp', 'otherLoans', 'existingLfbLoans', 'nextOfKin', 'title', 'category', 'department'];
+const HIDDEN_KEYS = ['amount', 'tenor', 'purpose', 'product', 'productFields', 'salary', 'salaryAtSubmission', 'calcAtSubmission', 'quote', 'payInputs', 'checks', 'documents', 'agreements', 'history', 'recommended', 'approved', 'repayment', 'topUp', 'otherLoans', 'existingLfbLoans', 'nextOfKin', 'title', 'category', 'department', 'route', 'fullName', 'payslip', 'combined', 'existingLoans'];
 
 function assertLimited(body, { amount, purpose, productName }) {
   const { keys, strings } = walk(body);
@@ -63,12 +62,14 @@ describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () =
     const juma = await signIn('LFB0233');
     const q = await api(juma.token).get('/queue');
     expect(q.body.data.items).toHaveLength(1);
-    expect(q.body.data.items[0]).toMatchObject({ ref: expect.stringMatching(/^SL-/), limited: false, product: 'Personal Loan', amount: 4500000, stageLabel: 'Credit Analyst' });
+    // D-86: the Credit Analyst sees identity only, on every route.
+    expect(q.body.data.items[0]).toMatchObject({ ref: expect.stringMatching(/^SL-/), limited: true, applicant: { firstName: 'Neema', lastName: 'Mushi' }, stageLabel: 'Credit Analyst' });
+    assertLimited(q.body, { ...NEEMA, productName: 'Personal Loan' });
     expect(q.body.data.items[0].due.targetHours).toBe(8);
 
     const view = await api(juma.token).get(`/review/${id}`);
-    expect(view.body.data).toMatchObject({ limited: false, amount: 4500000, panel: { stage: 'credit', needsCrb: true, canRecommend: true, isFinal: false, nextStageLabel: 'Head of HR' } });
-    expect(view.body.data.calcAtSubmission).toMatchObject({ instalment: 136900, maxInstalment: 668750 });
+    expect(view.body.data).toMatchObject({ limited: true, panel: { stage: 'credit', needsCrb: true, canRecommend: false, isFinal: false } });
+    assertLimited(view.body, { ...NEEMA, productName: 'Personal Loan' });
 
     // FR-42: the bureau outcome is required to approve; comments to return or reject (FR-15).
     expect((await decide(juma, id, { action: 'approve' })).body.message).toBe('Record the credit bureau outcome before approving.');
@@ -79,8 +80,11 @@ describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () =
     expect((await Application.findById(id)).status).toBe('pending_hr');
     expect((await notesFor('LFB0051', 'application.stage'))[0].text).toMatch(/waiting for your Head of HR review/);
 
-    // FR-17: the Head of HR confirms the staff record.
+    // FR-17: the Head of HR confirms the staff record, with the full application.
     const grace = await signIn('LFB0051');
+    const hrView = await api(grace.token).get(`/review/${id}`);
+    expect(hrView.body.data).toMatchObject({ limited: false, amount: 4500000 });
+    expect(hrView.body.data.calcAtSubmission).toMatchObject({ instalment: 136900, maxInstalment: 668750 });
     expect((await decide(grace, id, { action: 'approve' })).body.message).toBe('Confirm all three staff record checks before approving.');
     expect((await decide(grace, id, { action: 'approve', hrChecks: HR_OK, comment: 'Employment and salary confirmed.' })).body.data.outcome).toBe('moved');
     expect((await Application.findById(id)).status).toBe('pending_ceo');
@@ -143,7 +147,7 @@ describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () =
     a = await Application.findById(id);
     expect(a).toMatchObject({ status: 'pending_credit', currentStage: 'credit', cycle: 2 });
     expect((await Agreement.findById(first)).status).toBe('void');
-    const view = await api(juma.token).get(`/review/${id}`);
+    const view = await api(grace.token).get(`/review/${id}`);
     expect(view.body.data.history.map((h) => h.action)).toEqual(['create', 'submit', 'approve', 'return', 'resubmit']);
   });
 
@@ -158,7 +162,31 @@ describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () =
   });
 });
 
-describe('limited details for the Credit Analyst (FR-55, prompt 4.2)', () => {
+describe('combined cap re-checked at every approval (D-87)', () => {
+  it('refuses approval when another loan approved meanwhile leaves too little', async () => {
+    const neema = await signIn('LFB0412');
+    const id = await applyAndSign(neema, PL(), NEEMA);
+    await decide(await signIn('LFB0233'), id, { action: 'approve', crb: CRB });
+    await decide(await signIn('LFB0051'), id, { action: 'approve', hrChecks: HR_OK });
+    // Meanwhile a Vehicle Loan of 600,000 a month is approved: 668,750 − 600,000 = 68,750 left.
+    await runningLoan('LFB0412', products.VL._id, 600000, 'pending_disbursement');
+    const res = await decide(await signIn('LFB0002'), id, { action: 'approve', comment: 'Approved.' });
+    expect(res.body.code).toBe('AFFORDABILITY_EXCEEDED');
+    expect(res.body.message).toBe("This application cannot be approved now. The instalment of TZS 136,900 no longer fits the combined limit: 50% of Net Pay is TZS 668,750, and the applicant's other loans in Staff Loans now take TZS 600,000, leaving TZS 68,750. Return or reject it.");
+    expect((await Application.findById(id)).status).toBe('pending_ceo');
+  });
+
+  it('the Credit Analyst is told only that the limit is exceeded, without figures', async () => {
+    const neema = await signIn('LFB0412');
+    const id = await applyAndSign(neema, PL(), NEEMA);
+    await runningLoan('LFB0412', products.VL._id, 600000);
+    const res = await decide(await signIn('LFB0233'), id, { action: 'approve', crb: CRB });
+    expect(res.body.code).toBe('AFFORDABILITY_EXCEEDED');
+    expect(res.body.message).not.toMatch(/TZS/);
+  });
+});
+
+describe('identity-only details for the Credit Analyst (FR-55, D-86)', () => {
   let id;
   let juma;
   beforeEach(async () => {
@@ -167,17 +195,18 @@ describe('limited details for the Credit Analyst (FR-55, prompt 4.2)', () => {
     juma = await signIn('LFB0233');
   });
 
-  it('the queue shows only the name for a management application', async () => {
+  it('the queue shows only the first name and surname', async () => {
     const q = await api(juma.token).get('/queue');
     const row = q.body.data.items[0];
-    expect(row).toMatchObject({ limited: true, applicant: { fullName: 'Daniel Mrema' }, route: { key: 'mgmt' } });
+    expect(row).toMatchObject({ limited: true, applicant: { firstName: 'Daniel', lastName: 'Mrema' } });
+    expect(row.route).toBeUndefined();
     assertLimited(q.body, { ...DANIEL, productName: 'Personal Loan' });
   });
 
-  it('the review screen returns only name, mobile and NIDA number', async () => {
+  it('the review screen returns only first name, surname, NIDA number and mobile', async () => {
     const res = await api(juma.token).get(`/review/${id}`);
-    expect(res.body.data).toMatchObject({ limited: true, applicant: { fullName: 'Daniel Mrema', mobile: '+255 754 067 390', nida: expect.stringMatching(/^\d{8}-\d{5}-\d{5}-\d{2}$/) }, panel: { canRecommend: false, needsCrb: true } });
-    expect(Object.keys(res.body.data.applicant).sort()).toEqual(['fullName', 'mobile', 'nida']);
+    expect(res.body.data).toMatchObject({ limited: true, applicant: { firstName: 'Daniel', lastName: 'Mrema', mobile: '+255 754 067 390', nida: expect.stringMatching(/^\d{8}-\d{5}-\d{5}-\d{2}$/) }, panel: { canRecommend: false, needsCrb: true } });
+    expect(Object.keys(res.body.data.applicant).sort()).toEqual(['firstName', 'lastName', 'mobile', 'nida']);
     assertLimited(res.body, { ...DANIEL, productName: 'Personal Loan' });
     expect((await AuditLog.findOne({ action: 'review.view' })).limited).toBe(true);
   });
@@ -252,80 +281,12 @@ describe('CEO and Head of People and Culture routes (BRD 7.2.1, decision 31, FR-
   });
 });
 
-describe('revised terms (BRD 8, FR-16, FR-38, FR-39, FR-54)', () => {
-  async function toCeoWithRecommendation(rec = { amount: 4000000, tenor: 36, reason: 'Keep headroom for the CRDB loan.' }) {
-    const neema = await signIn('LFB0412');
-    const id = await applyAndSign(neema, PL(), NEEMA);
-    const juma = await signIn('LFB0233');
-    const r = await decide(juma, id, { action: 'approve', crb: CRB, recommended: rec, comment: 'Within limits at a lower amount.' });
-    if (r.status !== 200) throw new Error(JSON.stringify(r.body));
-    const grace = await signIn('LFB0051');
-    await decide(grace, id, { action: 'approve', hrChecks: HR_OK });
-    const joseph = await signIn('LFB0002');
-    const view = await api(joseph.token).get(`/review/${id}`);
-    expect(view.body.data.recommended).toMatchObject({ amount: 4000000, tenor: 36, by: 'Juma Kassim' });
-    await decide(joseph, id, { action: 'approve', comment: 'Approved at the recommended amount.' });
-    return { id, neema };
-  }
-
-  it('a recommendation must be lower or shorter and pass affordability (BR-11)', async () => {
-    const neema = await signIn('LFB0412');
-    const id = await applyAndSign(neema, PL(), NEEMA);
-    const juma = await signIn('LFB0233');
-    expect((await decide(juma, id, { action: 'approve', crb: CRB, recommended: { amount: 5000000, tenor: 36 } })).body.code).toBe('RECOMMENDATION_INVALID');
-    const r = await decide(juma, id, { action: 'approve', crb: CRB, recommended: { amount: 4500000, tenor: 3 } });
-    expect(r.body.message).toBe('Choose a tenor between 6 and 60 months.');
-  });
-
-  it('CEO approval at changed terms asks the applicant to accept a revised agreement', async () => {
-    const { id, neema } = await toCeoWithRecommendation();
-    const a = await Application.findById(id);
-    expect(a).toMatchObject({ status: 'pending_reaccept', approved: { amount: 4000000, tenor: 36 } });
-    expect(a.revisedExpiresAt.getTime()).toBeGreaterThan(Date.now() + 9 * 24 * 3600 * 1000);
-    expect((await notesFor('LFB0412', 'application.revised_terms'))[0].href).toBe(`/accept/${id}`);
-    expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(0); // OPS waits (FR-54)
-
-    const r = await api(neema.token).get(`/applications/${id}/revised`);
-    expect(r.body.data).toMatchObject({ signed: { amount: 4500000, tenor: 36 }, approved: { amount: 4000000, tenor: 36 }, reason: 'Keep headroom for the CRDB loan.' });
-    expect(JSON.stringify(r.body.data.blocks)).toMatch(/Mkopeshaji ameidhinisha kumkopesha Mwajiriwa/);
-
-    const wrong = await api(neema.token).post(`/applications/${id}/accept-revised`, { accepted: true, scrolledToEnd: true, password: 'nope-nope', textSha256: r.body.data.textSha256 });
-    expect(wrong.body.code).toBe('PASSWORD_WRONG');
-    const ok = await api(neema.token).post(`/applications/${id}/accept-revised`, { accepted: true, scrolledToEnd: true, password: PASSWORD, textSha256: r.body.data.textSha256 });
-    expect(ok.body.data.status).toBe('pending_disbursement');
-    const after = await Application.findById(id);
-    const revised = await Agreement.findById(after.currentAgreementId);
-    expect(revised).toMatchObject({ kind: 'revised', status: 'in_force', terms: { amount: 4000000 } });
-    expect(revised.textSha256).toBe(r.body.data.textSha256);
-    expect(await Agreement.countDocuments({ applicationId: id, status: 'void', voidReason: 'Replaced by the revised agreement accepted after approval' })).toBe(1);
-    expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(1);
-  });
-
-  it('declining needs a reason and closes the application', async () => {
-    const { id, neema } = await toCeoWithRecommendation();
-    expect((await api(neema.token).post(`/applications/${id}/decline-revised`, {})).status).toBe(400);
-    const res = await api(neema.token).post(`/applications/${id}/decline-revised`, { reason: 'I need the full amount.' });
-    expect(res.body.data.status).toBe('declined');
-    expect(res.body.data.statusLabel).toBe('Declined by Applicant');
-    expect(await Agreement.countDocuments({ applicationId: id, status: 'void' })).toBe(1);
-  });
-
-  it('expires after the configured days and notifies the applicant and OPS', async () => {
-    const { id } = await toCeoWithRecommendation();
-    await Application.updateOne({ _id: id }, { $set: { revisedExpiresAt: new Date(Date.now() - 1000) } });
-    expect(await expireRevisedTerms()).toBe(1);
-    expect((await Application.findById(id)).status).toBe('declined');
-    expect(await notesFor('LFB0412', 'application.revised_expired')).toHaveLength(1);
-    expect(await notesFor('LFB0318', 'application.revised_expired')).toHaveLength(1);
-  });
-});
-
 describe('probation verification (NS-01)', () => {
   it('People and Culture must verify the probation reason', async () => {
     const joined = new Date(Date.now() - 60 * 24 * 3600 * 1000);
     await Staff.updateOne(
       { staffNo: 'LFB0596' },
-      { $set: { dateJoined: joined, 'personal.maritalStatus': 'Single', 'personal.dob': new Date('1998-05-20'), dateOfBirth: { value: '1998-05-20', verifiedAt: new Date() }, 'personal.nida': '19980520411080003126', 'personal.poBox': 'P.O. Box 902', 'personal.residence': 'Dodoma', 'bank.accountNo': '4010 3341 0596', nextOfKin: [{ name: 'Mwanaidi Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Dodoma' }], payDeclaredAt: new Date() } }
+      { $set: { dateJoined: joined, 'personal.maritalStatus': 'Single', 'personal.dob': new Date('1998-05-20'), dateOfBirth: { value: '1998-05-20', verifiedAt: new Date() }, 'personal.nida': '19980520411080003126', 'personal.poBox': 'P.O. Box 902', 'personal.residence': 'Dodoma', 'bank.accountNo': '4010 3341 0596', nextOfKin: [{ firstName: 'Mwanaidi', lastName: 'Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Dodoma' }], payDeclaredAt: new Date() } }
     );
     const rehema = await signIn('LFB0596');
     const id = await applyAndSign(rehema, PL(), { amount: 1000000, tenor: 12, purpose: 'Rent deposit', probationReason: 'Relocated for this job.' });
@@ -351,25 +312,25 @@ describe('delegation (FR-19)', () => {
     await decide(await signIn('LFB0051'), id, { action: 'approve', hrChecks: HR_OK });
 
     const joseph = await signIn('LFB0002');
-    const daniel = await User.findOne({ staffNo: 'LFB0067' });
-    const d = await api(joseph.token).post('/delegations', { delegateUserId: String(daniel._id), from: today(), until: today(), reason: 'Board meeting abroad' });
+    const upendo = await User.findOne({ staffNo: 'LFB0129' });
+    const d = await api(joseph.token).post('/delegations', { delegateUserId: String(upendo._id), from: today(), until: today(), reason: 'Board meeting abroad' });
     expect(d.status).toBe(201);
     expect(d.body.data.status).toBe('active');
-    expect((await notesFor('LFB0067', 'delegation.set'))).toHaveLength(1);
+    expect((await notesFor('LFB0129', 'delegation.set'))).toHaveLength(1);
     expect((await api(joseph.token).get('/queue')).body.data.items).toEqual([]);
 
-    const danielSession = await signIn('LFB0067'); // a delegate signs in with MFA
-    expect(danielSession.body.data.permissions).not.toContain('review.ceo');
-    const q = await api(danielSession.token).get('/queue');
+    const upendoSession = await signIn('LFB0129'); // a delegate signs in with MFA
+    expect(upendoSession.body.data.permissions).not.toContain('review.ceo');
+    const q = await api(upendoSession.token).get('/queue');
     expect(q.body.data.items[0]).toMatchObject({ onBehalfOf: 'Joseph Mwakalinga', limited: false });
     expect(q.body.data.covering[0].name).toBe('Joseph Mwakalinga');
-    await decide(danielSession, id, { action: 'approve', comment: 'Approved on behalf of the CEO.' });
+    await decide(upendoSession, id, { action: 'approve', comment: 'Approved on behalf of the CEO.' });
     const dec = await Decision.findOne({ applicationId: id, stage: 'ceo' });
-    expect(String(dec.actorId)).toBe(String(daniel._id));
+    expect(String(dec.actorId)).toBe(String(upendo._id));
     expect(String(dec.onBehalfOfId)).toBe(String(await userId('LFB0002')));
     const grace = await signIn('LFB0051');
     const h = (await api(grace.token).get(`/review/${id}`)).body.data.history.find((x) => x.stage === 'ceo');
-    expect(h).toMatchObject({ by: 'Daniel Mrema', onBehalfOf: 'Joseph Mwakalinga' });
+    expect(h).toMatchObject({ by: 'Upendo Massawe', onBehalfOf: 'Joseph Mwakalinga' });
   });
 
   it('refuses a delegate that would break segregation of duties, and oneself', async () => {
@@ -390,13 +351,13 @@ describe('delegation (FR-19)', () => {
   it('a delegate whose session was opened without MFA must sign in again to decide', async () => {
     const neema = await signIn('LFB0412');
     const id = await applyAndSign(neema, PL(), NEEMA);
-    const aishaBefore = await signIn('LFB0451'); // no MFA needed yet
+    const salmaBefore = await signIn('LFB0377'); // no MFA needed yet
     const juma = await signIn('LFB0233');
-    await api(juma.token).post('/delegations', { delegateUserId: String(await userId('LFB0451')), from: today(), until: today() });
-    const r = await decide(aishaBefore, id, { action: 'approve', crb: CRB });
+    await api(juma.token).post('/delegations', { delegateUserId: String(await userId('LFB0377')), from: today(), until: today() });
+    const r = await decide(salmaBefore, id, { action: 'approve', crb: CRB });
     expect(r.body.code).toBe('MFA_STEP_UP');
-    const aisha = await signIn('LFB0451');
-    expect(aisha.body.data.accessToken).toBeTruthy();
-    expect((await decide(aisha, id, { action: 'approve', crb: CRB })).status).toBe(200);
+    const salma = await signIn('LFB0377');
+    expect(salma.body.data.accessToken).toBeTruthy();
+    expect((await decide(salma, id, { action: 'approve', crb: CRB })).status).toBe(200);
   });
 });

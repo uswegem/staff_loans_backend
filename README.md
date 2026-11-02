@@ -23,25 +23,29 @@ Stack: Node.js 22 LTS, Express 4, MongoDB (replica set) with Mongoose 8, Joi, he
 4. **Install, seed and run.**
    ```powershell
    npm install
-   npm run seed      # sample people from the prototype, all fictional
-   npm run dev       # http://localhost:4000/api/v1, API docs at /api/v1/docs
+   npm run seed                 # system data: roles, settings, holidays, pricing, the sample agreement
+   npm run reset:staff -- --dry-run
+   $env:RESET_TEMP_PASSWORD = '<a temporary password that meets the policy>'
+   npm run reset:staff          # loads seed/data/lfb-staff.csv with roles (D-92)
+   npm run dev                  # http://localhost:4000/api/v1, API docs at /api/v1/docs
    ```
 
-Sample accounts all use `SEED_PASSWORD`. Reviewers, OPS, administrators and the product checker enrol an authenticator app at first sign-in.
+Every account loaded by `reset:staff` uses `RESET_TEMP_PASSWORD` and must change it at first sign-in. Reviewers, OPS, administrators, product approvers and the Head of Legal also enrol an authenticator app. No products are loaded: the Head of Credit (or the System Administrator) drafts them, then the Head of Credit and the Head of Risk and Compliance approve them (D-89).
 
-| Staff no. | Person | Roles |
-| --- | --- | --- |
-| LFB0412 | Neema Mushi | Staff |
-| LFB0233 | Juma Kassim | Credit Analyst |
-| LFB0051 | Grace Mollel | Head of People and Culture |
-| LFB0129 | Upendo Massawe | People and Culture Manager |
-| LFB0002 | Joseph Mwakalinga | CEO |
-| LFB0318 | Halima Said | OPS |
-| LFB0274 | Peter Lyimo | System Administrator (product maker) |
-| LFB0010 | Asha Mfinanga | Product Checker (Head of Operations) |
-| LFB0067 | Daniel Mrema | Risk and Audit Viewer |
-| LFB0596 | Rehema Ally | Staff, profile incomplete |
-| LFB0188, LFB0451, LFB0377 | Faraji Nyoni, Aisha Kombo, Salma Hamisi | Staff |
+| Staff no. | Roles beyond Staff |
+| --- | --- |
+| AT656 | System Administrator (the administrator login kept by the reset) |
+| AT648 | CEO |
+| AT697 | Head of Credit |
+| AT727 | Head of Risk and Compliance |
+| AT700 | Legal Officer |
+| AT534 | Head of Legal |
+| AT646 | Credit Analyst |
+| AT663 | Head of People and Culture |
+| AT540 | Auditor |
+| AT144 | OPS |
+
+The fictional sample people of the prototype (LFB0412 and others) are now only in the tests and the e2e server (`tests/fixtures`, `seed/data/people.js`).
 
 ## Scripts
 
@@ -53,9 +57,23 @@ Sample accounts all use `SEED_PASSWORD`. Reviewers, OPS, administrators and the 
 | `npm run ci` | Lint, calculator check, then all tests |
 | `npm run openapi` | Writes `openapi.json` from the route annotations; this is the API contract the frontend follows |
 | `npm run calc:check` | Checks the web app's copy of the loan calculator matches this one (`calc:sync` regenerates it) |
+| `npm run reset:staff` | Replaces staff and products with the staff table (D-92). `-- --dry-run` lists the counts only. Refuses production or a remote database; backs up first to `<upload dir>/../backups/reset-<time>`. Needs `RESET_TEMP_PASSWORD`. Safe to run again. |
+| `npm run upgrade` | Brings an existing database up to this release (names, templates, product approvals, roles, date of birth setup). Safe to run again. |
 | `node scripts/e2e-server.js` | API for the Playwright runs: in-memory replica set, sample data, port 4100. The web app's `npm run e2e` starts it for you. |
 
 ## Upgrading an existing installation
+
+### Salary deduction, combined cap, Legal and product approvals (0.11.0)
+
+1. Back up the database (`mongodump`) and the upload folder.
+2. Deploy the API and the web app, then run once, with the API's `.env`:
+   ```powershell
+   npm run upgrade
+   ```
+   It splits names into First Name and Surname and lists names to check (D-85), marks the Legal-approved templates as approved (D-88), sends product and pricing changes waiting for approval to the Head of Credit (D-89), syncs the system roles (new: Head of Credit, Head of Risk and Compliance, Legal Officer, Head of Legal, Auditor; Product Checker removed), and runs the date of birth setup below.
+3. Assign the new roles in Users and roles (or run `npm run reset:staff` outside production).
+4. People and Culture must enter or verify every staff member's date of birth: without a verified date nobody can apply (D-82).
+5. Correct the names the upgrade listed, and fill in gender and date joined where missing (D-91).
 
 ### Date of birth verification (0.10.0)
 

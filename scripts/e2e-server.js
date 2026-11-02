@@ -33,9 +33,9 @@ async function main() {
   const { connect } = require('../src/config/db');
   const { buildApp } = require('../src/app');
   const { seedFoundation } = require('../seed/foundation');
-  const { seedProducts } = require('../seed/products');
+  const { seedProducts } = require('../tests/fixtures/products');
   const { seedAgreementTemplate } = require('../seed/agreementTemplate');
-  const { seedSampleApplications } = require('../seed/applications');
+  const { seedSampleApplications } = require('../tests/fixtures/applications');
   const scheduler = require('../src/jobs/scheduler');
 
   await connect(config.mongoUri);

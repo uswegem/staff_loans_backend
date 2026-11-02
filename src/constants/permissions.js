@@ -18,6 +18,7 @@ const PERMISSIONS = Object.freeze([
   { id: 'review.hr', group: 'Reviews', label: 'Review at Head of People and Culture stage', kind: 'approve' },
   { id: 'review.ceo', group: 'Reviews', label: 'Give final approval (CEO stage)', kind: 'approve' },
   { id: 'review.delegate', group: 'Reviews', label: 'Delegate own reviews during absence' },
+  { id: 'loan.viewAll', group: 'Reviews', label: 'View every application and its approvals, read-only (Auditor)' },
   { id: 'disb.confirm', group: 'Operations', label: 'Confirm disbursements', kind: 'disburse' },
   { id: 'staff.view', group: 'Staff records', label: 'View staff records' },
   { id: 'staff.manage', group: 'Staff records', label: 'Maintain staff records and salaries' },
@@ -26,11 +27,13 @@ const PERMISSIONS = Object.freeze([
   { id: 'reports.export', group: 'Reports', label: 'Export reports' },
   { id: 'products.view', group: 'Administration', label: 'View products, pricing and pending changes' },
   { id: 'products.make', group: 'Administration', label: 'Prepare product and pricing changes (maker)', kind: 'admin' },
-  { id: 'products.check', group: 'Administration', label: 'Approve product and pricing changes (checker)', kind: 'check' },
+  { id: 'products.approveCredit', group: 'Administration', label: 'Approve product and pricing changes, first stage (Head of Credit)', kind: 'check' },
+  { id: 'products.approveRisk', group: 'Administration', label: 'Approve and publish product and pricing changes, second stage (Head of Risk and Compliance)', kind: 'check' },
   { id: 'admin.workflow', group: 'Administration', label: 'Manage workflow settings and calendar', kind: 'admin' },
   { id: 'admin.users', group: 'Administration', label: 'Assign roles to users', kind: 'admin' },
   { id: 'admin.roles', group: 'Administration', label: 'Manage roles and permissions', kind: 'admin' },
-  { id: 'admin.templates', group: 'Administration', label: 'Load agreement templates', kind: 'admin' },
+  { id: 'admin.templates', group: 'Administration', label: 'Upload and edit agreement templates (Legal Officer)', kind: 'admin' },
+  { id: 'templates.approve', group: 'Administration', label: 'Approve or reject agreement templates (Head of Legal)', kind: 'check' },
   { id: 'audit.view', group: 'Administration', label: 'View and export the audit log' },
 ]);
 
@@ -66,9 +69,9 @@ const SOD_RULES = Object.freeze([
   },
   {
     id: 'sod3',
-    name: 'Product maker is kept apart from product checker',
-    why: 'No product goes live, changes or is withdrawn on one person\'s action (BRD 5.1).',
-    all: ['products.make', 'products.check'],
+    name: 'The two product approvals are held by different people',
+    why: 'No product goes live, changes or is withdrawn without two separate approvals (BRD 5.1, D-89). A maker never approves their own version either.',
+    all: ['products.approveCredit', 'products.approveRisk'],
   },
 ]);
 

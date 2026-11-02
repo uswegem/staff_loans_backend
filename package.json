@@ -17,7 +17,9 @@
     "openapi": "node scripts/export-openapi.js",
     "ci": "npm run lint && npm run calc:check && npm test",
     "calc:sync": "node scripts/sync-calc.js",
-    "calc:check": "node scripts/sync-calc.js --check"
+    "calc:check": "node scripts/sync-calc.js --check",
+    "reset:staff": "node scripts/reset-staff-and-products.js",
+    "upgrade": "node scripts/upgrade-2026-11.js"
   },
   "jest": {
     "testEnvironment": "node",

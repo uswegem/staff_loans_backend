@@ -17,7 +17,6 @@ const MAX_ROWS = 5000;
 const COLUMNS = Object.freeze([
   ['staffNo', 'Staff number', 'Required. The employee code on the payslip, for example AT637.', true],
   ['firstName', 'First name', 'Required for new staff.', true],
-  ['middleName', 'Middle name', 'Optional.', false],
   ['lastName', 'Last name', 'Required for new staff.', true],
   ['title', 'Job title', 'Required for new staff.', true],
   ['department', 'Department', 'Optional.', false],
@@ -189,7 +188,6 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
   const pick = (k, current) => (blank(raw[k]) ? current : text(raw[k]));
   const rec = {
     firstName: pick('firstName', ex.firstName),
-    middleName: blank(raw.middleName) ? ex.middleName : text(raw.middleName),
     lastName: pick('lastName', ex.lastName),
     title: pick('title', ex.title),
     department: pick('department', ex.department),
@@ -263,7 +261,7 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
   const active = cellYesNo(raw.active);
   if (active === undefined) problems.push('Active must be Yes or No');
   const status = active === null ? ex.status || 'active' : active ? 'active' : 'deactivated';
-  const name = [rec.firstName, rec.middleName, rec.lastName].filter(Boolean).join(' ');
+  const name = [rec.firstName, rec.lastName].filter(Boolean).join(' ');
 
   if (problems.length) return { outcome: 'error', problems, changes: [], staffNo, name };
 
@@ -286,8 +284,7 @@ function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, t
   const sameDay = (a, b) => dayOf(a) === dayOf(b);
   const compare = [
     ['firstName', 'first name'],
-    ['middleName', 'middle name'],
-    ['lastName', 'last name'],
+      ['lastName', 'last name'],
     ['title', 'job title'],
     ['department', 'department'],
     ['station', 'work station'],

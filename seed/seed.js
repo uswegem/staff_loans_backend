@@ -1,26 +1,25 @@
 'use strict';
 
-// Seeds a development database with the prototype's sample data (all fictional).
-// Usage: SEED_PASSWORD=... npm run seed
+// Seeds the system data a new database needs: settings, public holidays, roles, launch
+// pricing and the sample agreement template. It creates no people, no loan products and
+// no applications (D-92): staff are loaded by `npm run reset:staff` (or People and
+// Culture), and products are created and published through the product module.
+// Usage: npm run seed   (safe to run again)
 
 const mongoose = require('mongoose');
 const { config } = require('../src/config/env');
 const { connect } = require('../src/config/db');
-const { seedFoundation } = require('./foundation');
-const { seedProducts } = require('./products');
+const { seedSystem } = require('./foundation');
+const { seedPricing } = require('./pricing');
 const { seedAgreementTemplate } = require('./agreementTemplate');
-const { seedSampleApplications } = require('./applications');
 
 async function main() {
-  const password = process.env.SEED_PASSWORD;
-  if (!password) throw new Error('Set SEED_PASSWORD to the password every sample account should use.');
   await connect(config.mongoUri);
-  const { users } = await seedFoundation({ password });
-  const products = await seedProducts(users);
-  await seedAgreementTemplate(users);
-  const apps = await seedSampleApplications({ users, products });
+  const roles = await seedSystem();
+  const pricing = await seedPricing();
+  await seedAgreementTemplate();
   // eslint-disable-next-line no-console
-  console.log(`Seeded ${Object.keys(users).length} sample accounts, ${Object.keys(products).length} products and ${apps} sample applications.`);
+  console.log(`System data ready: ${Object.keys(roles).length} roles${pricing ? ', launch pricing' : ''}, agreement template. No people or products are created.`);
   await mongoose.disconnect();
 }
 

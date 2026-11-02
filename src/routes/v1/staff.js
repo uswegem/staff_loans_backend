@@ -63,7 +63,7 @@ router.patch(
   validate({
     body: Joi.object({
       nextOfKin: Joi.array()
-        .items(Joi.object({ name: text(120), relationship: Joi.string().valid('Spouse', 'Parent', 'Child', 'Sibling', 'Other relative', 'Guardian', ''), phone, address: text(200), employer: text(120) }))
+        .items(Joi.object({ firstName: text(60), lastName: text(80), relationship: Joi.string().valid('Spouse', 'Parent', 'Child', 'Sibling', 'Other relative', 'Guardian', ''), phone, address: text(200), employer: text(120) }))
         .max(3)
         .required(),
     }),
@@ -84,7 +84,7 @@ router.patch(
 
 const hrBody = {
   firstName: Joi.string().trim().min(1).max(60),
-  middleName: text(60),
+  gender: Joi.string().valid('Male', 'Female', ''),
   lastName: Joi.string().trim().min(1).max(60),
   title: Joi.string().trim().min(2).max(100),
   department: text(100),

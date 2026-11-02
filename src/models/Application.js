@@ -32,7 +32,7 @@ const applicationSchema = new Schema(
     purpose: { type: String, trim: true, maxlength: 500 },
     productFields: { type: Schema.Types.Mixed, default: {} },
     repayment: {
-      method: { type: String, enum: ['payroll', 'account'], default: 'payroll' },
+      method: { type: String, enum: ['payroll'], default: 'payroll' }, // salary deduction only (D-84)
       bank: String,
       branch: String,
       accountName: String,
@@ -40,6 +40,7 @@ const applicationSchema = new Schema(
     },
     topUp: {
       on: { type: Boolean, default: false },
+      applicationId: { type: Schema.Types.ObjectId, ref: 'Application' }, // the SLAS loan topped up (D-87)
       loanRef: String,
       instalment: { type: Number, min: 0 },
       outstanding: { type: Number, min: 0 }, // confirmed by OPS from core banking (BR-09)
@@ -69,7 +70,9 @@ const applicationSchema = new Schema(
     schedule: { type: Array, default: undefined }, // regenerated at final approval and disbursement (FR-21, FR-24)
     scheduleBasis: { type: String, enum: ['final_approval', 'disbursement', null], default: null },
     revisedExpiresAt: Date, // FR-39
-    outsideSla: { type: Boolean, default: false }, // Q3: Pending Disbursement past approvalSlaDays (flag only)
+    outsideSla: { type: Boolean, default: false },
+    // Set on a loan when a top-up of it is disbursed: its deduction stops (D-87).
+    settledByTopUp: { applicationId: { type: Schema.Types.ObjectId, ref: 'Application' }, ref: String, at: Date }, // Q3: Pending Disbursement past approvalSlaDays (flag only)
     overdueNotifiedAt: Date, // stage-overdue reminder sent for the current stage (BRD 12)
 
     // OPS confirmation (FR-20 to FR-22)

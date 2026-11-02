@@ -152,7 +152,7 @@ async function read(buffer, { staff, rules = DEFAULT_RULES }) {
     return { problem: { code: 'PAYSLIP_UNREADABLE', message: 'This file could not be opened as a PDF. Attach the payslip PDF from the payroll system.' } };
   }
   if (!lines.length) return { problem: { code: 'PAYSLIP_UNREADABLE', message: 'This payslip has no readable text (it looks like a scan or photo). Attach the PDF payslip from the payroll system.' } };
-  if (!namesStaff(lines, staff)) return { problem: { code: 'PAYSLIP_NOT_YOURS', message: 'This payslip does not show your staff number (employee code). Attach your own latest payslip.' } };
+  if (!namesStaff(lines, staff)) return { problem: { code: 'PAYSLIP_NOT_YOURS', message: "Staff Code in the Payslip doesn't match your staff number, upload correct Pay Slip" } };
   const out = parse(lines, rules);
   if (!out.basic) return { problem: { code: 'PAYSLIP_NO_BASIC', message: 'Basic Pay could not be found on this payslip. Attach the payslip PDF from the payroll system, or ask People and Culture for help.' } };
   if (!out.payDate) return { problem: { code: 'PAYSLIP_NO_DATE', message: 'The pay date could not be found on this payslip. Attach the payslip PDF from the payroll system, or ask People and Culture for help.' } };

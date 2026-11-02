@@ -18,12 +18,8 @@ const PRODUCT_FIELDS = [
   ['topUpAllowed', 'Top-up allowed'],
   ['contractStaffAllowed', 'Contract staff allowed'],
   ['eligibleCategories', 'Eligible employee categories'],
-  ['repaymentMethods', 'Repayment methods'],
-  ['requiredDocuments', 'Required documents'],
-  ['optionalDocuments', 'Optional documents'],
   ['fields', 'Application fields'],
-  ['disbursementConditions', 'Conditions OPS confirms before disbursement'],
-  ['reapplyCoolingMonths', 'Months before reapplying for this product'],
+  ['reapplyCoolingMonths', 'Minimum number of Months Before Applying for Topup'],
   ['agreementTemplateId', 'Agreement template'],
 ];
 
@@ -46,12 +42,8 @@ function validateProduct(v) {
   if (v.maxTenor > 600) add(errors, 'maxTenor', 'The maximum tenor cannot exceed 600 months.');
   posInt('minServiceMonths', 'Minimum service', 0);
   posInt('maxConcurrent', 'Running loans allowed');
-  posInt('reapplyCoolingMonths', 'Months before reapplying', 0);
+  posInt('reapplyCoolingMonths', 'Minimum number of months before applying for a top-up', 0);
   if (!v.eligibleCategories?.length) add(errors, 'eligibleCategories', 'Choose at least one employee category.');
-  if (!v.repaymentMethods?.length) add(errors, 'repaymentMethods', 'Choose at least one repayment method.');
-
-  const docs = [...(v.requiredDocuments || []), ...(v.optionalDocuments || [])].map((d) => d.toLowerCase());
-  if (new Set(docs).size !== docs.length) add(errors, 'optionalDocuments', 'A document is listed twice.');
 
   const keys = new Set();
   (v.fields || []).forEach((f, i) => {

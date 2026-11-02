@@ -4,7 +4,7 @@
 
 const crypto = require('crypto');
 const { api, seedAll, signIn, PASSWORD } = require('../flows');
-const { seedSampleApplications } = require('../../seed/applications');
+const { seedSampleApplications } = require('../fixtures/applications');
 const Application = require('../../src/models/Application');
 const Agreement = require('../../src/models/Agreement');
 

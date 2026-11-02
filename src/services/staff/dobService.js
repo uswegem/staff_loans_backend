@@ -91,7 +91,7 @@ async function submit(req, staffId, dob, source) {
 /** People and Culture's queue: pending by default, oldest first. */
 async function list({ status = 'pending' } = {}) {
   const rows = await DobChange.find({ status }).sort(status === 'pending' ? { submittedAt: 1 } : { decidedAt: -1 }).limit(500).lean();
-  const staff = new Map((await Staff.find({ _id: { $in: rows.map((r) => r.staffId) } }).select('staffNo firstName middleName lastName title department dateOfBirth').lean()).map((s) => [String(s._id), s]));
+  const staff = new Map((await Staff.find({ _id: { $in: rows.map((r) => r.staffId) } }).select('staffNo firstName lastName title department dateOfBirth').lean()).map((s) => [String(s._id), s]));
   const names = await namesOf(rows.flatMap((r) => [r.submittedBy, r.decidedBy]));
   return rows.map((r) => {
     const s = staff.get(String(r.staffId)) || {};

@@ -68,11 +68,13 @@ async function reviewPermissions(auth, now) {
 }
 
 /**
- * FR-55: on the management, CEO and Head of People and Culture routes, a user whose
- * only review permission is Credit Analyst sees only name, mobile and NIDA number.
+ * FR-55, D-86: a user whose review access is Credit Analyst only sees the applicant's
+ * first name, surname, NIDA number and mobile, on every route: no loan details at all.
+ * Read-only viewers (loan.viewAll) and the other stages see the full application.
  */
+// eslint-disable-next-line no-unused-vars
 function isLimited(app, perms) {
-  return LIMITED_ROUTES.includes(app.route) && !FULL_REVIEW.some((p) => perms.has(p));
+  return perms.has('review.credit') && !FULL_REVIEW.some((p) => perms.has(p)) && !perms.has('loan.viewAll');
 }
 
 /**
@@ -86,7 +88,7 @@ async function reviewAccess(auth, app, { perms } = {}) {
   const p = perms || (await reviewPermissions(auth));
   const actor = await canAct(auth.user._id, app);
   const actedBefore = actor ? true : !!(await Decision.exists({ applicationId: app._id, actorId: auth.user._id }));
-  const seesAll = p.has('review.hr') || p.has('review.ceo');
+  const seesAll = p.has('review.hr') || p.has('review.ceo') || p.has('loan.viewAll'); // loan.viewAll: read-only (D-90)
   if (!actor && !actedBefore && !seesAll) return null;
   return { limited: isLimited(app, p), actor };
 }

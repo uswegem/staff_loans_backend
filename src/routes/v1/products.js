@@ -12,7 +12,6 @@ const router = express.Router();
 const objectId = Joi.string().hex().length(24);
 const day = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).messages({ 'string.pattern.base': 'Use a date like 2026-11-01.' });
 const text = (max) => Joi.string().trim().max(max);
-const list = Joi.array().items(text(160).min(1)).max(30);
 const whole = Joi.number().integer();
 
 const productValues = {
@@ -27,9 +26,8 @@ const productValues = {
   topUpAllowed: Joi.boolean(),
   contractStaffAllowed: Joi.boolean(),
   eligibleCategories: Joi.array().items(Joi.string().valid(...CATEGORIES)).unique(),
-  repaymentMethods: Joi.array().items(Joi.string().valid(...REPAYMENT_METHODS)).unique(),
-  requiredDocuments: list,
-  optionalDocuments: list,
+  // Salary deduction is the only method; anything else is refused (D-84).
+  repaymentMethods: Joi.array().items(Joi.string().valid(...REPAYMENT_METHODS).messages({ 'any.only': 'Salary deduction is the only repayment method.' })).unique(),
   fields: Joi.array()
     .items(
       Joi.object({
@@ -41,11 +39,10 @@ const productValues = {
       })
     )
     .max(20),
-  disbursementConditions: list,
   reapplyCoolingMonths: whole.min(0).max(60),
   agreementTemplateId: objectId.allow(null),
 };
-const REQUIRED_ON_CREATE = ['name', 'minAmount', 'maxAmount', 'minTenor', 'maxTenor', 'minServiceMonths', 'maxConcurrent', 'eligibleCategories', 'repaymentMethods'];
+const REQUIRED_ON_CREATE = ['name', 'minAmount', 'maxAmount', 'minTenor', 'maxTenor', 'minServiceMonths', 'maxConcurrent', 'eligibleCategories'];
 const createValues = Joi.object(productValues).fork(REQUIRED_ON_CREATE, (s) => s.required());
 const partialValues = Joi.object(productValues);
 
@@ -64,7 +61,7 @@ const pricingValues = Joi.object({
 const vidParams = { params: Joi.object({ vid: objectId.required() }) };
 
 function versionRoutes(prefix, actions, valuesSchema) {
-  router.get(`${prefix}/:vid`, requireAny('products.view', 'products.make', 'products.check'), validate(vidParams), asyncHandler(actions.get));
+  router.get(`${prefix}/:vid`, requireAny('products.view', 'products.make', 'products.approveCredit', 'products.approveRisk'), validate(vidParams), asyncHandler(actions.get));
   router.patch(
     `${prefix}/:vid`,
     requireAll('products.make'),
@@ -74,10 +71,10 @@ function versionRoutes(prefix, actions, valuesSchema) {
   router.post(`${prefix}/:vid/submit`, requireAll('products.make'), validate(vidParams), asyncHandler(actions.submit));
   router.post(`${prefix}/:vid/recall`, requireAll('products.make'), validate(vidParams), asyncHandler(actions.recall));
   router.post(`${prefix}/:vid/discard`, requireAll('products.make'), validate(vidParams), asyncHandler(actions.discard));
-  router.post(`${prefix}/:vid/approve`, requireAll('products.check'), validate(vidParams), asyncHandler(actions.approve));
+  router.post(`${prefix}/:vid/approve`, requireAny('products.approveCredit', 'products.approveRisk'), validate(vidParams), asyncHandler(actions.approve));
   router.post(
     `${prefix}/:vid/reject`,
-    requireAll('products.check'),
+    requireAny('products.approveCredit', 'products.approveRisk'),
     validate({ ...vidParams, body: Joi.object({ reason: text(1000).min(5).required().messages({ 'string.min': 'Give a reason the maker can act on.', 'any.required': 'Give a reason the maker can act on.', 'string.empty': 'Give a reason the maker can act on.' }) }) }),
     asyncHandler(actions.reject)
   );
@@ -119,7 +116,7 @@ function versionRoutes(prefix, actions, valuesSchema) {
 router.get('/products', asyncHandler(ProductController.listLive));
 router.get('/pricing', asyncHandler(ProductController.livePricing));
 
-router.get('/admin/products', requireAny('products.view', 'products.make', 'products.check'), asyncHandler(ProductController.adminList));
+router.get('/admin/products', requireAny('products.view', 'products.make', 'products.approveCredit', 'products.approveRisk'), asyncHandler(ProductController.adminList));
 router.post(
   '/admin/products',
   requireAll('products.make'),
@@ -133,7 +130,7 @@ router.post(
   }),
   asyncHandler(ProductController.create)
 );
-router.get('/admin/products/:id', requireAny('products.view', 'products.make', 'products.check'), validate({ params: Joi.object({ id: objectId.required() }) }), asyncHandler(ProductController.adminGet));
+router.get('/admin/products/:id', requireAny('products.view', 'products.make', 'products.approveCredit', 'products.approveRisk'), validate({ params: Joi.object({ id: objectId.required() }) }), asyncHandler(ProductController.adminGet));
 router.post(
   '/admin/products/:id/drafts',
   requireAll('products.make'),
@@ -145,7 +142,7 @@ router.post(
 );
 versionRoutes('/admin/product-versions', ProductController.productVersion, partialValues);
 
-router.get('/admin/pricing', requireAny('products.view', 'products.make', 'products.check'), asyncHandler(ProductController.pricingList));
+router.get('/admin/pricing', requireAny('products.view', 'products.make', 'products.approveCredit', 'products.approveRisk'), asyncHandler(ProductController.pricingList));
 router.post(
   '/admin/pricing/drafts',
   requireAll('products.make'),

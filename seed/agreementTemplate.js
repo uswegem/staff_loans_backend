@@ -48,7 +48,7 @@ async function seedAgreementTemplate(users = {}) {
   if (existing) return existing;
   return AgreementTemplate.create({
     version: VERSION,
-    status: 'active',
+    status: 'approved', // a fixture: the sample text, approved (D-88)
     body: BODY,
     legalApproved: true,
     legalApprovalRef: 'Prototype clauses (sample)',

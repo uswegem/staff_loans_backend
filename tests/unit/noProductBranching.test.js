@@ -5,7 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { PRODUCTS } = require('../../seed/products');
+const { PRODUCTS } = require('../fixtures/products');
 
 function filesUnder(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesUnder(path.join(dir, e.name)) : e.name.endsWith('.js') ? [path.join(dir, e.name)] : []));

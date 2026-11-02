@@ -15,6 +15,8 @@ const PricingVersion = require('../../models/PricingVersion');
 const audit = require('../audit/auditService');
 const notify = require('../notify/notificationService');
 const calc = require('../calc/loanCalculator');
+const rules = require('../applications/rules');
+const { capCheck } = require('../applications/capCheck');
 const { fullName, namesOf } = require('../review/reviewView');
 const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
@@ -44,7 +46,7 @@ async function blockedReason(userId, app) {
 async function loadAll(apps) {
   const [staff, versions, agreements] = await Promise.all([
     Staff.find({ _id: { $in: apps.map((a) => a.applicantStaffId) } }).lean(),
-    ProductVersion.find({ _id: { $in: apps.map((a) => a.productVersionId) } }).select('name disbursementConditions').lean(),
+    ProductVersion.find({ _id: { $in: apps.map((a) => a.productVersionId) } }).select('name').lean(),
     Agreement.find({ _id: { $in: apps.map((a) => a.currentAgreementId) } }).select('-text -schedule').lean(),
   ]);
   const by = (rows) => new Map(rows.map((r) => [String(r._id), r]));
@@ -117,7 +119,6 @@ async function detail(req, id) {
   const names = await namesOf([app.disbursement?.confirmedBy].filter(Boolean));
   const staff = maps.staff.get(String(app.applicantStaffId));
   const ag = maps.agreements.get(String(app.currentAgreementId));
-  const version = maps.versions.get(String(app.productVersionId));
   await audit.record({ req, action: 'disbursement.view', description: `${app.ref} opened by OPS`, entity: 'Application', entityId: String(app._id), appRef: app.ref });
   return {
     ...row(app.toObject(), maps, settings, names),
@@ -125,7 +126,6 @@ async function detail(req, id) {
     creditTo: staff.bank || null,
     staff: { ...row(app.toObject(), maps, settings).staff, mobile: staff.personal?.mobile },
     topUp: app.topUp?.on ? { loanRef: app.topUp.loanRef, outstanding: app.topUp.outstanding ?? null } : null,
-    conditions: version?.disbursementConditions || [],
     earliestDate: localDay(app.stageEnteredAt),
     today: localDay(),
     schedule: app.schedule || [],
@@ -136,7 +136,7 @@ async function detail(req, id) {
 
 /**
  * Confirms a disbursement (FR-20 to FR-22).
- * body: { date: 'YYYY-MM-DD', transactionRef?, comment, conditions: [true...], topUpSettled? }
+ * body: { date: 'YYYY-MM-DD', transactionRef?, comment, topUpSettled? }
  */
 async function confirm(req, id, body) {
   const app = await load(id);
@@ -144,10 +144,10 @@ async function confirm(req, id, body) {
   const blocked = await blockedReason(req.auth.user._id, app);
   if (blocked) throw forbidden(blocked, 'SOD_DISBURSE');
 
-  const version = await ProductVersion.findById(app.productVersionId).select('disbursementConditions').lean();
-  const conditions = version?.disbursementConditions || [];
-  const ticked = body.conditions || [];
-  if (conditions.some((c, i) => ticked[i] !== true)) throw badRequest('Tick each condition before you confirm.', { conditions: ['Tick each condition before you confirm.'] }, 'CONDITIONS_REQUIRED');
+  // D-87: the combined cap just before the money goes out.
+  const cap = await capCheck(app, app.approved);
+  if (!cap.ok) throw conflict(`This loan cannot be disbursed now. ${cap.message} Refer it back to Credit.`, cap.code);
+
   if (app.topUp?.on && body.topUpSettled !== true) throw badRequest('Confirm the old loan balance has been settled.', { topUpSettled: ['Confirm the old loan balance has been settled.'] }, 'TOPUP_NOT_SETTLED');
   const comment = (body.comment || '').trim();
   if (!comment) throw badRequest('Add a comment confirming the disbursement.', { comment: ['Add a comment confirming the disbursement.'] }, 'COMMENT_REQUIRED');
@@ -161,9 +161,14 @@ async function confirm(req, id, body) {
   const instalment = calc.instalment(amount, tenor, pricing.interestBps, pricing.instalmentRounding);
   const schedule = calc.schedule(amount, tenor, pricing.interestBps, pricing.instalmentRounding, calc.firstDueDate(body.date, settings.firstDueDay || 25));
 
+  // D-82: the retirement cutoff on the schedule that starts from the disbursement date.
+  const staff = await Staff.findById(app.applicantStaffId).lean();
+  const cut = rules.cutoffCheck({ staff, settings, version: { maxTenor: tenor, minTenor: 1 }, tenor, lastDue: schedule.at(-1)?.due, startDay: body.date });
+  if (!cut.ok) throw conflict(`This loan cannot be disbursed: ${cut.message} Refer it back to Credit.`, cut.code);
+
   const now = new Date();
   const transactionRef = (body.transactionRef || '').trim() || null;
-  const disbursement = { date: localMidnight(body.date), transactionRef, comment, conditions: conditions.map((text) => ({ text, ticked: true })), topUpSettled: app.topUp?.on ? true : undefined, confirmedBy: req.auth.user._id, confirmedAt: now };
+  const disbursement = { date: localMidnight(body.date), transactionRef, comment, topUpSettled: app.topUp?.on ? true : undefined, confirmedBy: req.auth.user._id, confirmedAt: now };
 
   await withTransaction(async (session) => {
     const fresh = await Application.findOneAndUpdate(
@@ -172,8 +177,12 @@ async function confirm(req, id, body) {
       { new: true, session }
     );
     if (!fresh) throw conflict('Someone else has just confirmed this disbursement. Reload the list.', 'STATE_CHANGED');
+    // D-87: a disbursed top-up settles the loan it replaces; that deduction stops.
+    if (app.topUp?.on && app.topUp.applicationId) {
+      await Application.updateOne({ _id: app.topUp.applicationId, 'settledByTopUp.applicationId': null }, { $set: { settledByTopUp: { applicationId: app._id, ref: app.ref, at: now } } }, { session });
+    }
     await Decision.create(
-      [{ applicationId: app._id, cycle: app.cycle, action: 'disburse', actorId: req.auth.user._id, comment: `${comment}${transactionRef ? ` Ref ${transactionRef}.` : ''}`, details: { date: body.date, transactionRef, conditions }, at: now, ip: req.ip }],
+      [{ applicationId: app._id, cycle: app.cycle, action: 'disburse', actorId: req.auth.user._id, comment: `${comment}${transactionRef ? ` Ref ${transactionRef}.` : ''}`, details: { date: body.date, transactionRef }, at: now, ip: req.ip }],
       { session }
     );
     await audit.record(

@@ -30,7 +30,7 @@ const { withTransaction } = require('../../config/db');
 const { localDay } = require('../../utils/dates');
 const { AppError, badRequest, conflict, notFound } = require('../../utils/errors');
 
-const fullName = (s) => [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ');
+const fullName = (s) => [s.firstName, s.lastName].filter(Boolean).join(' ');
 
 /**
  * Loads what the rules need for an applicant and a product (live versions unless pinned).
@@ -99,6 +99,9 @@ async function view(req, app) {
   const v = await versionsFor(app);
   const ctx = await context(req, app.productId, { app, versions: v });
   const result = rules.evaluate(ctx, inputOf(app));
+  const liveProducts = await ProductVersion.find({ productId: { $in: result.existing.loans.map((l) => l.productId) } }).sort({ createdAt: -1 }).select('productId name').lean();
+  const names = new Map();
+  liveProducts.forEach((p) => { if (!names.has(String(p.productId))) names.set(String(p.productId), p.name); });
   const [decisions, agreements, docs] = await Promise.all([
     Decision.find({ applicationId: app._id }).sort({ at: 1 }).lean(),
     Agreement.find({ applicationId: app._id }).sort({ createdAt: -1 }).select('-text -schedule').lean(),
@@ -136,6 +139,8 @@ async function view(req, app) {
     disbursement: app.disbursement?.date ? { date: localDay(app.disbursement.date), transactionRef: app.disbursement.transactionRef || null } : null,
     payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [], readAt: app.payslip.readAt } : null,
     payslipMaxAgeDays: ctx.settings.payslipMaxAgeDays || 45,
+    // D-87: the combined cap. Running SLAS loans count against it; one of this product may be topped up.
+    existingLoans: result.existing.loans.map((l) => ({ ...l, product: names.get(l.productId) || null, canTopUp: v.version.topUpAllowed && l.productId === String(app.productId) && l.status === 'disbursed' })),
     // D-82: the cutoff from the verified date of birth and the longest tenor it allows.
     retirement: { dateOfBirth: ctx.staff.dateOfBirth?.value || null, cutoff: result.cutoff, maxTenor: result.quote.maxTenor, age: ctx.settings.retirementAge ?? 60, bufferDays: ctx.settings.retirementBufferDays ?? 60 },
     documents: docs.map(DOC_VIEW),
@@ -160,10 +165,7 @@ function pick(v) {
     minTenor: v.minTenor,
     maxTenor: v.maxTenor,
     topUpAllowed: v.topUpAllowed,
-    repaymentMethods: v.repaymentMethods,
     fields: v.fields,
-    requiredDocuments: v.requiredDocuments,
-    optionalDocuments: v.optionalDocuments,
   };
 }
 
@@ -185,7 +187,10 @@ async function notifyProfileIncomplete(userId, profile) {
 
 async function createDraft(req, productId) {
   const ctx = await context(req, productId);
-  const elig = rules.eligibility(ctx);
+  // A staff member at the product's limit may still start a top-up of a running SLAS
+  // loan of that product; the draft must then name the loan before it can be submitted.
+  const canTopUp = ctx.version.topUpAllowed && rules.runningLoans(ctx.apps, null, ctx.today).some((a) => String(a.productId) === String(ctx.product._id));
+  const elig = rules.eligibility(canTopUp ? { ...ctx, topUp: { on: true } } : ctx);
   if (!ctx.profile.complete) await notifyProfileIncomplete(req.auth.user._id, ctx.profile);
   if (elig.messages.length) throw badRequest(elig.messages[0], { eligibility: elig.messages }, 'NOT_ELIGIBLE');
   const app = await withTransaction(async (session) => {
@@ -198,7 +203,7 @@ async function createDraft(req, productId) {
           productId: ctx.product._id,
           productVersionId: ctx.version._id,
           status: 'draft',
-          repayment: { method: ctx.version.repaymentMethods[0] },
+          repayment: { method: 'payroll' }, // salary deduction only (D-84)
           probation: { onProbation: elig.onProbation },
         },
       ],
@@ -213,15 +218,16 @@ async function createDraft(req, productId) {
 
 async function update(req, app, body) {
   if (!EDITABLE.includes(app.status)) throw conflict('This application can no longer be changed.', 'NOT_EDITABLE');
-  const staff = await Staff.findById(app.applicantStaffId);
   const before = inputOf(app);
   ['amount', 'tenor', 'purpose', 'productFields'].forEach((k) => {
     if (body[k] !== undefined) app[k] = body[k];
   });
-  if (body.repaymentMethod) {
-    app.repayment = body.repaymentMethod === 'account' ? { method: 'account', bank: staff.bank?.bank, branch: staff.bank?.branch, accountName: staff.bank?.accountName, accountNo: staff.bank?.accountNo } : { method: 'payroll' };
+  app.repayment = { method: 'payroll' }; // salary deduction only (D-84)
+  if (body.topUp !== undefined) {
+    // D-87: the loan topped up must be the applicant's own SLAS loan; the rules check it is running.
+    const old = body.topUp.on && body.topUp.applicationId ? await Application.findOne({ _id: body.topUp.applicationId, applicantUserId: app.applicantUserId }).select('ref').lean() : null;
+    app.topUp = body.topUp.on ? { on: true, applicationId: old?._id || null, loanRef: old?.ref || null } : { on: false };
   }
-  if (body.topUp !== undefined) app.topUp = body.topUp.on ? body.topUp : { on: false };
   if (body.probationReason !== undefined) app.set('probation.reason', body.probationReason);
   app.markModified('productFields');
   await app.save();
@@ -380,7 +386,7 @@ async function signAndSubmit(req, app, body) {
     // place of a holder who is away, FR-19).
     await notify.notifyUsers([req.auth.user._id], { type: 'application.submitted', text: `${fresh.ref} is submitted. Your agreement ${number} is signed and takes effect on final approval.`, href: `/applications/${fresh._id}`, entity: 'Application', entityId: String(fresh._id) }, { session });
     const actors = await require('../workflow/workflowService').stageActors(fresh, { session });
-    const limited = ['mgmt', 'ceo', 'hrhead'].includes(route.key);
+    const limited = true; // the Credit Analyst sees identity only (D-86)
     await notify.notifyUsers(actors.map((a) => a.userId), { type: 'application.stage', text: `${fresh.ref} from ${staffName} is waiting for your ${STAGES[firstStage].short || STAGES[firstStage].label} review${limited && firstStage === 'credit' ? ' (limited details)' : ''}`, href: `/review/${fresh._id}`, entity: 'Application', entityId: String(fresh._id) }, { exclude: [req.auth.user._id], session });
   });
   return Application.findById(app._id);

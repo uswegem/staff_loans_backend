@@ -21,8 +21,8 @@ const { notFound, conflict, badRequest } = require('../utils/errors');
 async function namesOf(ids) {
   const unique = [...new Set(ids.filter(Boolean).map(String))];
   const users = await User.find({ _id: { $in: unique } }).select('staffNo staffId').lean();
-  const staff = await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName middleName lastName').lean();
-  const byStaff = new Map(staff.map((s) => [String(s._id), [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ')]));
+  const staff = await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName lastName').lean();
+  const byStaff = new Map(staff.map((s) => [String(s._id), [s.firstName, s.lastName].filter(Boolean).join(' ')]));
   return new Map(users.map((u) => [String(u._id), { id: String(u._id), staffNo: u.staffNo, name: byStaff.get(String(u.staffId)) || u.staffNo }]));
 }
 
@@ -66,14 +66,18 @@ function permissionsFor(req, v) {
     canEdit: p.has('products.make') && ['draft', 'rejected'].includes(v.state),
     canSubmit: p.has('products.make') && ['draft', 'rejected'].includes(v.state),
     canRecall: p.has('products.make') && v.state === 'pending_approval',
-    canCheck: p.has('products.check') && v.state === 'pending_approval' && !editor,
+    // D-89: the approver for the stage the version waits for; never an editor or the first approver.
+    canCheck: v.state === 'pending_approval' && !!v.stage && p.has(mc.STAGE_PERMISSION[v.stage]) && !editor && !(v.approvals || []).some((a) => String(a.by) === String(req.auth.user._id)),
+    stage: v.stage || null,
+    stageLabel: v.stage ? mc.STAGE_NAME[v.stage] : null,
+    approvals: (v.approvals || []).map((a) => ({ stage: a.stage, stageLabel: mc.STAGE_NAME[a.stage], at: a.at })),
     isEditor: editor,
   };
 }
 
 async function afterSubmit(chain, doc, session) {
   await notify.notifyPermission(
-    'products.check',
+    'products.approveCredit',
     { type: 'maker_checker.submitted', text: `${chain.describe(doc)} is waiting for your approval.`, href: chain.href(doc), entity: chain.entity, entityId: String(doc._id) },
     { exclude: doc.editors, session }
   );
@@ -108,6 +112,11 @@ function versionActions(load, chainOf) {
     recall: run((req, v, chain, session) => mc.recall(chain, v, { req, session })),
     approve: run(async (req, v, chain, session) => {
       const doc = await mc.approve(chain, v, { req, session });
+      if (doc.state === 'pending_approval') {
+        // First stage done: the Head of Risk and Compliance is next (D-89).
+        await notify.notifyPermission('products.approveRisk', { type: 'maker_checker.submitted', text: `${chain.describe(doc)} is waiting for your approval (approved by the Head of Credit).`, href: chain.href(doc), entity: chain.entity, entityId: String(doc._id) }, { exclude: [...doc.editors, req.auth.user._id], session });
+        return doc;
+      }
       if (chain.afterApprove) await chain.afterApprove(session);
       await afterDecision(chain, doc, 'approved', session);
       return doc;

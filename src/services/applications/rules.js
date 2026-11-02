@@ -20,19 +20,37 @@ function monthsBetweenDays(from, to) {
   return (ty - fy) * 12 + (tm - fm) - (td < fd ? 1 : 0);
 }
 
-/** A loan is running until its last instalment is due (approved instalment and tenor). */
+/**
+ * A SLAS loan is running from final approval (approved, not yet disbursed, counts) until
+ * its last instalment is due, unless a top-up has replaced it: a top-up that has final
+ * approval takes over its deduction (D-87).
+ */
 function runningLoans(apps, excludeId, today) {
+  const replaced = new Set(apps.filter((a) => a.topUp?.on && a.topUp.applicationId && ['pending_disbursement', 'disbursed'].includes(a.status)).map((a) => String(a.topUp.applicationId)));
   return apps.filter((a) => {
-    if (String(a._id) === String(excludeId)) return false;
+    if (String(a._id) === String(excludeId) || replaced.has(String(a._id)) || a.settledByTopUp?.applicationId) return false;
     if (!['pending_disbursement', 'disbursed'].includes(a.status) || !a.approved?.tenor) return false;
-    const start = day(a.finalApprovedAt || a.updatedAt);
-    return calc.addMonthsToDay(calc.firstDueDate(start), a.approved.tenor - 1) >= today;
+    const lastDue = a.schedule?.length ? a.schedule.at(-1).due : calc.addMonthsToDay(calc.firstDueDate(day(a.finalApprovedAt || a.updatedAt)), a.approved.tenor - 1);
+    return lastDue >= today;
   });
 }
 
-/** Calculator inputs: Basic Pay and LFB deductions as read from the payslip (D-78). */
+/** Calculator inputs: Basic Pay as read from the payslip (D-78). */
 function payInputs(payslip) {
-  return { basic: payslip?.basic || 0, lfbDeductions: payslip?.lfbDeductions || 0 };
+  return { basic: payslip?.basic || 0 };
+}
+
+/**
+ * The staff member's other running SLAS loans for the combined cap (D-87): every product,
+ * approved loans not yet disbursed included. The loan named for a top-up is taken out
+ * of the total (its recorded instalment is "added back"); the new instalment replaces it.
+ * Returns { others, addBack, loans, topUpLoan }.
+ */
+function existingLoans(apps, appId, today, topUp) {
+  const loans = runningLoans(apps, appId, today).map((a) => ({ applicationId: String(a._id), ref: a.ref, productId: String(a.productId), status: a.status, instalment: a.approved?.instalment || 0 }));
+  const topUpLoan = topUp?.on && topUp.applicationId ? loans.find((l) => l.applicationId === String(topUp.applicationId)) || null : null;
+  const others = loans.filter((l) => l !== topUpLoan).reduce((s, l) => s + l.instalment, 0);
+  return { others, addBack: topUpLoan?.instalment || 0, loans, topUpLoan };
 }
 
 /** Days from one calendar day to another (both 'YYYY-MM-DD'). */
@@ -88,14 +106,16 @@ function eligibility(ctx) {
   if (staff.status !== 'active') out.push('Your staff record is not active. Contact People and Culture.');
   // When the date of birth is all that is missing, its own message (below) says what to do (D-82).
   if (!profile.complete && !profile.missing.every((m) => m.key === 'personal.dob')) out.push(`You can apply once your profile is complete. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`);
+  // D-91: People and Culture must complete the employment record first.
+  if (!staff.dateJoined || !staff.employmentType) out.push('People and Culture must complete your employment record (date joined and employment type) before you can apply.');
   if (staff.employmentType === 'Contract' && !v.contractStaffAllowed) out.push(`${v.name} is for permanent staff only.`);
   if (!v.eligibleCategories.includes(staff.category)) out.push(`${v.name} is not open to ${staff.category.toLowerCase()} staff.`);
 
   const probation = probationInfo(staff, settings.probationMonths, new Date(`${today}T12:00:00+03:00`));
   const onProbation = probation.onProbation || staff.employmentType === 'Probation';
-  const service = monthsBetweenDays(day(staff.dateJoined), today);
+  const service = staff.dateJoined ? monthsBetweenDays(day(staff.dateJoined), today) : 0;
   // NS-01 (D-25, C-02): during probation a verified reason waives the service shortfall.
-  if (service < v.minServiceMonths && !onProbation) out.push(`You need at least ${v.minServiceMonths} months' service. You have ${Math.max(0, service)}.`);
+  if (staff.dateJoined && service < v.minServiceMonths && !onProbation) out.push(`You need at least ${v.minServiceMonths} months' service. You have ${Math.max(0, service)}.`);
 
   const open = apps.find((a) => String(a.productId) === String(ctx.product._id) && OPEN.includes(a.status) && String(a._id) !== String(ctx.appId));
   if (open) out.push(`You already have an open ${v.name} application (${open.ref}). Finish or withdraw it first.`);
@@ -115,7 +135,7 @@ function eligibility(ctx) {
 const blank = (x) => x === undefined || x === null || String(x).trim() === '';
 
 /** Missing or malformed form fields: { field: message }. */
-function fieldErrors(input, version, { onProbation }) {
+function fieldErrors(input, version, { onProbation }, ctxTopUp) {
   const e = {};
   if (!input.amount) e.amount = 'Enter the amount you want to borrow.';
   if (!input.tenor) e.tenor = 'Enter the tenor in months.';
@@ -132,13 +152,11 @@ function fieldErrors(input, version, { onProbation }) {
     if (f.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(String(val))) e[key] = `${f.label} must be a date.`;
     if (f.type === 'select' && !f.options.includes(val)) e[key] = `Choose one of the options for ${f.label.toLowerCase()}.`;
   }
-  if (!version.repaymentMethods.includes(input.repayment?.method)) e['repayment.method'] = 'Choose how you will repay.';
-  if (input.repayment?.method === 'account' && ['bank', 'branch', 'accountName', 'accountNo'].some((k) => blank(input.repayment[k]))) {
-    e['repayment.method'] = 'Add your bank, branch, account name and number in your profile to repay by account debit.';
-  }
   if (input.topUp?.on) {
     if (!version.topUpAllowed) e['topUp.on'] = `${version.name} cannot be topped up.`;
-    if (blank(input.topUp.loanRef)) e['topUp.loanRef'] = 'Enter the loan being topped up.';
+    // D-87: a top-up names one of the applicant's running SLAS loans of this product, never a typed figure.
+    else if (!input.topUp.applicationId) e['topUp.applicationId'] = 'Choose the loan being topped up.';
+    else if (!ctxTopUp?.topUpLoan || ctxTopUp.topUpLoan.productId !== String(input.productId)) e['topUp.applicationId'] = 'Choose one of your running loans of this product recorded in Staff Loans.';
   }
   if (onProbation && blank(input.probationReason)) e.probationReason = 'Say why you are applying during probation. People and Culture will verify it.';
   return e;
@@ -160,7 +178,8 @@ function loanChecks(input, version, staff, q, settings = {}) {
   }
   if (lastDue && staff.contractEndDate && lastDue > day(staff.contractEndDate)) out.push('The loan must be repaid before your contract ends. Shorten the tenor.');
   if (input.payslip && amount && tenor && !q.pass) {
-    out.push(`The instalment of ${tzs(q.instalment)} is above your limit of ${tzs(q.maxInstalment)} (${q.rates.affordabilityBps / 100}% of adjusted net pay). Borrow up to ${tzs(q.maxAmountAtTenor)} over ${tenor} months, or up to ${tzs(q.maxAmount)} over ${q.maxTenor} months.`);
+    const c = q.combined;
+    out.push(`The instalment of ${tzs(q.instalment)} is above what your combined limit leaves: ${tzs(c.available)} a month (${q.rates.affordabilityBps / 100}% of Net Pay is ${tzs(c.cap)}; your other loans in Staff Loans take ${tzs(c.others)}). Borrow up to ${tzs(q.maxAmountAtTenor)} over ${tenor} months, or up to ${tzs(q.maxAmount)} over ${q.maxTenor} months.`);
   }
   return out;
 }
@@ -173,19 +192,21 @@ function loanChecks(input, version, staff, q, settings = {}) {
 function evaluate(ctx, input) {
   const elig = eligibility({ ...ctx, topUp: input.topUp });
   const pay = payInputs(input.payslip);
+  const existing = existingLoans(ctx.apps, ctx.appId, ctx.today, input.topUp);
   const dueDay = ctx.settings.firstDueDay || 25;
   const q = calc.quote({
     amount: input.amount || 0,
     tenor: input.tenor || 0,
     topUp: !!input.topUp?.on,
     pay,
+    existing: { others: existing.others, addBack: existing.addBack },
     pricing: ctx.pricing,
     startDay: ctx.today,
     dueDay,
     maxTenor: longestTenor(ctx.version, ctx.staff, ctx.today, dueDay, ctx.settings),
     maxAmountCap: ctx.version.maxAmount,
   });
-  const fields = fieldErrors(input, ctx.version, elig);
+  const fields = fieldErrors({ ...input, productId: ctx.product._id }, ctx.version, elig, existing);
   const slip = payslipProblem(input.payslip, ctx.settings, ctx.today);
   if (slip) fields.payslip = slip;
   const checks = loanChecks(input, ctx.version, ctx.staff, q, ctx.settings);
@@ -193,6 +214,11 @@ function evaluate(ctx, input) {
   // People and Culture's salary record is the check on the payslip (D-79).
   if (input.payslip?.basic && ctx.salary?.basic && input.payslip.basic !== ctx.salary.basic) {
     flags.push(`Basic Pay on the payslip (${tzs(input.payslip.basic)}) differs from the staff record (${tzs(ctx.salary.basic)}): confirm with Payroll.`);
+  }
+  // D-87: the topped-up loan's SLAS instalment should be one of the STAFF LOAN deductions on the payslip.
+  if (existing.topUpLoan && input.payslip?.lfbLines && !input.payslip.lfbLines.some((l) => l.amount === existing.topUpLoan.instalment)) {
+    const shown = input.payslip.lfbLines.map((l) => tzs(l.amount)).join(', ') || 'none';
+    flags.push(`Top-up of ${existing.topUpLoan.ref}: its instalment in Staff Loans is ${tzs(existing.topUpLoan.instalment)}, but the payslip shows staff loan deductions of ${shown}. Confirm the deduction with Payroll.`);
   }
   return {
     eligibility: elig.messages,
@@ -202,10 +228,11 @@ function evaluate(ctx, input) {
     onProbation: elig.onProbation,
     probation: elig.probation,
     pay,
+    existing,
     quote: q,
     cutoff: cutoffFor(ctx.staff, ctx.settings),
     canSubmit: !elig.messages.length && !Object.keys(fields).length && !checks.length,
   };
 }
 
-module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, payslipProblem, longestTenor, cutoffFor, cutoffProblem, cutoffCheck, runningLoans, monthsBetweenDays };
+module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, existingLoans, payslipProblem, longestTenor, cutoffFor, cutoffProblem, cutoffCheck, runningLoans, monthsBetweenDays };

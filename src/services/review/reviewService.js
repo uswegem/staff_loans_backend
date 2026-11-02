@@ -21,8 +21,9 @@ const agreementService = require('../agreement/agreementService');
 const { agreementPdf, textBlocks } = require('../agreement/pdfService');
 const fileStore = require('../files/fileStore');
 const workflow = require('../workflow/workflowService');
+const { capCheck } = require('../applications/capCheck');
 const { namesOf, stageName, fullName } = require('./reviewView');
-const { STAGES, ROUTES } = require('../workflow/routes');
+const { STAGES } = require('../workflow/routes');
 const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
 const { AppError, badRequest, conflict, forbidden } = require('../../utils/errors');
@@ -115,18 +116,6 @@ async function recheckCutoff(app, terms, now, { audience = 'reviewer', limited =
 
 // ---------- decisions ----------
 
-/** Checks the Credit Analyst's recommended terms (FR-16, BR-11). */
-async function checkRecommendation(req, app, rec) {
-  const signed = await Agreement.findById(app.currentAgreementId).lean();
-  if (rec.amount > signed.terms.amount || rec.tenor > signed.terms.tenor) throw badRequest('Recommend a lower amount or a shorter tenor than the signed terms.', { recommended: ['Lower amount or shorter tenor only.'] }, 'RECOMMENDATION_INVALID');
-  if (rec.amount === signed.terms.amount && rec.tenor === signed.terms.tenor) return null;
-  const [version, pricing] = await Promise.all([ProductVersion.findById(app.productVersionId), PricingVersion.findById(app.pricingVersionId)]);
-  const ctx = await appSvc.context(req, app.productId, { app, versions: { product: { _id: app.productId }, version, pricing }, applicant: { userId: app.applicantUserId, staffId: app.applicantStaffId } });
-  const result = rules.evaluate(ctx, { ...appSvc.inputOf(app), amount: rec.amount, tenor: rec.tenor });
-  if (result.checks.length) throw badRequest(result.checks[0], { recommended: result.checks }, 'RECOMMENDATION_INVALID');
-  return { amount: rec.amount, tenor: rec.tenor, reason: rec.reason || null, by: req.auth.user._id, instalment: result.quote.instalment };
-}
-
 /**
  * body: { action, comment, crb: { outcome, reportDate, fileId }, appraisalNote, arrearsNote,
  *         recommended: { amount, tenor, reason }, suggested: { amount, tenor }, hrChecks }
@@ -138,7 +127,6 @@ async function decide(req, app, body) {
     throw forbidden('This application is not waiting for you.', 'NOT_YOUR_STAGE');
   }
   const stage = app.currentStage;
-  const route = ROUTES[app.route];
   const { action } = body;
   const comment = (body.comment || '').trim();
   const isFinal = app.stages.indexOf(stage) === app.stages.length - 1;
@@ -151,8 +139,8 @@ async function decide(req, app, body) {
     if (body.crb?.outcome) set.crb = { outcome: body.crb.outcome, reportDate: body.crb.reportDate ? localMidnight(body.crb.reportDate) : null, fileId: body.crb.fileId || app.crb?.fileId || null };
     if (body.appraisalNote !== undefined) set.appraisalNote = body.appraisalNote;
     if (body.arrearsNote !== undefined) set.arrearsNote = body.arrearsNote; // BR-10 (soft)
-    if (body.recommended && route.limitedCredit) throw badRequest('On this route the Credit Analyst records only the bureau result and cannot change the terms.', undefined, 'RECOMMENDATION_NOT_ALLOWED');
-    if (body.recommended && action === 'approve') recommended = await checkRecommendation(req, app, body.recommended);
+    // D-86: the Credit Analyst records the bureau check only; terms are not recommended any more.
+    if (body.recommended) throw badRequest('The Credit Analyst records the credit bureau check only and cannot recommend terms.', undefined, 'RECOMMENDATION_NOT_ALLOWED');
   } else if (body.recommended || body.crb) {
     throw badRequest('Only the Credit Analyst records the bureau result and recommends terms.', undefined, 'NOT_ALLOWED_AT_STAGE');
   }
@@ -170,7 +158,7 @@ async function decide(req, app, body) {
   const now = new Date();
   const staff = await Staff.findById(app.applicantStaffId).lean();
   const applicantName = fullName(staff);
-  const limited = route.limitedCredit;
+  const limited = stage === 'credit'; // the Credit Analyst sees identity only, on every route (D-86)
   const suggestion = action === 'return' && body.suggested?.amount ? ` Suggested terms: ${tzs(body.suggested.amount)} over ${body.suggested.tenor} months.` : '';
   const recNote = recommended ? ` Recommended terms: ${tzs(recommended.amount)} over ${recommended.tenor} months.` : '';
   const storedComment = `${comment}${suggestion}${recNote}`.trim() || null;
@@ -182,7 +170,16 @@ async function decide(req, app, body) {
   const termsChanged = !!(recommendedNow && (recommendedNow.amount !== agreement.terms.amount || recommendedNow.tenor !== agreement.terms.tenor));
 
   // D-82: every approval re-checks the cutoff with the latest verified date of birth.
-  if (action === 'approve') await recheckCutoff(app, recommendedNow || agreement.terms, now, { limited: limited && stage === 'credit' });
+  if (action === 'approve') {
+    const terms = recommendedNow || agreement.terms;
+    await recheckCutoff(app, terms, now, { limited: limited && stage === 'credit' });
+    // D-87: the combined cap again; another loan may have been approved in between.
+    const cap = await capCheck(app, terms, now);
+    if (!cap.ok) {
+      const generic = "This application cannot be approved now: the applicant's combined loan limit no longer allows it. Return or reject it.";
+      throw conflict(limited && stage === 'credit' ? generic : `This application cannot be approved now. ${cap.message} Return or reject it.`, cap.code);
+    }
+  }
 
   let outcome;
   await withTransaction(async (session) => {
@@ -270,7 +267,7 @@ async function uploadCrbReport(req, app, file) {
   if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Analyst at this stage can attach the bureau report.', 'NOT_YOUR_STAGE');
   const stored = await fileStore.store(file.buffer, { kind: 'crb_report', originalName: file.originalname, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id });
   await Application.updateOne({ _id: app._id }, { $set: { 'crb.fileId': stored._id } });
-  await audit.record({ req, action: 'review.crb_report', description: `${app.ref}: credit bureau report attached`, entity: 'Application', entityId: String(app._id), appRef: app.ref, limited: ROUTES[app.route].limitedCredit });
+  await audit.record({ req, action: 'review.crb_report', description: `${app.ref}: credit bureau report attached`, entity: 'Application', entityId: String(app._id), appRef: app.ref, limited: true });
   return stored;
 }
 
@@ -319,6 +316,8 @@ async function acceptRevised(req, app, body) {
 
   const now = new Date();
   await recheckCutoff(app, app.approved, now, { audience: 'applicant' }); // D-82
+  const cap = await capCheck(app, app.approved, now); // D-87
+  if (!cap.ok) throw conflict(`You cannot accept these terms now. ${cap.message} Decline them, and apply again for a smaller amount.`, cap.code);
   const number = await appSvc.nextRef('MKT');
   const name = fullName(staff);
   const approvals = await approvalsFor(app);

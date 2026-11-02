@@ -44,7 +44,6 @@ router.post(
       date: day.required().messages({ 'any.required': 'Enter the disbursement date.' }),
       transactionRef: Joi.string().trim().max(40).pattern(/^[A-Za-z0-9/-]*$/).allow('').messages({ 'string.pattern.base': 'Use letters, digits, / and - only.' }),
       comment: Joi.string().trim().max(1000).allow(''),
-      conditions: Joi.array().items(Joi.boolean()).max(50).default([]),
       topUpSettled: Joi.boolean(),
     }),
   }),

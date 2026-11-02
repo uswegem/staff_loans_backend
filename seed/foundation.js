@@ -68,4 +68,14 @@ async function seedFoundation({ password, mustChangePassword = false } = {}) {
   return { roles, users };
 }
 
-module.exports = { seedFoundation, HOLIDAYS };
+/** System data only: settings, holidays and roles. No people, products or applications. */
+async function seedSystem() {
+  await Settings.get();
+  for (const h of HOLIDAYS) {
+    // eslint-disable-next-line no-await-in-loop
+    await Holiday.updateOne({ date: h.date }, { $setOnInsert: h }, { upsert: true });
+  }
+  return seedRoles();
+}
+
+module.exports = { seedFoundation, seedSystem, seedRoles, HOLIDAYS };

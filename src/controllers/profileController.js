@@ -32,6 +32,9 @@ async function view(req, staff) {
   return {
     staffNo: o.staffNo,
     fullName: fullName(o),
+    firstName: o.firstName,
+    lastName: o.lastName, // the surname (D-85)
+    gender: o.gender || null,
     // personal.dob is the verified date of birth only; a proposed one is in dateOfBirth.pending (D-82).
     personal: { ...o.personal, dob: o.dateOfBirth?.value || null, nida: formatNida(o.personal?.nida) },
     dateOfBirth,

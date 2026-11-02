@@ -130,21 +130,31 @@ async function submit(chain, doc, { req, session }) {
   await checkEffectiveDate(chain, doc, session);
   const { changes } = await comparison(chain, doc, session);
   if (!changes.length && doc.changeType === 'change') throw badRequest('Nothing has changed from the live version.', undefined, 'NO_CHANGES');
-  const updated = await transition(chain, doc, EDITABLE_STATES, { state: 'pending_approval', submittedAt: new Date(), submittedBy: req.auth.user._id, rejectionReason: null }, session);
-  await audit.record({ req, action: `${chain.audit}.submit`, description: `${chain.describe(updated)} submitted for approval`, entity: chain.entity, entityId: String(doc._id), before: { state: doc.state }, after: { state: 'pending_approval', changes } }, { session });
+  const updated = await transition(chain, doc, EDITABLE_STATES, { state: 'pending_approval', stage: 'credit', approvals: [], submittedAt: new Date(), submittedBy: req.auth.user._id, rejectionReason: null }, session);
+  await audit.record({ req, action: `${chain.audit}.submit`, description: `${chain.describe(updated)} submitted for the Head of Credit's approval`, entity: chain.entity, entityId: String(doc._id), before: { state: doc.state }, after: { state: 'pending_approval', changes } }, { session });
   return updated;
 }
 
 async function recall(chain, doc, { req, session }) {
-  const updated = await transition(chain, doc, ['pending_approval'], { state: 'draft' }, session);
+  const updated = await transition(chain, doc, ['pending_approval'], { state: 'draft', stage: null, approvals: [] }, session);
   await audit.record({ req, action: `${chain.audit}.recall`, description: `${chain.describe(updated)} recalled to draft`, entity: chain.entity, entityId: String(doc._id), before: { state: 'pending_approval' }, after: { state: 'draft' } }, { session });
   return updated;
 }
 
+/** The permission each approval stage needs (D-89). */
+const STAGE_PERMISSION = { credit: 'products.approveCredit', risk: 'products.approveRisk' };
+const STAGE_NAME = { credit: 'Head of Credit', risk: 'Head of Risk and Compliance' };
+
 function refuseSelfCheck(doc, req, verb) {
   const me = String(req.auth.user._id);
   if (doc.editors.map(String).includes(me)) {
-    throw forbidden(`You prepared or edited this version, so another checker must ${verb} it.`, 'SELF_APPROVAL');
+    throw forbidden(`You prepared or edited this version, so another approver must ${verb} it.`, 'SELF_APPROVAL');
+  }
+  if (!req.auth.permissions.has(STAGE_PERMISSION[doc.stage])) {
+    throw forbidden(`This version is waiting for the ${STAGE_NAME[doc.stage]}.`, 'WRONG_STAGE');
+  }
+  if ((doc.approvals || []).some((a) => String(a.by) === me)) {
+    throw forbidden('You approved the first stage, so someone else must decide the second.', 'SELF_APPROVAL');
   }
 }
 
@@ -153,19 +163,32 @@ async function approve(chain, doc, { req, session }) {
   refuseSelfCheck(doc, req, 'approve');
   await checkEffectiveDate(chain, doc, session);
   const now = new Date();
+  const approvals = [...(doc.approvals || []), { stage: doc.stage, by: req.auth.user._id, at: now }];
+  if (doc.stage === 'credit') {
+    // First approval: on to the Head of Risk and Compliance; nothing goes live yet.
+    const moved = await chain.Model.findOneAndUpdate({ _id: doc._id, state: 'pending_approval', stage: 'credit' }, { $set: { stage: 'risk', approvals } }, { new: true, session });
+    if (!moved) throw conflict('Someone else changed this version. Reload and try again.', 'STATE_CHANGED');
+    await audit.record({ req, action: `${chain.audit}.approve_credit`, description: `${chain.describe(moved)} approved by the Head of Credit; waiting for the Head of Risk and Compliance`, entity: chain.entity, entityId: String(doc._id), before: { state: 'pending_approval', stage: 'credit' }, after: { state: 'pending_approval', stage: 'risk' } }, { session });
+    return moved;
+  }
   const liveFrom = doc.effectiveFrom > now ? doc.effectiveFrom : now;
-  await transition(chain, doc, ['pending_approval'], { state: 'approved_scheduled', approvedAt: now, liveFrom, checkerId: req.auth.user._id, decidedAt: now }, session);
+  const done = await chain.Model.findOneAndUpdate({ _id: doc._id, state: 'pending_approval', stage: 'risk' }, { $set: { state: 'approved_scheduled', stage: null, approvals, approvedAt: now, liveFrom, checkerId: req.auth.user._id, decidedAt: now } }, { new: true, session });
+  if (!done) throw conflict('Someone else changed this version. Reload and try again.', 'STATE_CHANGED');
   await promote(chain, { session });
   const fresh = await chain.Model.findById(doc._id).session(session || null);
-  await audit.record({ req, action: `${chain.audit}.approve`, description: `${chain.describe(fresh)} approved; ${fresh.state === 'approved_scheduled' ? `goes live ${localDay(liveFrom)}` : 'live now'}`, entity: chain.entity, entityId: String(doc._id), before: { state: 'pending_approval' }, after: { state: fresh.state, liveFrom } }, { session });
+  await audit.record({ req, action: `${chain.audit}.publish`, description: `${chain.describe(fresh)} approved by the Head of Risk and Compliance and published; ${fresh.state === 'approved_scheduled' ? `goes live ${localDay(liveFrom)}` : 'live now'}`, entity: chain.entity, entityId: String(doc._id), before: { state: 'pending_approval' }, after: { state: fresh.state, liveFrom } }, { session });
   return fresh;
 }
 
 async function reject(chain, doc, { req, reason, session }) {
   if (doc.state !== 'pending_approval') throw conflict('Only versions waiting for approval can be rejected.', 'NOT_PENDING');
   refuseSelfCheck(doc, req, 'reject');
-  const updated = await transition(chain, doc, ['pending_approval'], { state: 'rejected', rejectionReason: reason, checkerId: req.auth.user._id, decidedAt: new Date() }, session);
-  await audit.record({ req, action: `${chain.audit}.reject`, description: `${chain.describe(updated)} rejected: ${reason}`, entity: chain.entity, entityId: String(doc._id), before: { state: 'pending_approval' }, after: { state: 'rejected', reason } }, { session });
+  const why = (reason || '').trim();
+  if (!why) throw badRequest('Give a reason for the rejection.', { reason: ['Give a reason for the rejection.'] }, 'REASON_REQUIRED');
+  // A rejection at either stage returns the version to Draft with the reason (D-89).
+  const stage = doc.stage;
+  const updated = await transition(chain, doc, ['pending_approval'], { state: 'draft', stage: null, approvals: [], rejectionReason: why, checkerId: req.auth.user._id, decidedAt: new Date() }, session);
+  await audit.record({ req, action: `${chain.audit}.reject`, description: `${chain.describe(updated)} rejected by the ${STAGE_NAME[stage]}: ${why}; returned to draft`, entity: chain.entity, entityId: String(doc._id), before: { state: 'pending_approval', stage }, after: { state: 'draft', reason: why } }, { session });
   return updated;
 }
 
@@ -194,4 +217,4 @@ async function promote(chain, { now = new Date(), session } = {}) {
   return live;
 }
 
-module.exports = { liveAt, latestApproved, openChange, comparison, createDraft, updateDraft, submit, recall, approve, reject, discard, promote };
+module.exports = { liveAt, latestApproved, openChange, comparison, createDraft, updateDraft, submit, recall, approve, reject, discard, promote, STAGE_PERMISSION, STAGE_NAME };

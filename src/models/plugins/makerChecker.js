@@ -34,6 +34,10 @@ module.exports = function makerChecker(schema) {
     decidedAt: Date,
     approvedAt: { type: Date, default: null },
     rejectionReason: { type: String, trim: true, maxlength: 1000 },
+    // Two approvals in order (D-89): 'credit' (Head of Credit), then 'risk' (Head of Risk and
+    // Compliance). stage is the approval the version waits for while pending_approval.
+    stage: { type: String, enum: ['credit', 'risk', null], default: null },
+    approvals: { type: [{ _id: false, stage: String, by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, at: Date }], default: [] },
   });
   schema.index({ approvedAt: 1, liveFrom: -1, version: -1 });
 };

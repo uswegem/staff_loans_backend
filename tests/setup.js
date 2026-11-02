@@ -12,6 +12,8 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-slas-uni
 process.env.MFA_ENC_KEY = process.env.MFA_ENC_KEY || 'a'.repeat(64);
 process.env.BCRYPT_ROUNDS = '4';
 process.env.LOGIN_RATE_LIMIT_PER_MIN = '1000';
+// A developer's .env may turn Secure cookies off for http://localhost; tests use the default.
+process.env.COOKIE_SECURE = 'true';
 process.env.MONGODB_URI = process.env.SLAS_TEST_MONGO_URI;
 process.env.UPLOAD_DIR = require('path').join(require('os').tmpdir(), 'slas-test-uploads');
 

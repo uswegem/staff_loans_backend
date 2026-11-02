@@ -9,7 +9,8 @@ const { STAFF_NO } = require('../constants/staffNo');
 const { Schema } = mongoose;
 
 const kinSchema = new Schema(
-  { name: String, relationship: String, address: String, phone: String, employer: String },
+  // First name and surname (D-85); `name` is the pre-D-85 full name, split by scripts/split-names.js.
+  { firstName: String, lastName: String, name: String, relationship: String, address: String, phone: String, employer: String },
   { _id: false }
 );
 
@@ -49,16 +50,17 @@ const staffSchema = new Schema(
   {
     staffNo: { type: String, required: true, unique: true, uppercase: true, trim: true, match: STAFF_NO }, // employee code (C-07)
     firstName: { type: String, required: true, trim: true },
-    middleName: { type: String, trim: true },
-    lastName: { type: String, required: true, trim: true },
+    lastName: { type: String, required: true, trim: true }, // the surname (D-85)
     title: String,
     department: { type: String, index: true },
     station: String,
     stationHead: { name: String, phone: String },
     lineManagerId: { type: Schema.Types.ObjectId, ref: 'Staff' },
     category: { type: String, enum: ['Management', 'Non-management'], required: true, index: true },
-    employmentType: { type: String, enum: ['Permanent', 'Probation', 'Contract'], required: true },
-    dateJoined: { type: Date, required: true },
+    // People and Culture complete these; until then the staff member cannot apply (D-91).
+    employmentType: { type: String, enum: ['Permanent', 'Probation', 'Contract'] },
+    dateJoined: { type: Date },
+    gender: { type: String, enum: ['Male', 'Female'] },
     probationEndDate: Date,
     contractEndDate: Date,
     retirementDate: Date,
@@ -100,7 +102,7 @@ const staffSchema = new Schema(
 );
 
 staffSchema.virtual('fullName').get(function fullName() {
-  return [this.firstName, this.middleName, this.lastName].filter(Boolean).join(' ');
+  return [this.firstName, this.lastName].filter(Boolean).join(' ');
 });
 staffSchema.set('toJSON', { virtuals: true });
 staffSchema.set('toObject', { virtuals: true });

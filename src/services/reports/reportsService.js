@@ -191,16 +191,16 @@ async function disbursed(viewer, f) {
     const g = ags.get(String(a.currentAgreementId)) || { terms: {} };
     if (limitedFor(viewer, a)) {
       limitedCount += 1;
-      return [a.ref, '', fullName(s), '', LIMITED, '', '', '', '', '', '', '', '', day(a.disbursement.date), '', ''];
+      return [a.ref, '', fullName(s), '', LIMITED, '', '', '', '', '', '', '', day(a.disbursement.date), '', ''];
     }
     return [
       a.ref, s.staffNo, fullName(s), s.department || '', productOf(a), a.approved.amount, g.terms.processingFee || 0, g.terms.insuranceFee || 0, a.approved.instalment, a.approved.tenor,
-      a.repayment.method === 'payroll' ? 'Payroll deduction' : 'Account debit', a.repayment.method === 'account' ? `${a.repayment.bank || ''} ${a.repayment.accountNo || ''}`.trim() : '',
+      'Salary deduction', // the only repayment method (D-84)
       a.schedule?.[0]?.due || '', day(a.disbursement.date), a.disbursement.transactionRef || '', g.number || '',
     ];
   });
   return {
-    columns: [col('Reference'), col('Staff number'), col('Staff'), col('Department'), col('Product'), col('Amount', 'money'), col('Processing fee', 'money'), col('Insurance', 'money'), col('Instalment', 'money'), col('Tenor', 'number'), col('Repayment method'), col('Account'), col('First due date', 'date'), col('Disbursed', 'date'), col('Transaction ref'), col('Agreement')],
+    columns: [col('Reference'), col('Staff number'), col('Staff'), col('Department'), col('Product'), col('Amount', 'money'), col('Processing fee', 'money'), col('Insurance', 'money'), col('Instalment', 'money'), col('Tenor', 'number'), col('Repayment method'), col('First due date', 'date'), col('Disbursed', 'date'), col('Transaction ref'), col('Agreement')],
     rows,
     limitedCount,
     excluded,
@@ -263,7 +263,7 @@ async function agreements(viewer, f) {
 async function access() {
   const [assignments, users] = await Promise.all([RoleAssignment.find().sort({ assignedAt: 1 }).lean(), User.find().select('staffNo staffId status').lean()]);
   const roles = new Map((await Role.find().lean()).map((r) => [String(r._id), r]));
-  const staff = new Map((await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName middleName lastName title').lean()).map((s) => [String(s._id), s]));
+  const staff = new Map((await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName lastName title').lean()).map((s) => [String(s._id), s]));
   const today = localMidnight(localDay());
   const isActive = (x) => !x.revokedAt && (!x.endsOn || x.endsOn >= today);
   const activePerms = new Map();

@@ -2,13 +2,12 @@
 
 // Disbursement and notifications (BRD 11, 12; FR-20 to FR-22, FR-24 to FR-26; Q3).
 
-const { api, seedAll, applyAndSign, decide, signIn, CRB, HR_OK } = require('../flows');
+const { api, seedAll, applyAndSign, decide, signIn, runningLoan, CRB, HR_OK } = require('../flows');
 const Application = require('../../src/models/Application');
 const Agreement = require('../../src/models/Agreement');
 const Decision = require('../../src/models/Decision');
 const Delegation = require('../../src/models/Delegation');
 const Notification = require('../../src/models/Notification');
-const ProductVersion = require('../../src/models/ProductVersion');
 const AuditLog = require('../../src/models/AuditLog');
 const User = require('../../src/models/User');
 const { flagOutsideSla } = require('../../src/services/disbursement/disbursementService');
@@ -53,7 +52,7 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
     expect(ready.body.data.items[0]).toMatchObject({ id, staff: { name: 'Neema Mushi', staffNo: 'LFB0412' }, product: 'Personal Loan', amount: 4500000, instalment: 136900, processingFee: ag.terms.processingFee, insuranceFee: ag.terms.insuranceFee, outsideSla: false, blockedReason: null });
 
     const detail = await ops.get(`/disbursements/${id}`);
-    expect(detail.body.data).toMatchObject({ agreement: { number: ag.number }, conditions: [], earliestDate: localDay(), topUp: null });
+    expect(detail.body.data).toMatchObject({ agreement: { number: ag.number }, earliestDate: localDay(), topUp: null });
     expect(detail.body.data.schedule).toHaveLength(36);
 
     const today = localDay();
@@ -92,16 +91,13 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
     expect((await ops.get(`/agreements/${ag._id}/pdf`)).status).toBe(200);
   });
 
-  it('requires each product condition to be ticked (FR-22)', async () => {
+  it('re-checks the combined cap just before disbursement (D-87)', async () => {
     const { id } = await toOps();
-    const app = await Application.findById(id);
-    await ProductVersion.updateOne({ _id: app.productVersionId }, { $set: { disbursementConditions: ['Insurance cover note received', 'Sale agreement on file'] } });
+    await runningLoan('LFB0412', products.VL._id, 600000);
     const ops = api((await signIn('LFB0318')).token);
-    expect((await ops.get(`/disbursements/${id}`)).body.data.conditions).toHaveLength(2);
-    const body = { date: localDay(), comment: 'Disbursed.' };
-    expect((await ops.post(`/disbursements/${id}/confirm`, { ...body, conditions: [true] })).body.message).toBe('Tick each condition before you confirm.');
-    expect((await ops.post(`/disbursements/${id}/confirm`, { ...body, conditions: [true, true] })).status).toBe(200);
-    expect((await Application.findById(id)).disbursement.conditions.map((c) => c.text)).toEqual(['Insurance cover note received', 'Sale agreement on file']);
+    const res = await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), comment: 'Disbursed.' });
+    expect(res.body.code).toBe('AFFORDABILITY_EXCEEDED');
+    expect((await Application.findById(id)).status).toBe('pending_disbursement');
   });
 
   it('a top-up needs the old balance confirmed as settled', async () => {
@@ -165,8 +161,8 @@ describe('disbursed loans register (FR-26)', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/csv/);
     const lines = res.text.slice(1).split('\r\n');
-    expect(lines[0]).toBe('Reference,Staff number,Staff,Department,Product,Amount,Processing fee,Insurance,Instalment,Tenor,Repayment method,Account,First due date,Disbursed,Transaction ref,Agreement');
-    expect(lines[1]).toMatch(/^SL-\d{4}-\d{5},LFB0412,Neema Mushi,.*,Personal Loan,4500000,.*,136900,36,Payroll deduction,,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-\d{2},FT26294AB12,MKT-/);
+    expect(lines[0]).toBe('Reference,Staff number,Staff,Department,Product,Amount,Processing fee,Insurance,Instalment,Tenor,Repayment method,First due date,Disbursed,Transaction ref,Agreement');
+    expect(lines[1]).toMatch(/^SL-\d{4}-\d{5},LFB0412,Neema Mushi,.*,Personal Loan,4500000,.*,136900,36,Salary deduction,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-\d{2},FT26294AB12,MKT-/);
     expect(await AuditLog.countDocuments({ action: 'report.export' })).toBe(1);
 
     expect((await api((await signIn('LFB0051')).token).get('/disbursements/register.csv')).status).toBe(200); // HR (reports.export)

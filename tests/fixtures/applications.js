@@ -1,33 +1,35 @@
 'use strict';
 
+// TEST FIXTURES ONLY (D-92): sample applications for the tests and the throwaway e2e system.
+
 // The prototype's sample applications (all fictional), so queues, the four routes,
 // returns, revised terms and the OPS queue can be shown straight after seeding.
 // Only seeded into a system with no applications.
 
-const Application = require('../src/models/Application');
-const Agreement = require('../src/models/Agreement');
-const Decision = require('../src/models/Decision');
-const Counter = require('../src/models/Counter');
-const Staff = require('../src/models/Staff');
-const Salary = require('../src/models/Salary');
-const Settings = require('../src/models/Settings');
-const Notification = require('../src/models/Notification');
-const products = require('../src/services/products/productService');
-const calc = require('../src/services/calc/loanCalculator');
-const rules = require('../src/services/applications/rules');
-const agreementService = require('../src/services/agreement/agreementService');
-const { agreementPdf, textBlocks } = require('../src/services/agreement/pdfService');
-const fileStore = require('../src/services/files/fileStore');
-const calendar = require('../src/services/calendar/calendarService');
-const wt = require('../src/services/calendar/workingTime');
-const { STAGES, routeFor } = require('../src/services/workflow/routes');
-const { localDay } = require('../src/utils/dates');
-const payslipReader = require('../src/services/payslip/payslipReader');
-const { samplePayslip } = require('./samplePayslip');
+const Application = require('../../src/models/Application');
+const Agreement = require('../../src/models/Agreement');
+const Decision = require('../../src/models/Decision');
+const Counter = require('../../src/models/Counter');
+const Staff = require('../../src/models/Staff');
+const Salary = require('../../src/models/Salary');
+const Settings = require('../../src/models/Settings');
+const Notification = require('../../src/models/Notification');
+const products = require('../../src/services/products/productService');
+const calc = require('../../src/services/calc/loanCalculator');
+const rules = require('../../src/services/applications/rules');
+const agreementService = require('../../src/services/agreement/agreementService');
+const { agreementPdf, textBlocks } = require('../../src/services/agreement/pdfService');
+const fileStore = require('../../src/services/files/fileStore');
+const calendar = require('../../src/services/calendar/calendarService');
+const wt = require('../../src/services/calendar/workingTime');
+const { STAGES, routeFor } = require('../../src/services/workflow/routes');
+const { localDay } = require('../../src/utils/dates');
+const payslipReader = require('../../src/services/payslip/payslipReader');
+const { samplePayslip } = require('../../seed/samplePayslip');
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
-const fullName = (s) => [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ');
+const fullName = (s) => [s.firstName, s.lastName].filter(Boolean).join(' ');
 
 // a: applicant, p: product code, at: submitted (working hours or days ago), steps: decisions after submit
 const SAMPLES = [
@@ -38,7 +40,7 @@ const SAMPLES = [
     crb: 'Clear', appraisal: 'Stable repayment history on previous salary advance. Deposit of TZS 6.5m confirmed.',
     steps: [{ by: 'LFB0233', stage: 'credit', wh: 3, comment: 'Affordable at 48 months. CRB clear.' }],
   },
-  { ref: 'SL-2026-00028', a: 'LFB0067', p: 'HE', amount: 35000000, tenor: 96, purpose: 'Construction of family home', fields: { kind: 'Construction', place: 'Mbweni, Kinondoni' }, submittedWh: 1.2, status: 'pending_credit' },
+  { ref: 'SL-2026-00028', a: 'LFB0067', p: 'HE', amount: 35000000, tenor: 96, purpose: 'Construction of family home', submittedWh: 1.2, status: 'pending_credit' },
   {
     ref: 'SL-2026-00025', a: 'LFB0002', p: 'PL', amount: 20000000, tenor: 36, purpose: 'Family farm investment', submittedDays: 2, status: 'pending_hr', crb: 'Clear', appraisal: 'Bureau check on name, mobile and NIDA only: clear.',
     steps: [{ by: 'LFB0233', stage: 'credit', wh: 4, comment: 'Credit bureau clear.' }],
@@ -48,14 +50,14 @@ const SAMPLES = [
     steps: [{ by: 'LFB0233', stage: 'credit', wh: 5, comment: 'Credit bureau clear.' }],
   },
   {
-    ref: 'SL-2026-00026', a: 'LFB0377', p: 'HE', amount: 6000000, tenor: 24, purpose: 'Diploma tuition', fields: { kind: 'Tuition: self', place: 'Institute of Finance Management' }, submittedDays: 4, status: 'pending_ceo', crb: 'Clear',
+    ref: 'SL-2026-00026', a: 'LFB0377', p: 'HE', amount: 6000000, tenor: 24, purpose: 'Diploma tuition', submittedDays: 4, status: 'pending_ceo', crb: 'Clear',
     steps: [
       { by: 'LFB0233', stage: 'credit', wh: 30, comment: 'Within limits.' },
       { by: 'LFB0051', stage: 'hr', wh: 20, comment: 'Employment and salary confirmed.' },
     ],
   },
   {
-    ref: 'SL-2026-00027', a: 'LFB0412', p: 'HE', amount: 3200000, tenor: 12, purpose: 'Tuition for 2027 intake', fields: { kind: 'Tuition: dependant', place: 'St. Augustine University' }, submittedDays: 3, status: 'returned',
+    ref: 'SL-2026-00027', a: 'LFB0412', p: 'HE', amount: 3200000, tenor: 12, purpose: 'Tuition for 2027 intake', submittedDays: 3, status: 'returned',
     steps: [{ by: 'LFB0233', stage: 'credit', wh: 5, action: 'return', comment: 'Your payslip shows a CRDB deduction of TZS 150,000 that is not in your profile. Add it under other loans, and attach the admission letter if you have it.' }],
   },
   {
@@ -68,7 +70,7 @@ const SAMPLES = [
     ],
   },
   {
-    ref: 'SL-2026-00019', a: 'LFB0188', p: 'SA', amount: 800000, tenor: 3, purpose: 'Medical bill', submittedDays: 12, status: 'pending_disbursement', repayment: 'account', crb: 'Clear',
+    ref: 'SL-2026-00019', a: 'LFB0188', p: 'SA', amount: 800000, tenor: 3, purpose: 'Medical bill', submittedDays: 12, status: 'pending_disbursement', crb: 'Clear',
     steps: [
       { by: 'LFB0233', stage: 'credit', days: 11 },
       { by: 'LFB0051', stage: 'hr', days: 10 },
@@ -119,7 +121,7 @@ async function seedSampleApplications({ users, products: byCode }) {
     const read = await payslipReader.read(slipPdf, { staff });
     const pay = rules.payInputs(read);
     const q = calc.quote({ amount: s.amount, tenor: s.tenor, pay, pricing, startDay: localDay(submittedAt), dueDay: settings.firstDueDay });
-    const repayment = s.repayment === 'account' ? { method: 'account', bank: staff.bank.bank, branch: staff.bank.branch, accountName: staff.bank.accountName, accountNo: staff.bank.accountNo } : { method: 'payroll' };
+    const repayment = { method: 'payroll' }; // salary deduction only (D-84)
     const permissions = s.a === 'LFB0002' ? ['review.ceo'] : s.a === 'LFB0051' ? ['review.hr'] : [];
     const route = routeFor(permissions, staff);
 
@@ -209,7 +211,7 @@ async function seedSampleApplications({ users, products: byCode }) {
       // FR-21, FR-24: the schedule restarts from the disbursement date.
       const at = new Date(now.getTime() - s.disbursed.days * DAY);
       const date = localDay(at);
-      app.disbursement = { date: new Date(`${date}T00:00:00+03:00`), transactionRef: s.disbursed.ref, comment: s.disbursed.comment, conditions: version.disbursementConditions.map((text) => ({ text, ticked: true })), confirmedBy: id(s.disbursed.by), confirmedAt: at };
+      app.disbursement = { date: new Date(`${date}T00:00:00+03:00`), transactionRef: s.disbursed.ref, comment: s.disbursed.comment, confirmedBy: id(s.disbursed.by), confirmedAt: at };
       app.schedule = calc.schedule(s.amount, s.tenor, pricing.interestBps, pricing.instalmentRounding, calc.firstDueDate(date, settings.firstDueDay));
       Object.assign(app, { scheduleBasis: 'disbursement', closedAt: at, stageEnteredAt: at });
       await Decision.create({ applicationId: app._id, cycle: 1, action: 'disburse', actorId: id(s.disbursed.by), comment: `${s.disbursed.comment} Ref ${s.disbursed.ref}.`, details: { date, transactionRef: s.disbursed.ref }, at, ip: ip(s.disbursed.by) });

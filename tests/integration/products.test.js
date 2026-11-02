@@ -3,7 +3,7 @@
 // Products and pricing with maker-checker (BRD 5.1, FR-57 to FR-63, decision 32, 33).
 
 const { app, seed, signIn, authed, request } = require('../helpers');
-const { seedProducts } = require('../../seed/products');
+const { seedProducts } = require('../fixtures/products');
 const Product = require('../../src/models/Product');
 const ProductVersion = require('../../src/models/ProductVersion');
 const Role = require('../../src/models/Role');
@@ -20,6 +20,7 @@ const inDays = (n) => localDay(new Date(Date.now() + n * DAY));
 
 let maker;
 let checker;
+let risk;
 let products;
 
 const api = (token) => ({
@@ -31,13 +32,19 @@ const api = (token) => ({
 const pl = () => String(products.PL._id);
 const draft = (body, id = pl()) => api(maker.token).post(`/admin/products/${id}/drafts`, { effectiveFrom: today(), ...body });
 const submit = (vid) => api(maker.token).post(`/admin/product-versions/${vid}/submit`);
-const approve = (vid, who = checker) => api(who.token).post(`/admin/product-versions/${vid}/approve`);
+const approveAs = (vid, who) => api(who.token).post(`/admin/product-versions/${vid}/approve`);
+// Both stages (D-89): the Head of Credit, then the Head of Risk and Compliance.
+const approve = async (vid) => {
+  await approveAs(vid, checker);
+  return approveAs(vid, risk);
+};
 
 beforeEach(async () => {
   const { users } = await seed();
   products = await seedProducts(users);
   maker = await signIn('LFB0274'); // Peter Lyimo, products.make
-  checker = await signIn('LFB0010'); // Asha Mfinanga, products.check
+  checker = await signIn('LFB0010'); // Asha Mfinanga, Head of Credit: products.make and products.approveCredit
+  risk = await signIn('LFB0067'); // Head of Risk and Compliance: products.approveRisk
 });
 
 describe('launch products (decision 33)', () => {
@@ -49,7 +56,8 @@ describe('launch products (decision 33)', () => {
     res.body.data.forEach((p) => expect([p.minAmount, p.maxAmount]).toEqual([500000, 300000000]));
     const vl = res.body.data.find((p) => p.code === 'VL');
     expect(vl.fields.map((f) => f.key)).toEqual(['make', 'year', 'seller', 'price']);
-    expect(vl.disbursementConditions).toHaveLength(2);
+    expect(vl.disbursementConditions).toBeUndefined();
+    expect(vl.requiredDocuments).toBeUndefined();
   });
 
   it('launch pricing is 6% reducing, 1% / 0.5% fees, 0.60% insurance, 50% affordability', async () => {
@@ -110,11 +118,16 @@ describe('maker drafts a change (FR-58)', () => {
     expect((await submit(d.body.data.id)).body.code).toBe('NO_CHANGES');
   });
 
-  it('a checker cannot draft and a maker cannot approve', async () => {
-    expect((await api(checker.token).post(`/admin/products/${pl()}/drafts`, { effectiveFrom: today(), values: { maxTenor: 72 } })).status).toBe(403);
+  it('the Head of Risk cannot draft and a maker cannot approve', async () => {
+    expect((await api(risk.token).post(`/admin/products/${pl()}/drafts`, { effectiveFrom: today(), values: { maxTenor: 72 } })).status).toBe(403);
     const d = await draft({ values: { maxTenor: 72 } });
     await submit(d.body.data.id);
-    expect((await approve(d.body.data.id, maker)).status).toBe(403);
+    expect((await approveAs(d.body.data.id, maker)).status).toBe(403);
+  });
+
+  it('refuses account debit: every loan is repaid by salary deduction (D-84)', async () => {
+    const res = await draft({ values: { repaymentMethods: ['payroll', 'account'] } });
+    expect(res.status).toBe(400);
   });
 });
 
@@ -147,7 +160,7 @@ describe('checker decides (FR-59, FR-60)', () => {
     const noReason = await api(checker.token).post(`/admin/product-versions/${d.body.data.id}/reject`, {});
     expect(noReason.status).toBe(400);
     const res = await api(checker.token).post(`/admin/product-versions/${d.body.data.id}/reject`, { reason: 'Policy caps Personal Loan at 60 months.' });
-    expect(res.body.data.state).toBe('rejected');
+    expect(res.body.data.state).toBe('draft');
     expect(res.body.data.rejectionReason).toBe('Policy caps Personal Loan at 60 months.');
     const peter = await User.findOne({ staffNo: 'LFB0274' });
     expect(await Notification.countDocuments({ userId: peter._id, type: 'maker_checker.rejected' })).toBe(1);
@@ -157,17 +170,15 @@ describe('checker decides (FR-59, FR-60)', () => {
     expect((await submit(d.body.data.id)).body.data.state).toBe('pending_approval');
   });
 
-  it('refuses approval by anyone who edited the draft, even with checker rights (FR-60)', async () => {
+  it('refuses approval by anyone who edited the draft, even with approval rights (FR-60)', async () => {
     const d = await draft({ values: { maxTenor: 72 } });
     await submit(d.body.data.id);
-    // Peter later becomes a checker (his maker role removed, so SoD allows it).
+    // Peter later becomes Head of Credit as well.
     const peter = await User.findOne({ staffNo: 'LFB0274' });
-    const sysAdmin = await Role.findOne({ code: 'sys_admin' });
-    const checkerRole = await Role.findOne({ code: 'product_checker' });
-    await RoleAssignment.updateOne({ userId: peter._id, roleId: sysAdmin._id }, { $set: { revokedAt: new Date() } });
-    await RoleAssignment.create({ userId: peter._id, roleId: checkerRole._id });
+    const headCredit = await Role.findOne({ code: 'head_credit' });
+    await RoleAssignment.create({ userId: peter._id, roleId: headCredit._id });
     const peterAsChecker = await signIn('LFB0274');
-    const res = await approve(d.body.data.id, peterAsChecker);
+    const res = await approveAs(d.body.data.id, peterAsChecker);
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('SELF_APPROVAL');
   });
@@ -185,7 +196,39 @@ describe('checker decides (FR-59, FR-60)', () => {
     expect(live.body.data.find((p) => p.code === 'PL').maxTenor).toBe(72);
     const v1 = await ProductVersion.findOne({ productId: products.PL._id, version: 1 });
     expect(v1.state).toBe('superseded');
-    expect(await AuditLog.countDocuments({ action: 'product.approve' })).toBe(1);
+    expect(await AuditLog.countDocuments({ action: 'product.approve_credit' })).toBe(1);
+    expect(await AuditLog.countDocuments({ action: 'product.publish' })).toBe(1);
+  });
+
+  it('runs in order: Head of Credit first, then Head of Risk and Compliance; staff see nothing until published', async () => {
+    const d = await draft({ values: { maxTenor: 72 } });
+    await submit(d.body.data.id);
+    const early = await approveAs(d.body.data.id, risk);
+    expect(early.status).toBe(403);
+    expect(early.body.code).toBe('WRONG_STAGE');
+    const first = await approveAs(d.body.data.id, checker);
+    expect(first.body.data.state).toBe('pending_approval');
+    expect(first.body.data.stage).toBe('risk');
+    const headRisk = await User.findOne({ staffNo: 'LFB0067' });
+    expect(await Notification.countDocuments({ userId: headRisk._id, type: 'maker_checker.submitted' })).toBe(1);
+    // The Head of Credit cannot also decide the second stage.
+    expect((await approveAs(d.body.data.id, checker)).status).toBe(403);
+    const neema = await signIn('LFB0412');
+    expect((await api(neema.token).get('/products')).body.data.find((p) => p.code === 'PL').maxTenor).toBe(60);
+    const done = await approveAs(d.body.data.id, risk);
+    expect(done.body.data.state).toBe('active');
+    expect(done.body.data.approvals.map((a) => a.stage)).toEqual(['credit', 'risk']);
+    expect((await api(neema.token).get('/products')).body.data.find((p) => p.code === 'PL').maxTenor).toBe(72);
+  });
+
+  it('the Head of Risk and Compliance can reject; it returns to draft with the reason', async () => {
+    const d = await draft({ values: { maxTenor: 72 } });
+    await submit(d.body.data.id);
+    await approveAs(d.body.data.id, checker);
+    const res = await api(risk.token).post(`/admin/product-versions/${d.body.data.id}/reject`, { reason: 'Exposure limit.' });
+    expect(res.body.data.state).toBe('draft');
+    expect(res.body.data.approvals).toEqual([]);
+    expect(await AuditLog.countDocuments({ action: 'product.reject' })).toBe(1);
   });
 });
 
@@ -290,7 +333,8 @@ describe('pricing maker-checker (D-06)', () => {
     expect(d.body.data.comparison.changes).toEqual([{ field: 'interestBps', label: 'Interest a year (basis points)', before: 600, after: 700 }]);
     await api(maker.token).post(`/admin/pricing-versions/${d.body.data.id}/submit`);
     expect((await api(maker.token).post(`/admin/pricing-versions/${d.body.data.id}/approve`)).status).toBe(403);
-    expect((await api(checker.token).post(`/admin/pricing-versions/${d.body.data.id}/approve`)).body.data.state).toBe('active');
+    expect((await api(checker.token).post(`/admin/pricing-versions/${d.body.data.id}/approve`)).body.data.state).toBe('pending_approval');
+    expect((await api(risk.token).post(`/admin/pricing-versions/${d.body.data.id}/approve`)).body.data.state).toBe('active');
     expect((await api(maker.token).get('/pricing')).body.data.interestBps).toBe(700);
   });
 

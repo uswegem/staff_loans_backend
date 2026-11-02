@@ -15,11 +15,11 @@ const { localDay, localMidnight } = require('../../utils/dates');
 const { badRequest, conflict, forbidden, notFound } = require('../../utils/errors');
 
 const MAX_DAYS = 90;
-const fullName = (s) => (s ? [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') : '');
+const fullName = (s) => (s ? [s.firstName, s.lastName].filter(Boolean).join(' ') : '');
 
 async function people(ids) {
   const users = await User.find({ _id: { $in: ids } }).select('staffId staffNo').lean();
-  const staff = await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName middleName lastName title').lean();
+  const staff = await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName lastName title').lean();
   const s = new Map(staff.map((x) => [String(x._id), x]));
   return new Map(users.map((u) => [String(u._id), { id: String(u._id), staffNo: u.staffNo, name: fullName(s.get(String(u.staffId))), title: s.get(String(u.staffId))?.title }]));
 }
@@ -51,7 +51,7 @@ async function list(req) {
 async function candidates(req, q) {
   const re = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
   const staff = await Staff.find({ status: 'active', ...(re ? { $or: [{ firstName: re }, { lastName: re }, { staffNo: re }, { title: re }] } : {}) })
-    .select('_id staffNo firstName middleName lastName title')
+    .select('_id staffNo firstName lastName title')
     .limit(20)
     .lean();
   const users = await User.find({ staffId: { $in: staff.map((s) => s._id) }, status: 'active', _id: { $ne: req.auth.user._id } }).select('staffId').lean();

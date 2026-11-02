@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0 – Salary deduction, combined cap, Legal and product approvals (2 Nov 2026)
+
+- Every loan is repaid by salary deduction; account debit, required and optional documents and disbursement conditions are removed from products (dropped from the schema), applications, disbursement and reports (D-84).
+- Payslip: "Staff Code in the Payslip doesn't match your staff number, upload correct Pay Slip"; PDF only; refused at upload when older than 45 days.
+- First Name and Surname for staff and next of kin; `scripts/split-names.js` splits existing names and logs those it cannot (D-85).
+- The Credit Analyst gets only first name, surname, NIDA number and mobile on every route, in every response and notification; recommendations are refused (D-86).
+- One combined 50% cap on Net Pay across all Staff Loans loans, approved-not-disbursed included, with top-up add-back and a payslip mismatch flag; re-checked at every approval and before disbursement; a top-up draft can start at the product's concurrent limit (D-87).
+- Agreement templates: Legal Officer uploads and edits, Head of Legal approves or rejects with a reason; no self-approval; only approved versions are used; editing an approved one makes a new version (D-88).
+- Products and pricing: Draft → Head of Credit → Head of Risk and Compliance → Published; rejection returns to Draft with the reason (D-89). New system roles (D-90). Gender on staff records; employment type and date joined optional (D-91).
+- Seeders hold system data only; demo products and applications moved to `tests/fixtures`; `npm run reset:staff` loads the staff table with roles and a forced password change; `npm run upgrade` (D-92).
+- Tests use secure cookies whatever the local `.env` says.
+
 ## 0.10.0 – Date of birth verification and retirement cutoff (2 Nov 2026)
 
 - Date of birth changes wait for People and Culture (`DobChange`, permission `staff.verifyDob`): queue, approve, reject with a reason, withdraw by the submitter; no self-verification; audited and notified (D-82).

@@ -3,10 +3,10 @@
 // Shared steps for workflow tests: seed everything, apply, sign, decide.
 
 const { app, seed, signIn, authed, PASSWORD, request } = require('./helpers');
-const { seedProducts } = require('../seed/products');
+const { seedProducts } = require('./fixtures/products');
 const { seedAgreementTemplate } = require('../seed/agreementTemplate');
 const { samplePayslip } = require('../seed/samplePayslip');
-const { PRICING } = require('../seed/products');
+const { PRICING } = require('./fixtures/products');
 const Staff = require('../src/models/Staff');
 const Salary = require('../src/models/Salary');
 const { localDay } = require('../src/utils/dates');
@@ -17,6 +17,7 @@ const api = (token) => ({
   get: (url) => request(app()).get(`/api/v1${url}`).set(authed(token)),
   post: (url, body = {}) => request(app()).post(`/api/v1${url}`).set(authed(token)).send(body),
   patch: (url, body) => request(app()).patch(`/api/v1${url}`).set(authed(token)).send(body),
+  put: (url, body) => request(app()).put(`/api/v1${url}`).set(authed(token)).send(body),
 });
 
 async function seedAll() {
@@ -72,4 +73,26 @@ const decide = (person, id, body) => api(person.token).post(`/review/${id}/decis
 const CRB = { outcome: 'Clear', reportDate: '2026-10-28' };
 const HR_OK = { employment: true, category: true, salary: true };
 
-module.exports = { api, seedAll, applyAndSign, attachPayslip, sign, decide, signIn, CRB, HR_OK, PASSWORD };
+/** Another running Staff Loans loan for the combined cap (D-87): approved, instalments still due. */
+let refNo = 80000;
+async function runningLoan(staffNo, productId, instalment, status = 'disbursed') {
+  const Application = require('../src/models/Application');
+  const ProductVersion = require('../src/models/ProductVersion');
+  const User = require('../src/models/User');
+  const [user, staff, version] = await Promise.all([User.findOne({ staffNo }), Staff.findOne({ staffNo }), ProductVersion.findOne({ productId, state: 'active' })]);
+  refNo += 1;
+  return Application.create({
+    ref: `SL-2025-${refNo}`,
+    applicantUserId: user._id,
+    applicantStaffId: staff._id,
+    productId,
+    productVersionId: version._id,
+    status,
+    repayment: { method: 'payroll' },
+    approved: { amount: 3000000, tenor: 24, instalment },
+    finalApprovedAt: new Date(),
+    schedule: [{ n: 1, due: localDay(new Date(Date.now() + 400 * 24 * 3600 * 1000)), instalment }],
+  });
+}
+
+module.exports = { api, seedAll, applyAndSign, attachPayslip, sign, decide, signIn, runningLoan, CRB, HR_OK, PASSWORD };

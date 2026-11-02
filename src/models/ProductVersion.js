@@ -10,7 +10,8 @@ const { Schema } = mongoose;
 
 const FIELD_TYPES = ['text', 'textarea', 'number', 'money', 'date', 'select'];
 const CATEGORIES = ['Management', 'Non-management'];
-const REPAYMENT_METHODS = ['payroll', 'account'];
+// Every staff loan is repaid by salary deduction (D-84): account debit was removed.
+const REPAYMENT_METHODS = ['payroll'];
 
 const fieldSchema = new Schema(
   {
@@ -39,11 +40,9 @@ const versionSchema = new Schema(
     contractStaffAllowed: { type: Boolean, default: false },
     eligibleCategories: { type: [{ type: String, enum: CATEGORIES }], default: CATEGORIES },
     repaymentMethods: { type: [{ type: String, enum: REPAYMENT_METHODS }], default: REPAYMENT_METHODS },
-    requiredDocuments: { type: [String], default: [] },
-    optionalDocuments: { type: [String], default: [] },
     fields: { type: [fieldSchema], default: [] },
-    disbursementConditions: { type: [String], default: [] },
-    reapplyCoolingMonths: { type: Number, default: 6 }, // NS-02
+    // Minimum number of months before applying for a top-up of this product (NS-02, D-84).
+    reapplyCoolingMonths: { type: Number, default: 6 },
     agreementTemplateId: { type: Schema.Types.ObjectId, ref: 'AgreementTemplate', default: null }, // null = the active template
   },
   { timestamps: true }

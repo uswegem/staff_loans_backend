@@ -25,7 +25,7 @@ async function remindOverdue(now = new Date()) {
     if (!claimed.modifiedCount) continue;
     const actors = await workflow.stageActors(app, { now });
     const recipients = actors.flatMap((a) => [a.userId, a.onBehalfOf].filter(Boolean));
-    const staff = await Staff.findById(app.applicantStaffId).select('firstName middleName lastName').lean();
+    const staff = await Staff.findById(app.applicantStaffId).select('firstName lastName').lean();
     await notify.notifyUsers(
       recipients,
       { type: 'application.overdue', text: `${app.ref} from ${fullName(staff)} is overdue at ${stageName(app.currentStage)} review.`, href: `/review/${app._id}`, entity: 'Application', entityId: String(app._id) },

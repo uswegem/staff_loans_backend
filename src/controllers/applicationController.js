@@ -12,6 +12,8 @@ const svc = require('../services/applications/applicationService');
 const fileStore = require('../services/files/fileStore');
 const audit = require('../services/audit/auditService');
 const { STATUS, EDITABLE } = require('../constants/statuses');
+const rules = require('../services/applications/rules');
+const { localDay } = require('../utils/dates');
 const { withTransaction } = require('../config/db');
 const { badRequest, conflict, notFound } = require('../utils/errors');
 const workflow = require('../services/workflow/workflowService');
@@ -118,6 +120,9 @@ const ApplicationController = {
     if (req.file.size > settings.maxUploadMb * 1024 * 1024) throw badRequest(`Files can be up to ${settings.maxUploadMb} MB.`, { payslip: [`Files can be up to ${settings.maxUploadMb} MB.`] }, 'FILE_TOO_LARGE');
     const staff = await Staff.findById(app.applicantStaffId).lean();
     const out = await payslipReader.read(req.file.buffer, { staff, rules: payslipReader.rulesFrom(settings) });
+    // A payslip older than the limit is refused at upload as well as at submission (D-79).
+    const tooOld = !out.problem && rules.payslipProblem({ fileId: true, payDate: out.payDate }, settings, localDay());
+    if (tooOld) out.problem = { code: 'PAYSLIP_TOO_OLD', message: tooOld };
     if (out.problem) {
       await audit.record({ req, action: 'payslip.unreadable', description: `${app.ref}: payslip ${req.file.originalname} not accepted (${out.problem.code})`, entity: 'Application', entityId: String(app._id), appRef: app.ref, status: 'failed' });
       throw badRequest(out.problem.message, { payslip: [out.problem.message] }, out.problem.code);

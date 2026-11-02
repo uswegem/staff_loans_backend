@@ -20,7 +20,7 @@ const defaultsFor = (p) => {
       residence: 'Dar es Salaam',
     },
     bank: { bank: 'Letshego Faidika Bank', branch: 'Head Office', accountName: p.name, accountNo: `4010 0000 ${last4}` },
-    nextOfKin: [{ name: 'Next of kin', relationship: 'Sibling', phone: '+255 700 111 222', address: 'Dar es Salaam', employer: '' }],
+    nextOfKin: [{ firstName: 'Next', lastName: 'Of Kin', relationship: 'Sibling', phone: '+255 700 111 222', address: 'Dar es Salaam', employer: '' }],
     payDeclaredAt: new Date('2026-10-01T09:00:00+03:00'),
   };
 };
@@ -36,7 +36,7 @@ const PEOPLE = [
       personal: { maritalStatus: 'Married', dob: '1989-07-12', nida: '19890712141120000421', nationality: 'Tanzanian', mobile: '+255 713 448 902', homePhone: '', poBox: 'P.O. Box 1187, Mwanza', residence: 'Isamilo, Nyamagana' },
       workPhone: '+255 28 250 1190',
       bank: { bank: 'Letshego Faidika Bank', branch: 'Mwanza', accountName: 'Neema J. Mushi', accountNo: '4010 2283 1170' },
-      nextOfKin: [{ name: 'Joseph Mushi', relationship: 'Spouse', phone: '+255 765 300 411', address: 'Isamilo, Mwanza', employer: 'TANESCO' }],
+      nextOfKin: [{ firstName: 'Joseph', lastName: 'Mushi', relationship: 'Spouse', phone: '+255 765 300 411', address: 'Isamilo, Mwanza', employer: 'TANESCO' }],
     },
   },
   { name: 'Juma Kassim', staffNo: 'LFB0233', roles: ['staff', 'credit_analyst'], title: 'Credit Analyst', department: 'Credit', station: HO, category: 'Non-management', joined: '2017-01-09', retirement: '2046-02-01', pay: { basic: 2900000, allowances: 300000 }, mobile: '+255 715 230 418' },
@@ -45,7 +45,7 @@ const PEOPLE = [
   { name: 'Joseph Mwakalinga', staffNo: 'LFB0002', roles: ['staff', 'ceo'], title: 'Chief Executive Officer', department: 'Executive Office', station: HO, category: 'Management', joined: '2012-02-01', retirement: '2036-04-18', pay: { basic: 18500000 }, mobile: '+255 784 000 210', dob: '1976-04-18' },
   { name: 'Halima Said', staffNo: 'LFB0318', roles: ['staff', 'ops'], title: 'Operations Officer', department: 'Central Operations', station: HO, category: 'Non-management', joined: '2018-08-20', retirement: '2051-01-15', pay: { basic: 2300000 }, mobile: '+255 713 318 640' },
   { name: 'Peter Lyimo', staffNo: 'LFB0274', roles: ['staff', 'sys_admin'], title: 'Systems Administrator', department: 'IT and Cybersecurity', station: HO, category: 'Non-management', joined: '2017-11-01', retirement: '2050-06-03', pay: { basic: 3100000 }, mobile: '+255 767 274 115' },
-  { name: 'Daniel Mrema', staffNo: 'LFB0067', roles: ['staff', 'risk_audit_viewer'], title: 'Head of Risk', department: 'Risk', station: HO, category: 'Management', joined: '2015-10-05', retirement: '2040-12-11', pay: { basic: 8200000 }, mobile: '+255 754 067 390', dob: '1980-12-11' },
+  { name: 'Daniel Mrema', staffNo: 'LFB0067', roles: ['staff', 'risk_audit_viewer', 'head_risk'], title: 'Head of Risk', department: 'Risk', station: HO, category: 'Management', joined: '2015-10-05', retirement: '2040-12-11', pay: { basic: 8200000 }, mobile: '+255 754 067 390', dob: '1980-12-11' },
   {
     name: 'Rehema Ally', staffNo: 'LFB0596', roles: ['staff'], title: 'Teller', department: 'Branch Network', station: 'Dodoma Branch', stationHead: { name: 'Faraji Nyoni', phone: '+255 787 021 554' },
     category: 'Non-management', joined: '2026-02-02', retirement: '2061-05-20', pay: { basic: 1100000, allowances: 120000 },
@@ -56,10 +56,10 @@ const PEOPLE = [
       payDeclaredAt: null,
     },
   },
-  { name: 'Faraji Nyoni', staffNo: 'LFB0188', roles: ['staff'], title: 'Branch Manager', department: 'Branch Network', station: 'Dodoma Branch', category: 'Non-management', joined: '2016-04-11', retirement: '2044-03-02', pay: { basic: 4200000 }, mobile: '+255 787 188 402' },
-  { name: 'Aisha Kombo', staffNo: 'LFB0451', roles: ['staff'], title: 'Loan Officer', department: 'Business', station: 'Arusha Branch', category: 'Non-management', joined: '2020-06-15', retirement: '2055-10-09', pay: { basic: 1650000 }, mobile: '+255 744 451 009' },
+  { name: 'Faraji Nyoni', staffNo: 'LFB0188', roles: ['staff', 'legal_officer'], title: 'Branch Manager', department: 'Branch Network', station: 'Dodoma Branch', category: 'Non-management', joined: '2016-04-11', retirement: '2044-03-02', pay: { basic: 4200000 }, mobile: '+255 787 188 402' },
+  { name: 'Aisha Kombo', staffNo: 'LFB0451', roles: ['staff', 'head_legal'], title: 'Loan Officer', department: 'Business', station: 'Arusha Branch', category: 'Non-management', joined: '2020-06-15', retirement: '2055-10-09', pay: { basic: 1650000 }, mobile: '+255 744 451 009' },
   { name: 'Salma Hamisi', staffNo: 'LFB0377', roles: ['staff'], title: 'Senior Teller', department: 'Branch Network', station: 'Kariakoo Branch', category: 'Non-management', joined: '2019-09-02', retirement: '2052-08-21', pay: { basic: 1400000 }, mobile: '+255 713 377 562' },
-  { name: 'Asha Mfinanga', staffNo: 'LFB0010', roles: ['staff', 'product_checker'], title: 'Head of Operations', department: 'Operations', station: HO, category: 'Management', joined: '2013-07-01', retirement: '2042-03-14', pay: { basic: 8000000 }, mobile: '+255 754 010 551', dob: '1982-03-14' },
+  { name: 'Asha Mfinanga', staffNo: 'LFB0010', roles: ['staff', 'head_credit'], title: 'Head of Operations', department: 'Operations', station: HO, category: 'Management', joined: '2013-07-01', retirement: '2042-03-14', pay: { basic: 8000000 }, mobile: '+255 754 010 551', dob: '1982-03-14' },
 ];
 
 function toStaffDoc(p) {
@@ -73,8 +73,7 @@ function toStaffDoc(p) {
   return {
     staffNo: p.staffNo,
     firstName,
-    lastName: rest.pop(),
-    middleName: rest.join(' ') || undefined,
+    lastName: rest.join(' '), // the surname (D-85)
     title: p.title,
     department: p.department,
     station: p.station,

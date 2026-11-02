@@ -4,7 +4,7 @@
 // eligibility view with the reapply cooling period (NS-02, NS-03).
 
 const { app, seed, signIn, authed, request } = require('../helpers');
-const { seedProducts } = require('../../seed/products');
+const { seedProducts } = require('../fixtures/products');
 const Staff = require('../../src/models/Staff');
 const Settings = require('../../src/models/Settings');
 const AuditLog = require('../../src/models/AuditLog');
@@ -48,7 +48,7 @@ describe('my profile', () => {
     const res = await api(rehema.token).get('/me/profile/completeness');
     expect(res.body.data.complete).toBe(false);
     expect(res.body.data.missing.map((m) => m.label)).toEqual(
-      expect.arrayContaining(['Marital status', 'Date of birth', 'NIDA number', 'P.O. Box', 'Account number', 'Next of kin name'])
+      expect.arrayContaining(['Marital status', 'Date of birth', 'NIDA number', 'P.O. Box', 'Account number', 'Next of kin first name', 'Next of kin surname'])
     );
     expect(res.body.data.missing.find((m) => m.key === 'personal.mobile')).toBeUndefined();
   });
@@ -58,9 +58,10 @@ describe('my profile', () => {
     const r = api(rehema.token);
     expect((await r.patch('/me/profile/personal', { maritalStatus: 'Single', dob: '1998-05-20', nida: '19980520-41108-00031-26', poBox: 'P.O. Box 902, Dodoma', residence: 'Area D, Dodoma' })).status).toBe(200);
     expect((await r.patch('/me/profile/bank', { accountNo: '4010 3341 0596' })).status).toBe(200);
-    expect((await r.patch('/me/profile/kin', { nextOfKin: [{ name: 'Mwanaidi Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Kikuyu, Dodoma' }] })).status).toBe(200);
+    expect((await r.patch('/me/profile/kin', { nextOfKin: [{ firstName: 'Mwanaidi', lastName: 'Ally', relationship: 'Parent', phone: '+255 715 660 214', address: 'Kikuyu, Dodoma' }] })).status).toBe(200);
     const kin = await r.get('/me/profile/completeness');
-    expect(kin.body.data).toMatchObject({ complete: true, done: 15, total: 15 });
+    expect(kin.body.data).toMatchObject({ complete: true, done: 16, total: 16 });
+    expect((await r.get('/me/profile')).body.data.nextOfKin[0]).toMatchObject({ firstName: 'Mwanaidi', lastName: 'Ally' });
     // Existing staff loans are optional and need no confirmation tick (D-80).
     expect((await r.patch('/me/profile/pay', { existingLfbLoans: [] })).status).toBe(200);
     const staff = await Staff.findOne({ staffNo: 'LFB0596' });

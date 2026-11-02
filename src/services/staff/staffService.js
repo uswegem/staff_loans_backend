@@ -17,9 +17,9 @@ const LFB_BANK = 'Letshego Faidika Bank';
 
 // Fields People and Culture maintain (FR-01). Personal, bank, next-of-kin and pay
 // declarations belong to the staff member's profile.
-const HR_FIELDS = ['firstName', 'middleName', 'lastName', 'title', 'department', 'station', 'stationHead', 'lineManagerId', 'category', 'employmentType', 'dateJoined', 'probationEndDate', 'contractEndDate', 'retirementDate', 'email', 'workPhone', 'lfbAccountNo', 'incomeClass'];
+const HR_FIELDS = ['firstName', 'lastName', 'gender', 'title', 'department', 'station', 'stationHead', 'lineManagerId', 'category', 'employmentType', 'dateJoined', 'probationEndDate', 'contractEndDate', 'retirementDate', 'email', 'workPhone', 'lfbAccountNo', 'incomeClass'];
 
-const fullName = (s) => [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ');
+const fullName = (s) => [s.firstName, s.lastName].filter(Boolean).join(' ');
 
 function hrSnapshot(s) {
   if (!s) return null;
@@ -63,6 +63,7 @@ async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, 
     staff = new Staff({
       staffNo,
       ...fields,
+      gender: fields.gender || undefined,
       status: extra.status || 'active',
       personal: { mobile: extra.mobile || undefined },
       bank: { bank: LFB_BANK, branch: '', accountName: fullName(fields), accountNo: fields.lfbAccountNo || '' },
@@ -70,7 +71,7 @@ async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, 
     });
   } else {
     HR_FIELDS.forEach((k) => {
-      if (fields[k] !== undefined) staff[k] = fields[k];
+      if (fields[k] !== undefined) staff[k] = fields[k] === '' && k === 'gender' ? undefined : fields[k];
     });
     if (extra.mobile && !staff.personal?.mobile) staff.set('personal.mobile', extra.mobile);
     if (fields.lfbAccountNo && !staff.bank?.accountNo) staff.set('bank.accountNo', fields.lfbAccountNo);

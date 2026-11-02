@@ -61,7 +61,7 @@ async function detail(staff) {
     User.findOne({ staffId: staff._id }).select('status lastLoginAt').lean(),
     completeness(staff),
     staffSvc.probationFor(staff),
-    staff.lineManagerId ? Staff.findById(staff.lineManagerId).select('staffNo firstName middleName lastName').lean() : null,
+    staff.lineManagerId ? Staff.findById(staff.lineManagerId).select('staffNo firstName lastName').lean() : null,
   ]);
   const o = staff.toObject();
   const today = new Date();

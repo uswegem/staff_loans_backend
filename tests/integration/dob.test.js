@@ -9,7 +9,7 @@ const DobChange = require('../../src/models/DobChange');
 const Application = require('../../src/models/Application');
 const AuditLog = require('../../src/models/AuditLog');
 const calc = require('../../src/services/calc/loanCalculator');
-const { PRICING } = require('../../seed/products');
+const { PRICING } = require('../fixtures/products');
 const { run: setupDob } = require('../../scripts/dob-verification-setup');
 const { localDay } = require('../../src/utils/dates');
 

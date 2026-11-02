@@ -8,3 +8,6 @@ storage/
 logs/
 *.log
 openapi.yaml.tmp
+
+# The real staff table (D-92): kept out of the repository
+seed/data/lfb-staff.csv

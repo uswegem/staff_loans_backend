@@ -17,10 +17,8 @@ const PRODUCT_DEFAULTS = {
   description: '',
   topUpAllowed: false,
   contractStaffAllowed: false,
-  requiredDocuments: [],
-  optionalDocuments: [],
+  repaymentMethods: ['payroll'],
   fields: [],
-  disbursementConditions: [],
   reapplyCoolingMonths: 6,
   agreementTemplateId: null,
 };

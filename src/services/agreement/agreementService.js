@@ -17,13 +17,13 @@ const pctSw = (bps) => `${Number.parseFloat((bps / 100).toFixed(2))}%`;
  *          agreementNumber?, employerClause?, employeeClause? }
  */
 function values(input, templateVersion) {
-  const { staff, quote: q, amount, tenor, repayment, topUp } = input;
+  const { staff, quote: q, amount, tenor, topUp } = input;
   const revised = input.kind === 'revised';
   const v = {
     agreementNumber: input.agreementNumber || 'itatolewa wakati wa kusaini',
     templateVersion,
     ref: input.ref,
-    fullName: [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' '),
+    fullName: [staff.firstName, staff.lastName].filter(Boolean).join(' '),
     staffNo: staff.staffNo,
     poBox: staff.personal?.poBox || '—',
     residence: staff.personal?.residence || '—',
@@ -43,8 +43,7 @@ function values(input, templateVersion) {
     totalInterest: tshs(q.totalInterest),
     totalRepayable: tshs(q.totalRepayable),
     firstDueDate: dateSw(q.firstDueDate),
-    repaymentMethod:
-      repayment.method === 'payroll' ? 'Makato ya mshahara' : `Kukatwa kwenye akaunti ${repayment.accountNo}, ${repayment.bank}, tawi la ${repayment.branch}`,
+    repaymentMethod: 'Makato ya mshahara', // salary deduction only (D-84)
   };
   v.requestClause = sentence(
     revised

@@ -3,15 +3,16 @@
 // BRD 10, BR-14, BR-15, against the prototype's worked example (handover §7).
 
 const calc = require('../../src/services/calc/loanCalculator');
-const { PRICING } = require('../../seed/products');
+const { PRICING } = require('../fixtures/products');
 
-const neema = { basic: 1850000, lfbDeductions: 0 };
+const neema = { basic: 1850000 };
 
-describe('payslip and limit (D-78)', () => {
+describe('payslip and limit (D-78, D-87)', () => {
   const q = calc.quote({ amount: 4500000, tenor: 36, pay: neema, pricing: PRICING, startDay: '2026-10-29', maxTenor: 60, maxAmountCap: 300000000 });
 
-  it('matches the worked example', () => {
-    expect(q.payslip).toEqual({ basic: 1850000, pension: 185000, taxable: 1665000, tax: 327500, totalDeductions: 512500, net: 1337500, lfbDeductions: 0, adjusted: 1337500 });
+  it('matches the worked example (no other loans in Staff Loans)', () => {
+    expect(q.payslip).toEqual({ basic: 1850000, pension: 185000, taxable: 1665000, tax: 327500, totalDeductions: 512500, net: 1337500 });
+    expect(q.combined).toMatchObject({ basis: 'net', cap: 668750, others: 0, addBack: 0, available: 668750, newInstalment: 136900, remaining: 531850 });
     expect(q.maxInstalment).toBe(668750);
     expect(q.instalment).toBe(136900);
     expect(q.totalInterest).toBe(428351);
@@ -25,17 +26,49 @@ describe('payslip and limit (D-78)', () => {
     const p = calc.payslip({ basic: 1000000 }, PRICING);
     expect(p).toMatchObject({ pension: 100000, taxable: 900000, tax: 103000, totalDeductions: 203000, net: 797000 }); // PAYE 68,000 + 25% × 140,000
   });
+});
 
-  it('adds LFB deductions back to net pay (Adjusted Net Pay = Net Pay + LFB deductions)', () => {
-    const p = calc.payslip({ basic: 1850000, lfbDeductions: 200000 }, PRICING);
-    expect(p.adjusted).toBe(1537500);
-    expect(calc.quote({ amount: 1000000, tenor: 12, pay: { basic: 1850000, lfbDeductions: 200000 }, pricing: PRICING }).maxInstalment).toBe(768750);
+describe('combined 50% cap across all loans (D-87)', () => {
+  it('an existing loan using 30% of salary leaves exactly 20%: 20% fits, one shilling more does not', () => {
+    const existing = { others: 300000 };
+    expect(calc.combinedCap(1000000, 5000, existing, 200000)).toMatchObject({ cap: 500000, others: 300000, available: 200000, remaining: 0 });
+    expect(calc.combinedCap(1000000, 5000, existing, 200001).remaining).toBe(-1);
   });
 
-  it('a top-up changes only the processing fee rate', () => {
-    const t = calc.quote({ amount: 4500000, tenor: 36, topUp: true, pay: neema, pricing: PRICING, startDay: '2026-10-29' });
-    expect(t.maxInstalment).toBe(668750);
-    expect(t.processingFee).toBe(22500); // 0.5% on a top-up
+  it('counts the other loans in the quote: the limit and the maximum amount shrink', () => {
+    const alone = calc.quote({ amount: 0, tenor: 0, pay: neema, pricing: PRICING, maxTenor: 60, maxAmountCap: 300000000 });
+    const withLoan = calc.quote({ amount: 0, tenor: 0, pay: neema, existing: { others: 401250 }, pricing: PRICING, maxTenor: 60, maxAmountCap: 300000000 });
+    expect(withLoan.maxInstalment).toBe(668750 - 401250);
+    expect(withLoan.maxAmount).toBeLessThan(alone.maxAmount);
+    const fits = calc.quote({ amount: withLoan.maxAmount, tenor: 60, pay: neema, existing: { others: 401250 }, pricing: PRICING });
+    expect(fits.pass).toBe(true);
+    const over = calc.quote({ amount: withLoan.maxAmount + 100000, tenor: 60, pay: neema, existing: { others: 401250 }, pricing: PRICING });
+    expect(over.pass).toBe(false);
+  });
+
+  it('a top-up at the cap: the old instalment is added back and the new one replaces it, never on top', () => {
+    // The loan being topped up already takes the whole cap.
+    const atCap = calc.quote({ amount: 1000000, tenor: 12, pay: neema, existing: { others: 668750 }, pricing: PRICING });
+    expect(atCap.pass).toBe(false);
+    const topUp = calc.quote({ amount: 1000000, tenor: 12, topUp: true, pay: neema, existing: { others: 0, addBack: 668750 }, pricing: PRICING });
+    expect(topUp.combined).toMatchObject({ existingTotal: 668750, addBack: 668750, others: 0, available: 668750 });
+    expect(topUp.pass).toBe(true);
+    expect(topUp.combined.remaining).toBe(668750 - topUp.instalment); // replaces it: not 668,750 + the new instalment
+    expect(topUp.processingFee).toBe(5000); // 0.5% on a top-up
+  });
+
+  it('is the same whether the old deduction is added back to take-home pay or removed from the combined total', () => {
+    const net = 1337500;
+    const cap = 668750;
+    const otherLoans = 150000;
+    const toppedUp = 200000;
+    // Take-home pay already has every loan deducted; add the topped-up loan back, then apply 50%.
+    const takeHome = net - otherLoans - toppedUp;
+    const viaTakeHome = Math.floor((takeHome + toppedUp + otherLoans) * 0.5) - otherLoans;
+    // Basic-derived net: remove the topped-up loan from the combined total instead.
+    const viaTotal = calc.combinedCap(net, 5000, { others: otherLoans, addBack: toppedUp }).available;
+    expect(viaTotal).toBe(cap - otherLoans);
+    expect(viaTakeHome).toBe(viaTotal);
   });
 });
 

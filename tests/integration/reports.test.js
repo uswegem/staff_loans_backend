@@ -5,7 +5,7 @@
 
 const XLSX = require('xlsx');
 const { api, seedAll, signIn } = require('../flows');
-const { seedSampleApplications } = require('../../seed/applications');
+const { seedSampleApplications } = require('../fixtures/applications');
 const Application = require('../../src/models/Application');
 const AuditLog = require('../../src/models/AuditLog');
 const { csvCell } = require('../../src/services/reports/exporters');

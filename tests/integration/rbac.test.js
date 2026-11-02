@@ -19,11 +19,11 @@ beforeEach(async () => {
 });
 
 describe('role catalogue (FR-43, FR-44)', () => {
-  it('ships the seven system roles plus the two custom roles', async () => {
+  it('ships the system roles, including the D-88 to D-90 roles', async () => {
     const res = await request(app()).get('/api/v1/roles').set(authed(admin.token));
     expect(res.status).toBe(200);
     const system = res.body.data.filter((r) => r.system).map((r) => r.name).sort();
-    expect(system).toEqual(['CEO', 'Credit Analyst', 'Head of People and Culture', 'OPS', 'People and Culture Manager', 'Staff', 'System Administrator']);
+    expect(system).toEqual(['Auditor', 'CEO', 'Credit Analyst', 'Head of Credit', 'Head of Legal', 'Head of People and Culture', 'Head of Risk and Compliance', 'Legal Officer', 'OPS', 'People and Culture Manager', 'Staff', 'System Administrator']);
     expect(res.body.data.find((r) => r.code === 'staff').holders).toBe(13);
   });
 
@@ -74,7 +74,7 @@ describe('custom roles and the matrix (FR-45)', () => {
   });
 
   it('a custom role in use cannot be deleted', async () => {
-    const res = await request(app()).delete(`/api/v1/roles/${await roleId('product_checker')}`).set(authed(admin.token));
+    const res = await request(app()).delete(`/api/v1/roles/${await roleId('risk_audit_viewer')}`).set(authed(admin.token));
     expect(res.status).toBe(409);
   });
 
@@ -111,9 +111,10 @@ describe('assigning roles to users (FR-46, FR-48)', () => {
     expect(await AuditLog.countDocuments({ action: 'user.roles_refused' })).toBe(1);
   });
 
-  it('refuses giving one user both product maker and checker', async () => {
-    const res = await put(admin.token, await userId('LFB0010'), [{ roleId: await roleId('staff') }, { roleId: await roleId('product_checker') }, { roleId: await roleId('sys_admin') }]);
+  it('refuses giving one user both product approval stages (D-89)', async () => {
+    const res = await put(admin.token, await userId('LFB0010'), [{ roleId: await roleId('staff') }, { roleId: await roleId('head_credit') }, { roleId: await roleId('head_risk') }]);
     expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/two product approvals are held by different people/);
   });
 
   it('every staff member keeps the Staff role, without an end date', async () => {

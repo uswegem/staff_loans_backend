@@ -22,7 +22,7 @@ const { withTransaction } = require('../config/db');
 const { badRequest, notFound, conflict, forbidden } = require('../utils/errors');
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const fullName = (s) => (s ? [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') : '');
+const fullName = (s) => (s ? [s.firstName, s.lastName].filter(Boolean).join(' ') : '');
 
 async function assignmentsOf(userId) {
   const rows = await RoleAssignment.find({ userId, revokedAt: null }).populate('roleId').lean();
