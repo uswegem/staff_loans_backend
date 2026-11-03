@@ -506,6 +506,18 @@ describe('resubmit and withdraw (FR-11)', () => {
     expect((await api(neema.token).post('/applications', { productId: PL() })).status).toBe(201);
   });
 
+  it('cancelling a draft that was never submitted succeeds and the application stays readable', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    expect((await Application.findById(id)).pricingVersionId).toBeUndefined();
+    const res = await api(neema.token).post(`/applications/${id}/withdraw`, { reason: 'Draft cancelled' });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ status: 'withdrawn', withdrawable: false, editable: false });
+    const again = await api(neema.token).get(`/applications/${id}`);
+    expect(again.status).toBe(200);
+    expect(again.body.data.status).toBe('withdrawn');
+  });
+
   it('a product deactivated after the draft started cannot be submitted', async () => {
     const neema = await signIn('LFB0412');
     const { id } = await draft(neema, PL(), NEEMA_TERMS);

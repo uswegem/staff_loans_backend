@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Cancelling a draft that was never submitted no longer returns a server error, and the withdrawn application can be opened again: it falls back to the pricing in force because pricing is pinned only at signing.
+
 ## 0.12.0 – Profile formats, address, language and theme (2 Nov 2026)
 
 - Phone numbers stored as +255 and nine digits; NIDA stored with hyphens; nationality from a country list (`GET /reference-data/countries`) (D-93).

@@ -89,7 +89,9 @@ async function versionsFor(app) {
     const pricing = await products.livePricing();
     return { product: live.product, version: live.version || (await ProductVersion.findById(app.productVersionId)), pricing, live: !!live.version };
   }
-  const [version, pricing] = await Promise.all([ProductVersion.findById(app.productVersionId), PricingVersion.findById(app.pricingVersionId)]);
+  // Pricing is pinned at signing, so a draft withdrawn before that has none: use the pricing in force.
+  const [version, pinned] = await Promise.all([ProductVersion.findById(app.productVersionId), PricingVersion.findById(app.pricingVersionId)]);
+  const pricing = pinned || (await products.livePricing());
   const { product } = await products.liveProductVersion(app.productId);
   return { product, version, pricing, live: true };
 }
