@@ -15,7 +15,8 @@ process.env.LOGIN_RATE_LIMIT_PER_MIN = '1000';
 // A developer's .env may turn Secure cookies off for http://localhost; tests use the default.
 process.env.COOKIE_SECURE = 'true';
 process.env.MONGODB_URI = process.env.SLAS_TEST_MONGO_URI;
-process.env.UPLOAD_DIR = require('path').join(require('os').tmpdir(), 'slas-test-uploads');
+// Uploads (and the data reset's backups next to them) go in this run's folder, removed at teardown.
+process.env.UPLOAD_DIR = require('path').join(require('./testDirs').runDir(), 'uploads');
 
 beforeAll(async () => {
   const dbName = `slas_test_${crypto.randomBytes(4).toString('hex')}`;
