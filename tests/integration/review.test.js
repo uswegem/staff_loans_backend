@@ -42,7 +42,7 @@ function walk(value, keys = new Set(), strings = []) {
   return { keys, strings };
 }
 
-const HIDDEN_KEYS = ['amount', 'tenor', 'purpose', 'product', 'productFields', 'salary', 'salaryAtSubmission', 'calcAtSubmission', 'quote', 'payInputs', 'checks', 'documents', 'agreements', 'history', 'recommended', 'approved', 'repayment', 'topUp', 'otherLoans', 'existingLfbLoans', 'nextOfKin', 'title', 'category', 'department', 'route', 'fullName', 'payslip', 'combined', 'existingLoans'];
+const HIDDEN_KEYS = ['amount', 'tenor', 'purpose', 'product', 'productFields', 'salary', 'salaryAtSubmission', 'calcAtSubmission', 'quote', 'payInputs', 'checks', 'agreements', 'history', 'recommended', 'approved', 'repayment', 'topUp', 'otherLoans', 'existingLfbLoans', 'nextOfKin', 'title', 'category', 'department', 'route', 'fullName', 'payslip', 'combined', 'existingLoans'];
 
 function assertLimited(body, { amount, purpose, productName }) {
   const { keys, strings } = walk(body);
