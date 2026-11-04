@@ -11,6 +11,7 @@ const fileSchema = new mongoose.Schema(
     applicationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Application' },
     ownerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     label: { type: String, trim: true, maxlength: 160 },
+    documentCode: { type: String, trim: true, maxlength: 40 },
     originalName: { type: String, required: true, maxlength: 200 },
     mime: { type: String, enum: ['application/pdf', 'image/jpeg', 'image/png'], required: true },
     size: { type: Number, required: true },
