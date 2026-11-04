@@ -40,6 +40,18 @@ const productValues = {
       })
     )
     .max(20),
+  requiredDocuments: Joi.array().max(20).items(Joi.object({
+    code: Joi.string().pattern(/^[a-z][a-z0-9_]{0,39}$/).required(),
+    name: text(120).min(2).required(),
+    description: text(500).allow('').default(''),
+    mandatory: Joi.boolean().default(false),
+    minFiles: whole.min(0).max(20).default(0),
+    maxFiles: whole.min(1).max(20).default(1),
+    allowedTypes: Joi.array().items(Joi.string().valid('pdf', 'jpg', 'jpeg', 'png')).min(1).unique().default(['pdf', 'jpg', 'jpeg', 'png']),
+    maxFileMb: Joi.number().positive().max(50).default(10),
+    displayOrder: whole.min(0).default(0),
+    active: Joi.boolean().default(true),
+  })),
   reapplyCoolingMonths: whole.min(0).max(60),
   agreementTemplateId: objectId.allow(null),
 };
