@@ -22,9 +22,9 @@ const { productLabels, readerLabels } = require('../services/payslip/deductionLi
 const Staff = require('../models/Staff');
 
 /**
- * Files and agreements: the applicant, or a reviewer with the full view. Never a
- * limited (FR-55) viewer: documents and the agreement are among the hidden fields.
- * OPS sees the agreement and documents of loans with them (FR-20), not the bureau report.
+ * Files and agreements: applicant and full-view reviewers. Limited credit-stage
+ * reviewers may access supporting documents only, never payslips or agreements.
+ * OPS sees agreements and supporting documents (FR-20), not bureau reports.
  */
 async function canSee(req, applicationId, { allowLimitedDocuments = false } = {}) {
   const app = await Application.findById(applicationId);
