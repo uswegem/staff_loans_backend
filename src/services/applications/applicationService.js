@@ -177,6 +177,7 @@ function pick(v) {
     topUpAllowed: v.topUpAllowed,
     payslipLabel: v.payslipLabel || '',
     fields: v.fields,
+    requiredDocuments: v.requiredDocuments || [],
   };
 }
 
@@ -257,7 +258,7 @@ async function agreementFor(req, app, { session } = {}) {
   }
   const doc = await agreementService.build(
     { ref: app.ref, kind: 'original', staff: ctx.staff, product: ctx.version, quote: result.quote, amount: app.amount, tenor: app.tenor, repayment: app.repayment, topUp: app.topUp },
-    { session }
+    { session, template: await require('../agreement/productTemplate').resolve(ctx.version, { session }) }
   );
   return { ctx, result, doc };
 }
