@@ -164,8 +164,9 @@ const ApplicationController = {
     const seen = file && !own && !uploader ? (await canSee(req, file.applicationId))?.as : null;
     const allowed = file && !file.removedAt && (own || uploader || seen === 'reviewer' || (seen === 'ops' && file.kind !== 'crb_report'));
     if (!allowed) throw notFound('File not found.');
-    await audit.record({ req, action: 'file.download', description: `${file.originalName} downloaded`, entity: 'StoredFile', entityId: String(file._id) });
-    await fileStore.send(res, file);
+    const inline = req.query.preview === '1' && ['document', 'payslip'].includes(file.kind);
+    await audit.record({ req, action: inline ? 'file.preview' : 'file.download', description: `${file.originalName} ${inline ? 'previewed' : 'downloaded'}`, entity: 'StoredFile', entityId: String(file._id) });
+    await fileStore.send(res, file, { inline });
   },
 
   // ---------- agreements (FR-25, FR-37) ----------
