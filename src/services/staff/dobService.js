@@ -51,6 +51,29 @@ async function statusOf(staff) {
   };
 }
 
+const BY = { staff_record: ' by People and Culture', staff_upload: ' in a People and Culture staff upload' };
+
+/**
+ * Records a pending change inside the caller's transaction: the change, the staff record's
+ * pending pointer and the audit entry. The caller has checked the date (problemWith) and
+ * that nothing else is pending. Used by submit and by the staff upload (D-100).
+ */
+async function propose(req, staff, dob, source, session) {
+  const now = new Date();
+  const [change] = await DobChange.create([{ staffId: staff._id, proposed: dob, previous: staff.dateOfBirth?.value || null, source, submittedBy: req.auth.user._id, submittedAt: now }], { session });
+  const set = await Staff.updateOne(
+    { _id: staff._id, 'dateOfBirth.pending.changeId': null },
+    { $set: { 'dateOfBirth.pending': { changeId: change._id, proposed: dob, submittedAt: now, submittedBy: req.auth.user._id } } },
+    { session }
+  );
+  if (!set.modifiedCount) throw conflict('Another date of birth was just proposed for this staff member. Reload and try again.', 'DOB_CHANGE_PENDING');
+  await audit.record(
+    { req, action: 'dob.submit', description: `${staff.staffNo}: date of birth ${dob} proposed${BY[source] || ''}; waiting for verification`, entity: 'Staff', entityId: String(staff._id), before: { dateOfBirth: staff.dateOfBirth?.value || null }, after: { proposed: dob, changeId: String(change._id), status: 'pending' } },
+    { session }
+  );
+  return change;
+}
+
 /**
  * Proposes a date of birth. source: 'profile' (the staff member) or 'staff_record'
  * (People and Culture). Returns the pending change.
@@ -64,21 +87,10 @@ async function submit(req, staffId, dob, source) {
   if (staff.dateOfBirth?.pending?.changeId) throw conflict(`A date of birth (${staff.dateOfBirth.pending.proposed}) is already waiting for People and Culture. Withdraw it, or wait for the decision, before proposing another.`, 'DOB_CHANGE_PENDING');
   if (staff.dateOfBirth?.value === dob) throw badRequest('This is already the verified date of birth.', { dob: ['This is already the verified date of birth.'] }, 'DOB_UNCHANGED');
 
-  const now = new Date();
   let change;
   try {
     await withTransaction(async (session) => {
-      [change] = await DobChange.create([{ staffId: staff._id, proposed: dob, previous: staff.dateOfBirth?.value || null, source, submittedBy: req.auth.user._id, submittedAt: now }], { session });
-      const set = await Staff.updateOne(
-        { _id: staff._id, 'dateOfBirth.pending.changeId': null },
-        { $set: { 'dateOfBirth.pending': { changeId: change._id, proposed: dob, submittedAt: now, submittedBy: req.auth.user._id } } },
-        { session }
-      );
-      if (!set.modifiedCount) throw conflict('Another date of birth was just proposed for this staff member. Reload and try again.', 'DOB_CHANGE_PENDING');
-      await audit.record(
-        { req, action: 'dob.submit', description: `${staff.staffNo}: date of birth ${dob} proposed${source === 'staff_record' ? ' by People and Culture' : ''}; waiting for verification`, entity: 'Staff', entityId: String(staff._id), before: { dateOfBirth: staff.dateOfBirth?.value || null }, after: { proposed: dob, changeId: String(change._id), status: 'pending' } },
-        { session }
-      );
+      change = await propose(req, staff, dob, source, session);
     });
   } catch (err) {
     if (err.code === 11000) throw conflict('Another date of birth is already waiting for this staff member.', 'DOB_CHANGE_PENDING');
@@ -185,4 +197,4 @@ async function notifyStaff(staff, text) {
   if (user) await notify.notifyUsers([user._id], { type: 'dob.decided', text, href: '/profile', entity: 'Staff', entityId: String(staff._id) });
 }
 
-module.exports = { submit, list, approve, reject, withdraw, statusOf, problemWith, ageOn };
+module.exports = { submit, propose, list, approve, reject, withdraw, statusOf, problemWith, ageOn };

@@ -260,13 +260,14 @@ describe('payslip (D-78, D-79)', () => {
     expect(kept.body.data.payslip.basic).toBe(1850000);
   });
 
-  it('flags a Basic Pay that differs from the staff record for reviewers', async () => {
+  it('uses the payslip alone: no salary record to compare it with, no flag and no salary in the snapshot (D-100)', async () => {
     const neema = await signIn('LFB0412');
     const { id } = await draft(neema, PL(), NEEMA_TERMS, { payslip: { basic: 1900000 } });
     await signAndSubmit(neema, id);
     const a = await Application.findById(id);
-    expect(a.ruleFlags).toContain('Basic Pay on the payslip (TZS 1,900,000) differs from the staff record (TZS 1,850,000): confirm with Payroll.');
+    expect(a.ruleFlags.join()).not.toMatch(/staff record/);
     expect(a.applicantSnapshot.payslip).toMatchObject({ basic: 1900000, lfbDeductions: 0 });
+    expect(a.applicantSnapshot.salary).toBeUndefined();
   });
 });
 
@@ -353,7 +354,7 @@ describe('sign agreement and submit (FR-10, FR-34 to FR-37)', () => {
 
     expect(a.productVersionId).toBeTruthy();
     expect(a.pricingVersionId).toBeTruthy();
-    expect(a.applicantSnapshot.salary.basic).toBe(1850000);
+    expect(a.applicantSnapshot.payslip.basic).toBe(1850000); // from the payslip; no salary record (D-100)
     expect(a.stageDueAt.getTime()).toBeGreaterThan(Date.now());
     expect((await Staff.findOne({ staffNo: 'LFB0412' })).lastAppliedAt).toBeInstanceOf(Date);
     expect(await Decision.countDocuments({ applicationId: id, action: 'submit' })).toBe(1);

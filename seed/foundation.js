@@ -5,7 +5,6 @@
 
 const Role = require('../src/models/Role');
 const Staff = require('../src/models/Staff');
-const Salary = require('../src/models/Salary');
 const User = require('../src/models/User');
 const RoleAssignment = require('../src/models/RoleAssignment');
 const Settings = require('../src/models/Settings');
@@ -52,12 +51,7 @@ async function seedFoundation({ password, mustChangePassword = false } = {}) {
   await Staff.bulkWrite(PEOPLE.map((p) => ({ updateOne: { filter: { staffNo: p.staffNo }, update: { $setOnInsert: toStaffDoc(p) }, upsert: true } })));
   const staffByNo = new Map((await Staff.find({ staffNo: { $in: PEOPLE.map((p) => p.staffNo) } }).select('_id staffNo').lean()).map((s) => [s.staffNo, s._id]));
 
-  const withSalary = new Set((await Salary.distinct('staffId', { staffId: { $in: [...staffByNo.values()] } })).map(String));
-  const salaries = PEOPLE.filter((p) => !withSalary.has(String(staffByNo.get(p.staffNo)))).map((p) => {
-    const allowances = p.pay.allowances || 0;
-    return { staffId: staffByNo.get(p.staffNo), basic: p.pay.basic, allowances, commission: 0, gross: p.pay.basic + allowances, effectiveFrom: new Date('2026-01-01T00:00:00+03:00'), source: 'seed' };
-  });
-  if (salaries.length) await Salary.insertMany(salaries);
+  // No salary records (D-100): each person's pay is on the payslip they attach when applying.
 
   const existing = new Set(await User.distinct('staffNo', { staffNo: { $in: PEOPLE.map((p) => p.staffNo) } }));
   const fresh = PEOPLE.filter((p) => !existing.has(p.staffNo));

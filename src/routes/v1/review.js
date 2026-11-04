@@ -7,6 +7,7 @@ const ReviewController = require('../../controllers/reviewController');
 const { requireAll } = require('../../middleware/permission');
 const { validate } = require('../../middleware/validate');
 const { badRequest, asyncHandler } = require('../../utils/errors');
+const { CRB_OUTCOMES } = require('../../constants/crb');
 
 const router = express.Router();
 const objectId = Joi.string().hex().length(24);
@@ -53,9 +54,8 @@ router.post(
     body: Joi.object({
       action: Joi.string().valid('approve', 'return', 'reject').required(),
       comment: Joi.string().trim().max(2000).allow(''),
-      crb: Joi.object({ outcome: Joi.string().valid('Clear', 'Adverse: minor', 'Adverse: serious', 'No record found').required(), reportDate: day.required(), fileId: objectId }),
-      appraisalNote: Joi.string().trim().max(2000).allow(''),
-      arrearsNote: Joi.string().trim().max(1000).allow(''),
+      // D-99: the four outcomes; no appraisal or arrears note (earlier ones are kept and shown).
+      crb: Joi.object({ outcome: Joi.string().valid(...CRB_OUTCOMES).required(), reportDate: day.required(), fileId: objectId }),
       recommended: Joi.object({ amount: money.required(), tenor: Joi.number().integer().min(1).max(600).required(), reason: Joi.string().trim().max(500).allow('') }),
       suggested: Joi.object({ amount: money.required(), tenor: Joi.number().integer().min(1).max(600).required() }),
       hrChecks: Joi.object({ employment: Joi.boolean(), category: Joi.boolean(), salary: Joi.boolean(), probationReasonVerified: Joi.boolean() }),

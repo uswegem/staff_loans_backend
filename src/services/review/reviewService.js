@@ -117,7 +117,7 @@ async function recheckCutoff(app, terms, now, { audience = 'reviewer', limited =
 // ---------- decisions ----------
 
 /**
- * body: { action, comment, crb: { outcome, reportDate, fileId }, appraisalNote, arrearsNote,
+ * body: { action, comment, crb: { outcome, reportDate, fileId },
  *         recommended: { amount, tenor, reason }, suggested: { amount, tenor }, hrChecks }
  */
 async function decide(req, app, body) {
@@ -137,20 +137,20 @@ async function decide(req, app, body) {
   if (stage === 'credit') {
     if (action === 'approve' && !body.crb?.outcome) throw badRequest('Record the credit bureau outcome before approving.', { crb: ['Record the credit bureau outcome before approving.'] }, 'CRB_REQUIRED');
     if (body.crb?.outcome) set.crb = { outcome: body.crb.outcome, reportDate: body.crb.reportDate ? localMidnight(body.crb.reportDate) : null, fileId: body.crb.fileId || app.crb?.fileId || null };
-    if (body.appraisalNote !== undefined) set.appraisalNote = body.appraisalNote;
-    if (body.arrearsNote !== undefined) set.arrearsNote = body.arrearsNote; // BR-10 (soft)
     // D-86: the Credit Analyst records the bureau check only; terms are not recommended any more.
     if (body.recommended) throw badRequest('The Credit Analyst records the credit bureau check only and cannot recommend terms.', undefined, 'RECOMMENDATION_NOT_ALLOWED');
   } else if (body.recommended || body.crb) {
     throw badRequest('Only the Credit Analyst records the bureau result and recommends terms.', undefined, 'NOT_ALLOWED_AT_STAGE');
   }
   if ((stage === 'hr' || stage === 'pcm') && action === 'approve') {
+    // salary: Basic Pay confirmed from the attached payslip (D-100), not a salary record.
     const c = body.hrChecks || {};
     if (!(c.employment && c.category && c.salary)) throw badRequest('Confirm all three staff record checks before approving.', { hrChecks: ['Confirm all three staff record checks before approving.'] }, 'HR_CHECKS_REQUIRED');
     if (app.probation?.onProbation && !c.probationReasonVerified) throw badRequest('Verify the probation reason before approving.', { hrChecks: ['Verify the probation reason before approving.'] }, 'PROBATION_CHECK_REQUIRED');
     set.hrChecks = { employment: true, category: true, salary: true, probationReasonVerified: !!c.probationReasonVerified };
     if (app.probation?.onProbation) Object.assign(set, { 'probation.verifiedBy': req.auth.user._id, 'probation.verifiedAt': new Date() });
   }
+  // BR-10: only applications whose arrears note was recorded before D-99 (no longer entered).
   if (action === 'approve' && stage !== 'credit' && app.arrearsNote && !comment) {
     throw badRequest('Add a comment: the Credit Analyst recorded arrears (BR-10).', { comment: ['Add a comment about the arrears.'] }, 'COMMENT_REQUIRED');
   }

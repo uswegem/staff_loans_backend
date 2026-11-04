@@ -8,7 +8,7 @@ const { seedAgreementTemplate } = require('../seed/agreementTemplate');
 const { samplePayslip } = require('../seed/samplePayslip');
 const { PRICING } = require('./fixtures/products');
 const Staff = require('../src/models/Staff');
-const Salary = require('../src/models/Salary');
+const { PEOPLE } = require('../seed/data/people');
 const { localDay } = require('../src/utils/dates');
 
 const CONSENTS = { truth: true, deduct: true, crb: true, sms: true };
@@ -28,17 +28,17 @@ async function seedAll() {
 }
 
 /**
- * The applicant's payslip (D-79), from their salary record unless overridden:
+ * The applicant's payslip (D-79), with the fictional person's pay unless overridden:
  * opts { basic, lfbLines, payDate }. Returns the upload response.
  */
 async function attachPayslip(person, id, opts = {}) {
   const staffNo = person.body.data.user.staffNo;
   const staff = await Staff.findOne({ staffNo }).lean();
-  const salary = await Salary.inForce(staff._id);
+  const salary = PEOPLE.find((p) => p.staffNo === staffNo)?.pay || { basic: 1000000, allowances: 0 };
   const pdf = await samplePayslip({
     staff: { fullName: [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' '), staffNo, title: staff.title, department: staff.department },
     basic: opts.basic ?? salary.basic,
-    allowances: salary.allowances,
+    allowances: salary.allowances || 0,
     payDate: opts.payDate || localDay(new Date(Date.now() - 5 * 24 * 3600 * 1000)),
     lfbLines: opts.lfbLines || [],
     pricing: PRICING,
@@ -70,7 +70,7 @@ async function sign(person, id) {
 
 const decide = (person, id, body) => api(person.token).post(`/review/${id}/decision`, body);
 
-const CRB = { outcome: 'Clear', reportDate: '2026-10-28' };
+const CRB = { outcome: 'Low Risk', reportDate: '2026-10-28' };
 const HR_OK = { employment: true, category: true, salary: true };
 
 /** Another running Staff Loans loan for the combined cap (D-87): approved, instalments still due. */

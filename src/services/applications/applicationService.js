@@ -8,7 +8,6 @@ const Agreement = require('../../models/Agreement');
 const Decision = require('../../models/Decision');
 const Notification = require('../../models/Notification');
 const Staff = require('../../models/Staff');
-const Salary = require('../../models/Salary');
 const Settings = require('../../models/Settings');
 const ProductVersion = require('../../models/ProductVersion');
 const PricingVersion = require('../../models/PricingVersion');
@@ -41,8 +40,7 @@ async function context(req, productId, { app, versions, applicant } = {}) {
   const who = applicant || { userId: req.auth.user._id, staffId: req.auth.user.staffId };
   const staff = await Staff.findById(who.staffId);
   if (!staff) throw notFound('Your staff record was not found. Contact People and Culture.');
-  const [salary, profile, settings, apps] = await Promise.all([
-    Salary.inForce(staff._id),
+  const [profile, settings, apps] = await Promise.all([
     completeness(staff),
     Settings.get(),
     Application.find({ applicantUserId: who.userId }).lean(),
@@ -60,7 +58,7 @@ async function context(req, productId, { app, versions, applicant } = {}) {
     if (!version) throw new AppError(400, 'PRODUCT_UNAVAILABLE', 'This product is not available for new applications.');
     if (!pricing) throw new AppError(500, 'NO_PRICING', 'No pricing is in force. Contact the System Administrator.');
   }
-  return { staff, salary, profile, settings, product, version, pricing, apps, appId: app?._id, today: localDay() };
+  return { staff, profile, settings, product, version, pricing, apps, appId: app?._id, today: localDay() };
 }
 
 function inputOf(app) {
@@ -363,7 +361,6 @@ async function signAndSubmit(req, app, body) {
         retirementDate: retirementDateFor(ctx.staff, ctx.settings), // from the verified date of birth (D-98)
         dateOfBirth: ctx.staff.dateOfBirth?.value || null, // verified value used (D-82)
         cutoff: result.cutoff,
-        salary: ctx.salary ? { basic: ctx.salary.basic, allowances: ctx.salary.allowances, effectiveFrom: ctx.salary.effectiveFrom } : null,
         pay: result.pay,
         payslip: { fileId: fresh.payslip.fileId, payDate: fresh.payslip.payDate, basic: fresh.payslip.basic, lfbDeductions: fresh.payslip.lfbDeductions, lfbLines: fresh.payslip.lfbLines },
       },

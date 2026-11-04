@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 – Credit bureau outcomes, no salary records, eight-column staff upload (4 Nov 2026)
 
+- Credit bureau outcomes are Low Risk, Average Risk, High Risk and No Record Found (`src/constants/crb.js`). Applications decided earlier keep Clear, Adverse: minor, Adverse: serious or No record found as recorded; nothing is migrated (D-99).
+- The decision no longer takes an appraisal note or an arrears note (any sent are dropped). Stored notes are kept and returned on the review; the later-approver comment rule (BR-10) applies only to applications that already have an arrears note (D-99).
+- Salary records are no longer written or read: `POST /staff/:id/salaries` is gone, `POST /staff` takes no salary, and staff lists, staff details and My profile return none. The Salary collection and its data are kept as history. Affordability is unchanged and still comes from the payslip (D-100).
+- Applying is no longer blocked by a missing salary or employment type; People and Culture must record the date joined. The payslip-versus-salary-record flag is gone; HR confirm Basic Pay from the payslip (D-100).
+- Probation ends on date joined + `probationMonths` (default 6). The probation end date is no longer written by the API or the upload, and stored values no longer count; they are kept. Staff details return `probation` and `retirement` (verified date of birth + `retirementAge`, null without one) (D-100).
+- Staff upload: First name, Surname, NIDA, Title, Staff Number/Code, Date of Birth, Date Joined and Category only. NIDA is normalised and must be unique; dates of birth go to the verification queue (`DobChange` source `staff_upload`) and the uploader cannot verify them; blank cells and fields outside the template are left as they are; titles never assign roles (D-100).
 - Cancelling a draft that was never submitted no longer returns a server error, and the withdrawn application can be opened again: it falls back to the pricing in force because pricing is pinned only at signing.
 
 ## 0.12.0 – Profile formats, address, language and theme (2 Nov 2026)

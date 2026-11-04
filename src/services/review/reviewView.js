@@ -8,6 +8,7 @@
 // decisions. Product, amount, tenor, purpose, salary, affordability, documents, the
 // agreement and other reviewers' comments are never included.
 
+const { CRB_OUTCOMES } = require('../../constants/crb');
 const Decision = require('../../models/Decision');
 const Agreement = require('../../models/Agreement');
 const Staff = require('../../models/Staff');
@@ -63,7 +64,7 @@ function panelFor(app, actor) {
     canRecommend: false, // the Credit Analyst no longer recommends terms (D-86)
     needsHrChecks: stage === 'hr' || stage === 'pcm',
     needsProbationCheck: (stage === 'hr' || stage === 'pcm') && !!app.probation?.onProbation,
-    crbOutcomes: ['Clear', 'Adverse: minor', 'Adverse: serious', 'No record found'],
+    crbOutcomes: CRB_OUTCOMES, // D-99
   };
 }
 
@@ -161,7 +162,6 @@ async function fullView(req, app, actor) {
       mobile: staff.personal?.mobile,
       nextOfKin: staff.nextOfKin?.[0] || null,
       existingLfbLoans: (staff.existingLfbLoans || []).map((l) => ({ description: l.description, instalment: l.instalment })),
-      salaryAtSubmission: app.applicantSnapshot?.salary || null, // People and Culture's record, to check the payslip against
       runningLoans: running.map((r) => ({ ref: r.ref, amount: r.approved?.amount, status: r.status })),
     },
     documents: docs.filter((d) => d.kind === 'document').map(appSvc.DOC_VIEW),

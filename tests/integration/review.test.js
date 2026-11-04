@@ -151,12 +151,35 @@ describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () =
     expect(view.body.data.history.map((h) => h.action)).toEqual(['create', 'submit', 'approve', 'return', 'resubmit']);
   });
 
-  it('arrears recorded by Credit need a comment from later approvers (BR-10)', async () => {
+  it('Credit records one of the four outcomes, with no appraisal or arrears note (D-99)', async () => {
     const neema = await signIn('LFB0412');
     const id = await applyAndSign(neema, PL(), NEEMA);
     const juma = await signIn('LFB0233');
-    await decide(juma, id, { action: 'approve', crb: CRB, arrearsNote: 'One month in arrears on the 2024 loan, now cleared.' });
+    const panel = (await api(juma.token).get(`/review/${id}`)).body.data.panel;
+    expect(panel.crbOutcomes).toEqual(['Low Risk', 'Average Risk', 'High Risk', 'No Record Found']);
+    // An outcome from before D-99 is no longer accepted.
+    const old = await decide(juma, id, { action: 'approve', crb: { ...CRB, outcome: 'Clear' } });
+    expect(old.status).toBe(400);
+    expect(Object.keys(old.body.details)).toEqual(['crb.outcome']);
+    // Notes sent by an older screen are dropped, not stored.
+    expect((await decide(juma, id, { action: 'approve', crb: { ...CRB, outcome: 'High Risk' }, appraisalNote: 'x', arrearsNote: 'y' })).status).toBe(200);
+    const app = await Application.findById(id).lean();
+    expect(app.crb.outcome).toBe('High Risk');
+    expect(app.appraisalNote).toBeUndefined();
+    expect(app.arrearsNote).toBeUndefined();
+    // Nothing for later approvers to comment on: HR approves without a comment.
+    expect((await decide(await signIn('LFB0051'), id, { action: 'approve', hrChecks: HR_OK })).status).toBe(200);
+  });
+
+  it('an application with an arrears note from before D-99 still needs a comment from later approvers (BR-10)', async () => {
+    const neema = await signIn('LFB0412');
+    const id = await applyAndSign(neema, PL(), NEEMA);
+    await decide(await signIn('LFB0233'), id, { action: 'approve', crb: CRB });
+    // Stored before the field was removed: kept, shown and still acted on.
+    await Application.updateOne({ _id: id }, { $set: { arrearsNote: 'One month in arrears on the 2024 loan, now cleared.', appraisalNote: 'Stable history.', 'crb.outcome': 'Adverse: minor' } });
     const grace = await signIn('LFB0051');
+    const view = (await api(grace.token).get(`/review/${id}`)).body.data;
+    expect(view).toMatchObject({ arrearsNote: 'One month in arrears on the 2024 loan, now cleared.', appraisalNote: 'Stable history.', crb: { outcome: 'Adverse: minor' } });
     expect((await decide(grace, id, { action: 'approve', hrChecks: HR_OK })).body.code).toBe('COMMENT_REQUIRED');
     expect((await decide(grace, id, { action: 'approve', hrChecks: HR_OK, comment: 'Arrears cleared; confirmed.' })).status).toBe(200);
   });
@@ -237,7 +260,7 @@ describe('identity-only details for the Credit Analyst (FR-55, D-86)', () => {
     await decide(juma, id, { action: 'approve', crb: CRB, comment: 'Bureau clear.' });
     const grace = await signIn('LFB0051');
     const full = await api(grace.token).get(`/review/${id}`);
-    expect(full.body.data).toMatchObject({ limited: false, amount: 5000000, crb: { outcome: 'Clear' } });
+    expect(full.body.data).toMatchObject({ limited: false, amount: 5000000, crb: { outcome: 'Low Risk' } });
     expect(full.body.data.history.find((h) => h.stage === 'credit').comment).toBe('Bureau clear.');
     await decide(grace, id, { action: 'return', comment: 'Confirm the Mbweni plot title.' });
     const again = await api(juma.token).get(`/review/${id}`);

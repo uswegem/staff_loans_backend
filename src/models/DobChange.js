@@ -14,7 +14,7 @@ const dobChangeSchema = new Schema(
     staffId: { type: Schema.Types.ObjectId, ref: 'Staff', required: true },
     proposed: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     previous: { type: String, default: null }, // the verified value when the change was submitted
-    source: { type: String, enum: ['profile', 'staff_record', 'legacy'], required: true },
+    source: { type: String, enum: ['profile', 'staff_record', 'staff_upload', 'legacy'], required: true }, // staff_upload: D-100
     submittedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null }, // null: carried over from an unverified profile value
     submittedAt: { type: Date, required: true },
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'withdrawn'], default: 'pending' },

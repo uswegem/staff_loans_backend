@@ -70,7 +70,7 @@ The fictional sample people of the prototype (LFB0412 and others) are now only i
 2. Deploy the API and the web app, then run `npm run upgrade` once. It loads the Region → District → Ward list (26 regions, 158 districts, 3,964 wards), hyphenates NIDA numbers, normalises phone numbers, maps "Tanzanian" to Tanzania, and lists values it could not fix; staff correct those on their profile.
 3. Staff with an earlier residence must enter region, district, ward and street before they can apply.
 4. Add new staff with `npm run staff:load` (dry run first).
-5. People and Culture record each staff member's date joined, employment type and salary (Staff records, or Upload from Excel). Without them nobody can apply (D-97). No retirement date is needed: it comes from the verified date of birth (D-98).
+5. People and Culture record each staff member's date joined (Staff records, or Upload from Excel with the eight-column template). Without it nobody can apply (D-97, D-100). No salary is needed: affordability comes from the payslip on each application. The probation end and retirement dates are worked out (D-98, D-100). Dates of birth in an upload wait for another verifier in Date of birth checks.
 
 ### Salary deduction, combined cap, Legal and product approvals (0.11.0)
 

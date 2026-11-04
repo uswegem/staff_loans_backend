@@ -1,83 +1,77 @@
 'use strict';
 
-// Staff records bulk upload (FR-02). The file is parsed on the server only (DECISIONS
-// D-14). Every row is checked against the rules and the current records before
+// Staff records bulk upload (FR-02, D-100). The file is parsed on the server only
+// (DECISIONS D-14). Every row is checked against the rules and the current records before
 // anything changes; People and Culture see new, updated, unchanged and error rows and
-// confirm. Blank cells keep the existing value for staff already on file (prototype).
+// confirm. Staff are matched by staff number. Blank cells keep the existing value for
+// staff already on file, and fields that are not in the template are never touched.
+//
+// D-100: the template has eight columns. No salary (affordability comes from the payslip
+// attached to each application), no probation end date (worked out from the date joined)
+// and no retirement date (worked out from the verified date of birth). A date of birth
+// goes to People and Culture's verification queue (D-82): the uploader cannot verify it.
+// Titles are stored as text; the upload never assigns roles.
 
 const XLSX = require('xlsx');
 const { STAFF_NO } = require('../../constants/staffNo');
 const Staff = require('../../models/Staff');
-const Salary = require('../../models/Salary');
+const Settings = require('../../models/Settings');
 const { localDay, localMidnight } = require('../../utils/dates');
-const { normalisePhone, PHONE_MESSAGE } = require('../../utils/formats');
+const { normaliseNida, NIDA_MESSAGE } = require('../../utils/formats');
+const { problemWith } = require('./dobService');
 
 const MAX_ROWS = 5000;
 
-// [key, header, instruction, requiredForNew]
+// [key, header, instruction shown to People and Culture]. Every column is required for
+// new staff; for staff already on file a blank cell keeps what is on file.
 const COLUMNS = Object.freeze([
-  ['staffNo', 'Staff number', 'Required. The employee code on the payslip, for example AT637.', true],
-  ['firstName', 'First name', 'Required for new staff.', true],
-  ['lastName', 'Last name', 'Required for new staff.', true],
-  ['title', 'Job title', 'Required for new staff.', true],
-  ['department', 'Department', 'Optional.', false],
-  ['station', 'Work station', 'Required for new staff. Branch or Head Office.', true],
-  ['stationHeadName', 'Head of station', 'Optional. Name of the head of the branch or station.', false],
-  ['stationHeadPhone', 'Head of station phone', 'Optional.', false],
-  ['lineManager', 'Line manager staff number', 'Optional. Must be a staff number on file or in this upload.', false],
-  ['category', 'Category', 'Required for new staff. Management or Non-management. Decides the approval route.', true],
-  ['employmentType', 'Employment type', 'Required for new staff. Permanent, Probation or Contract.', true],
-  ['dateJoined', 'Date joined', 'Required for new staff. A date, for example 15/01/2024.', true],
-  ['probationEndDate', 'Probation end date', 'Optional. Blank means the probation period in the settings, counted from the date joined.', false],
-  ['contractEndDate', 'Contract end date', 'Required when the employment type is Contract.', false],
-  ['email', 'Email', 'Optional.', false],
-  ['workPhone', 'Work phone', 'Optional.', false],
-  ['mobile', 'Mobile phone', 'Optional. Only fills an empty mobile number; staff keep their own up to date.', false],
-  ['lfbAccountNo', 'LFB account number', 'Optional. Filled in on the staff member\'s profile as their bank account.', false],
-  ['basic', 'Basic salary (TZS)', 'Required for new staff. Whole shillings, commas allowed.', true],
-  ['allowances', 'Allowances (TZS)', 'Optional. Not counted for affordability.', false],
-  ['commission', 'Sales commission (TZS)', 'Optional.', false],
-  ['gross', 'Gross salary (TZS)', 'Optional.', false],
-  ['net', 'Net salary (TZS)', 'Optional.', false],
-  ['salaryEffective', 'Salary effective from', 'Optional. A date. Blank means the date joined for new staff and today for updates. Salary changes are kept as history.', false],
-  ['active', 'Active', 'Yes or No. Blank keeps the current status (Yes for new staff). No stops sign-in and new applications.', false],
+  ['firstName', 'First name', 'Required.'],
+  ['lastName', 'Surname', 'Required.'],
+  ['nida', 'NIDA', 'Required. Used by Credit for CRB checks. Format 19800630-13140-00004-20.'],
+  ['title', 'Title', 'Required. Used for assigning roles and permissions.'],
+  ['staffNo', 'Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.'],
+  ['dob', 'Date of Birth', 'Required. Used to work out the retirement date for affordability.'],
+  ['dateJoined', 'Date Joined', 'Required. Used to confirm that probation has been completed.'],
+  ['category', 'Category', 'Required. Management or Non-management. Decides the approval route.'],
 ]);
 
 const HEADERS = COLUMNS.map((c) => c[1]);
-const norm = (h) => String(h).toLowerCase().replace(/\(tzs\)/g, '').replace(/[^a-z]/g, '');
-const HEADER_MAP = Object.fromEntries(COLUMNS.map(([k, h]) => [norm(h), k]));
+const norm = (h) => String(h).toLowerCase().replace(/[^a-z]/g, '');
+// Headings from earlier templates still find their column; any other column is ignored.
+const ALIASES = { staffnumber: 'staffNo', staffno: 'staffNo', staffcode: 'staffNo', employeecode: 'staffNo', lastname: 'lastName', jobtitle: 'title', nidanumber: 'nida', dateofbirth: 'dob', dob: 'dob' };
+const HEADER_MAP = { ...ALIASES, ...Object.fromEntries(COLUMNS.map(([k, h]) => [norm(h), k])) };
 const label = (k) => COLUMNS.find((c) => c[0] === k)[1];
 
 // ---------- template and error file ----------
 
 function templateWorkbook() {
   const wb = XLSX.utils.book_new();
-  // Built by column so the example always lines up with the headings.
-  const sample = { staffNo: 'AT901', firstName: 'Baraka', lastName: 'Mwakyusa', title: 'Teller', department: 'Branch Network', station: 'Mbeya Branch', stationHeadName: 'Faraji Nyoni', stationHeadPhone: '+255787021554', lineManager: 'AT188', category: 'Non-management', employmentType: 'Permanent', dateJoined: '03/11/2026', email: 'baraka.mwakyusa@example.lfb', mobile: '+255744100200', lfbAccountNo: '4010 3341 0612', basic: 1150000, allowances: 100000, salaryEffective: '03/11/2026', active: 'Yes' };
-  const example = COLUMNS.map(([k]) => sample[k] ?? '');
-  const ws = XLSX.utils.aoa_to_sheet([HEADERS, example]);
-  ws['!cols'] = HEADERS.map((h) => ({ wch: Math.max(14, h.length + 2) }));
+  // Built by column so the example always lines up with the headings. Fictional person.
+  const sample = { firstName: 'Baraka', lastName: 'Mwakyusa', nida: '19900514-12345-00001-23', title: 'Teller', staffNo: 'AT901', dob: '14/05/1990', dateJoined: '03/11/2026', category: 'Non-management' };
+  const ws = XLSX.utils.aoa_to_sheet([HEADERS, COLUMNS.map(([k]) => sample[k] ?? '')]);
+  ws['!cols'] = HEADERS.map((h) => ({ wch: Math.max(16, h.length + 4) }));
   XLSX.utils.book_append_sheet(wb, ws, 'Staff records');
   const ins = XLSX.utils.aoa_to_sheet([
     ['Column', 'What to enter'],
     ...COLUMNS.map((c) => [c[1], c[2]]),
     [],
-    ['How it works', 'One row per staff member. Existing staff numbers are updated; new ones are added with an incomplete profile, which the staff member completes. Blank cells keep what is on file. Rows are checked first and nothing changes until you confirm. Delete the example row before uploading.'],
+    ['How it works', 'One row per staff member, matched by Staff Number/Code. New staff numbers are added with an incomplete profile, which the staff member completes. For staff already on file a blank cell keeps what is on file, and details that are not in this template are not changed. Rows are checked first and nothing changes until you confirm. Delete the example row before uploading.'],
+    ['Date of Birth', "Sent to People and Culture's date of birth verification queue. It is used for loans only after another verifier approves it; you cannot verify a date you uploaded."],
+    ['Title', 'Stored on the staff record. Uploading does not give anyone a role: a System Administrator assigns roles in Users and roles.'],
     ['Sign-in', 'Uploading a staff record does not create a sign-in. A System Administrator adds it in Users and roles.'],
     ['Dates', 'Use day/month/year (15/01/2024), year-month-day (2024-01-15) or an Excel date.'],
-    ['Retirement', 'Not entered here: the retirement date is worked out from the date of birth People and Culture verify.'],
+    ['Not in this file', 'Salary: affordability comes from the payslip attached to each loan application. Probation end date: worked out as Date Joined plus the probation period in the settings. Retirement date: worked out from the verified date of birth.'],
   ]);
-  ins['!cols'] = [{ wch: 28 }, { wch: 110 }];
+  ins['!cols'] = [{ wch: 22 }, { wch: 120 }];
   XLSX.utils.book_append_sheet(wb, ins, 'Instructions');
-  const lists = XLSX.utils.aoa_to_sheet([['Category', 'Employment type', 'Active'], ['Management', 'Permanent', 'Yes'], ['Non-management', 'Probation', 'No'], ['', 'Contract', '']]);
-  XLSX.utils.book_append_sheet(wb, lists, 'Lists');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Category'], ['Management'], ['Non-management']]), 'Lists');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
 function errorWorkbook(rows) {
   const data = rows.map((r) => [...COLUMNS.map(([k]) => (r.raw?.[k] ?? '')), r.problems.join('; '), r.rowNo]);
   const ws = XLSX.utils.aoa_to_sheet([[...HEADERS, 'Errors', 'Row in your file'], ...data]);
-  ws['!cols'] = [...HEADERS.map((h) => ({ wch: Math.max(14, h.length + 2) })), { wch: 80 }, { wch: 10 }];
+  ws['!cols'] = [...HEADERS.map((h) => ({ wch: Math.max(16, h.length + 4) })), { wch: 80 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Staff records');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -100,7 +94,7 @@ function parseFile(buffer) {
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
   if (!aoa.length) throw new ImportFileError('The sheet is empty.');
   const keys = aoa[0].map((h) => HEADER_MAP[norm(h)] || null);
-  if (!keys.includes('staffNo')) throw new ImportFileError('There is no "Staff number" column. Use the Excel template.');
+  if (!keys.includes('staffNo')) throw new ImportFileError('There is no "Staff Number/Code" column. Use the Excel template.');
   const body = aoa.slice(1);
   if (body.length > MAX_ROWS) throw new ImportFileError(`The file has more than ${MAX_ROWS.toLocaleString('en-US')} rows. Split it into smaller files.`);
   return body
@@ -140,22 +134,6 @@ function cellDate(v) {
   return date.toISOString().slice(0, 10);
 }
 
-/** Whole shillings, null when blank, or NaN. */
-function cellMoney(v) {
-  if (blank(v)) return null;
-  if (typeof v === 'number') return Number.isInteger(v) && v >= 0 ? v : Number.NaN;
-  const t = String(v).replace(/[,\s]/g, '').replace(/^tzs/i, '');
-  return /^\d+$/.test(t) ? Number.parseInt(t, 10) : Number.NaN;
-}
-
-function cellYesNo(v) {
-  if (blank(v)) return null;
-  const t = String(v).trim().toLowerCase();
-  if (['yes', 'y', 'true', '1', 'ndiyo'].includes(t)) return true;
-  if (['no', 'n', 'false', '0', 'hapana'].includes(t)) return false;
-  return undefined;
-}
-
 function cellCategory(v) {
   if (blank(v)) return null;
   const t = String(v).trim().toLowerCase().replace(/[\s_]+/g, '-');
@@ -164,10 +142,10 @@ function cellCategory(v) {
   return undefined;
 }
 
-function cellEmployment(v) {
+/** NIDA as stored (D-93), null when blank, or 'bad'. A number cell loses no digits: 20 digits do not fit a number. */
+function cellNida(v) {
   if (blank(v)) return null;
-  const t = String(v).trim().toLowerCase();
-  return { permanent: 'Permanent', probation: 'Probation', contract: 'Contract' }[t];
+  return normaliseNida(String(v)) || 'bad';
 }
 
 const dayOf = (date) => (date ? localDay(date) : null);
@@ -177,191 +155,107 @@ const asDate = (day) => (day ? localMidnight(day) : null);
 
 /**
  * Checks one row against the current record (if any). Returns
- * { outcome, problems, changes, name, staffNo, record, salary, status } where record is
- * the full set of HR fields to store and salary is a new salary row or null.
+ * { outcome, problems, changes, name, staffNo, record, nida, dob } where record holds the
+ * HR fields to store, nida the NIDA number to store (or null to keep) and dob a date of
+ * birth to send for verification (or null).
  */
-function checkRow(raw, { existing, salaryInForce, knownStaffNos, seenStaffNos, today }) {
+function checkRow(raw, { existing, seenStaffNos, seenNidas, nidaOwners, settings, today }) {
   const problems = [];
   const staffNo = (text(raw.staffNo) || '').toUpperCase();
-  if (!staffNo) problems.push('Staff number is missing');
-  else if (!STAFF_NO.test(staffNo)) problems.push('Staff number must be the employee code on the payslip, for example AT637');
-  else if (seenStaffNos.has(staffNo)) problems.push(`Staff number repeats row ${seenStaffNos.get(staffNo)}`);
+  if (!staffNo) problems.push('Staff Number/Code is missing');
+  else if (!STAFF_NO.test(staffNo)) problems.push('Staff Number/Code must be the employee code on the payslip, for example AT637');
+  else if (seenStaffNos.has(staffNo)) problems.push(`Staff Number/Code repeats row ${seenStaffNos.get(staffNo)}`);
 
   const ex = existing || {};
+  const isNew = !existing;
   const pick = (k, current) => (blank(raw[k]) ? current : text(raw[k]));
-  const rec = {
-    firstName: pick('firstName', ex.firstName),
-    lastName: pick('lastName', ex.lastName),
-    title: pick('title', ex.title),
-    department: pick('department', ex.department),
-    station: pick('station', ex.station),
-    stationHead: { name: pick('stationHeadName', ex.stationHead?.name), phone: pick('stationHeadPhone', ex.stationHead?.phone) },
-    email: blank(raw.email) ? ex.email : text(raw.email).toLowerCase(),
-    workPhone: pick('workPhone', ex.workPhone),
-    lfbAccountNo: pick('lfbAccountNo', ex.lfbAccountNo),
-  };
-  // Phone numbers in the stored format (D-93); one that does not normalise is an error.
-  const phoneCell = (k) => {
-    if (blank(raw[k])) return null;
-    const p = normalisePhone(String(raw[k]));
-    if (!p) problems.push(`${label(k)}: ${PHONE_MESSAGE}`);
-    return p;
-  };
-  const newPhones = { stationHeadPhone: phoneCell('stationHeadPhone'), workPhone: phoneCell('workPhone'), mobile: phoneCell('mobile') };
-  if (newPhones.stationHeadPhone) rec.stationHead.phone = newPhones.stationHeadPhone;
-  if (newPhones.workPhone) rec.workPhone = newPhones.workPhone;
-  if (!existing) {
-    COLUMNS.filter((c) => c[3] && c[0] !== 'staffNo' && !['category', 'employmentType', 'dateJoined', 'basic'].includes(c[0])).forEach(([k, h]) => {
-      if (!rec[k]) problems.push(`${h} is required for new staff`);
-    });
-  }
-  if (rec.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rec.email)) problems.push('Email is not a valid address');
+  const rec = { firstName: pick('firstName', ex.firstName), lastName: pick('lastName', ex.lastName), title: pick('title', ex.title) };
+  ['firstName', 'lastName', 'title'].forEach((k) => {
+    if (!rec[k]) problems.push(`${label(k)} is required`);
+  });
 
   const cat = cellCategory(raw.category);
   if (cat === undefined) problems.push('Category must be Management or Non-management');
   rec.category = cat || ex.category;
-  if (!rec.category) problems.push('Category is required for new staff');
+  if (!rec.category && cat !== undefined) problems.push('Category is required');
 
-  const emp = cellEmployment(raw.employmentType);
-  if (emp === undefined) problems.push('Employment type must be Permanent, Probation or Contract');
-  rec.employmentType = emp || ex.employmentType;
-  if (!rec.employmentType) problems.push('Employment type is required for new staff');
+  const joined = cellDate(raw.dateJoined);
+  if (joined === 'bad') problems.push('Date Joined is not a date');
+  const dateJoined = joined && joined !== 'bad' ? joined : dayOf(ex.dateJoined);
+  if (!dateJoined && joined !== 'bad') problems.push('Date Joined is required');
+  if (dateJoined && dateJoined > today) problems.push('Date Joined cannot be in the future');
+  rec.dateJoined = asDate(dateJoined);
 
-  const dates = {};
-  for (const k of ['dateJoined', 'probationEndDate', 'contractEndDate']) {
-    const d = cellDate(raw[k]);
-    if (d === 'bad') problems.push(`${label(k)} is not a date`);
-    dates[k] = d && d !== 'bad' ? d : dayOf(ex[k]);
+  // NIDA (D-93): stored in the standard format; one person's number only.
+  const nidaCell = cellNida(raw.nida);
+  if (nidaCell === 'bad') problems.push(`NIDA: ${NIDA_MESSAGE}`);
+  const nida = nidaCell && nidaCell !== 'bad' ? nidaCell : null;
+  if (!nida && nidaCell !== 'bad' && !ex.personal?.nida) problems.push('NIDA is required');
+  if (nida) {
+    const owner = nidaOwners.get(nida);
+    if (owner && owner !== staffNo) problems.push(`NIDA ${nida} is already on file for ${owner}`);
+    else if (seenNidas.has(nida)) problems.push(`NIDA repeats row ${seenNidas.get(nida)}`);
   }
-  if (!dates.dateJoined) problems.push('Date joined is required');
-  if (dates.dateJoined && dates.dateJoined > today) problems.push('Date joined cannot be in the future');
-  if (dates.probationEndDate && dates.dateJoined && dates.probationEndDate < dates.dateJoined) problems.push('Probation end date must not be before the date joined');
-  if (rec.employmentType === 'Contract' && !dates.contractEndDate) problems.push('Contract end date is required for contract staff');
-  if (dates.contractEndDate && dates.dateJoined && dates.contractEndDate <= dates.dateJoined) problems.push('Contract end date must be after the date joined');
-  Object.assign(rec, Object.fromEntries(Object.entries(dates).map(([k, v]) => [k, asDate(v)])));
 
-  const lm = text(raw.lineManager)?.toUpperCase();
-  if (lm) {
-    if (!STAFF_NO.test(lm)) problems.push('Line manager staff number must be an employee code, for example AT637');
-    else if (lm === staffNo) problems.push('A staff member cannot be their own line manager');
-    else if (!knownStaffNos.has(lm)) problems.push(`Line manager ${lm} is not on file or in this upload`);
-  }
-  rec.lineManagerStaffNo = lm || null;
+  // Date of birth (D-82): proposed for verification, never set directly.
+  const dobCell = cellDate(raw.dob);
+  let dob = null;
+  const verified = ex.dateOfBirth?.value || null;
+  const pending = ex.dateOfBirth?.pending?.changeId ? ex.dateOfBirth.pending.proposed : null;
+  if (dobCell === 'bad') problems.push('Date of Birth is not a date');
+  else if (dobCell) {
+    const wrong = problemWith(dobCell, settings, today);
+    if (wrong) problems.push(`Date of Birth: ${wrong}`);
+    else if (dobCell !== verified && dobCell !== pending) {
+      if (pending) problems.push(`A different date of birth (${pending}) is already waiting for verification. Decide or withdraw it first, or leave Date of Birth blank`);
+      else dob = dobCell;
+    }
+  } else if (!verified && !pending) problems.push('Date of Birth is required');
 
-  // Salary (FR-03): a new effective-dated row when any amount changes.
-  const money = {};
-  for (const k of ['basic', 'allowances', 'commission', 'gross', 'net']) {
-    money[k] = cellMoney(raw[k]);
-    if (Number.isNaN(money[k])) problems.push(`${label(k)} must be whole shillings`);
-  }
-  const eff = cellDate(raw.salaryEffective);
-  if (eff === 'bad') problems.push('Salary effective from is not a date');
-  const cur = salaryInForce || {};
-  const salary = {
-    basic: money.basic ?? cur.basic,
-    allowances: money.allowances ?? cur.allowances ?? 0,
-    commission: money.commission ?? cur.commission ?? 0,
-    gross: money.gross ?? cur.gross,
-    net: money.net ?? cur.net,
-  };
-  if (!(salary.basic > 0)) problems.push('Basic salary must be a number above zero');
-  const salaryChanged = !salaryInForce || ['basic', 'allowances', 'commission', 'gross', 'net'].some((k) => (salary[k] ?? null) !== (cur[k] ?? null));
-  const effective = eff && eff !== 'bad' ? eff : existing ? today : dates.dateJoined;
-  if (salaryChanged && dates.dateJoined && effective && effective < dates.dateJoined) problems.push('Salary effective from must not be before the date joined');
-
-  const active = cellYesNo(raw.active);
-  if (active === undefined) problems.push('Active must be Yes or No');
-  const status = active === null ? ex.status || 'active' : active ? 'active' : 'deactivated';
   const name = [rec.firstName, rec.lastName].filter(Boolean).join(' ');
-
   if (problems.length) return { outcome: 'error', problems, changes: [], staffNo, name };
 
-  const { mobile } = newPhones;
-  if (!existing) {
-    return {
-      outcome: 'new',
-      problems,
-      changes: [`${rec.title}, ${rec.station}; ${rec.category}; basic ${salary.basic.toLocaleString('en-US')}`],
-      staffNo,
-      name,
-      record: rec,
-      mobile,
-      status,
-      salary: { ...salary, effectiveFrom: effective },
-    };
+  const sentForCheck = dob ? `date of birth ${dob} sent for verification` : null;
+  if (isNew) {
+    return { outcome: 'new', problems, changes: [[`${rec.title}; ${rec.category}; joined ${dateJoined}`, sentForCheck].filter(Boolean).join('; ')], staffNo, name, record: rec, nida, dob };
   }
 
   const changes = [];
-  const sameDay = (a, b) => dayOf(a) === dayOf(b);
-  const compare = [
-    ['firstName', 'first name'],
-      ['lastName', 'last name'],
-    ['title', 'job title'],
-    ['department', 'department'],
-    ['station', 'work station'],
-    ['email', 'email'],
-    ['workPhone', 'work phone'],
-    ['lfbAccountNo', 'LFB account number'],
-    ['employmentType', 'employment type'],
-  ];
-  compare.forEach(([k, l]) => {
+  [['firstName', 'first name'], ['lastName', 'surname'], ['title', 'title']].forEach(([k, l]) => {
     if ((rec[k] || null) !== (ex[k] || null)) changes.push(l);
   });
   if (rec.category !== ex.category) changes.push(`category to ${rec.category}`);
-  if ((rec.stationHead.name || null) !== (ex.stationHead?.name || null) || (rec.stationHead.phone || null) !== (ex.stationHead?.phone || null)) changes.push('head of station');
-  ['dateJoined', 'probationEndDate', 'contractEndDate'].forEach((k) => {
-    if (!sameDay(rec[k], ex[k])) changes.push(label(k).toLowerCase());
-  });
-  if (rec.lineManagerStaffNo && rec.lineManagerStaffNo !== ex.lineManagerStaffNo) changes.push('line manager');
-  if (mobile && !ex.personal?.mobile) changes.push('mobile phone');
-  if (salaryChanged) changes.push(`salary from ${dayOf(asDate(effective))}${money.basic != null && money.basic !== cur.basic ? `: basic ${(cur.basic || 0).toLocaleString('en-US')} → ${salary.basic.toLocaleString('en-US')}` : ''}`);
-  if (status !== ex.status) changes.push(status === 'active' ? 'reactivated' : 'set inactive');
-
-  return {
-    outcome: changes.length ? 'update' : 'unchanged',
-    problems,
-    changes,
-    staffNo,
-    name,
-    record: rec,
-    mobile,
-    status,
-    salary: salaryChanged ? { ...salary, effectiveFrom: effective } : null,
-  };
+  if (dateJoined !== dayOf(ex.dateJoined)) changes.push('date joined');
+  if (nida && nida !== ex.personal?.nida) changes.push('NIDA');
+  if (sentForCheck) changes.push(sentForCheck);
+  return { outcome: changes.length ? 'update' : 'unchanged', problems, changes, staffNo, name, record: rec, nida: nida && nida !== ex.personal?.nida ? nida : null, dob };
 }
 
 /** Loads what checkRow needs for a set of rows, in one pass. */
 async function context(rows, session) {
   const nos = [...new Set(rows.map((r) => (text(r.raw.staffNo) || '').toUpperCase()).filter(Boolean))];
-  const lineManagers = [...new Set(rows.map((r) => (text(r.raw.lineManager) || '').toUpperCase()).filter(Boolean))];
-  const existing = await Staff.find({ staffNo: { $in: [...nos, ...lineManagers] } }).session(session || null).lean();
-  const byNo = new Map(existing.map((s) => [s.staffNo, s]));
-  const ids = existing.map((s) => s._id);
-  const salaries = await Salary.find({ staffId: { $in: ids }, effectiveFrom: { $lte: new Date() } }).sort({ effectiveFrom: -1 }).session(session || null).lean();
-  const salaryByStaff = new Map();
-  salaries.forEach((s) => {
-    if (!salaryByStaff.has(String(s.staffId))) salaryByStaff.set(String(s.staffId), s);
-  });
-  const lmIds = existing.filter((s) => s.lineManagerId).map((s) => s.lineManagerId);
-  const lms = await Staff.find({ _id: { $in: lmIds } }).select('staffNo').session(session || null).lean();
-  const lmNoById = new Map(lms.map((s) => [String(s._id), s.staffNo]));
-  existing.forEach((s) => {
-    s.lineManagerStaffNo = s.lineManagerId ? lmNoById.get(String(s.lineManagerId)) : null;
-  });
-  const knownStaffNos = new Set([...existing.map((s) => s.staffNo), ...nos]);
-  return { byNo, salaryByStaff, knownStaffNos };
+  const nidas = [...new Set(rows.map((r) => cellNida(r.raw.nida)).filter((n) => n && n !== 'bad'))];
+  const [existing, owners, settings] = await Promise.all([
+    Staff.find({ staffNo: { $in: nos } }).session(session || null).lean(),
+    nidas.length ? Staff.find({ 'personal.nida': { $in: nidas } }).select('staffNo personal.nida').session(session || null).lean() : [],
+    Settings.get(),
+  ]);
+  return { byNo: new Map(existing.map((s) => [s.staffNo, s])), nidaOwners: new Map(owners.map((s) => [s.personal.nida, s.staffNo])), settings };
 }
 
 /** Checks every row; returns rows with outcome, problems, changes and the plan to apply. */
 async function checkRows(rows, session) {
   const ctx = await context(rows, session);
   const seen = new Map();
+  const seenNidas = new Map();
   const today = localDay();
   return rows.map((r) => {
     const sn = (text(r.raw.staffNo) || '').toUpperCase();
     const existing = ctx.byNo.get(sn) || null;
-    const res = checkRow(r.raw, { existing, salaryInForce: existing ? ctx.salaryByStaff.get(String(existing._id)) : null, knownStaffNos: ctx.knownStaffNos, seenStaffNos: seen, today });
+    const res = checkRow(r.raw, { existing, seenStaffNos: seen, seenNidas, nidaOwners: ctx.nidaOwners, settings: ctx.settings, today });
     if (sn && !seen.has(sn)) seen.set(sn, r.rowNo);
+    const n = cellNida(r.raw.nida);
+    if (n && n !== 'bad' && !seenNidas.has(n)) seenNidas.set(n, r.rowNo);
     return { rowNo: r.rowNo, raw: r.raw, existing, ...res };
   });
 }
@@ -373,4 +267,4 @@ const summarise = (rows) => ({
   error: rows.filter((r) => r.outcome === 'error').length,
 });
 
-module.exports = { COLUMNS, HEADERS, MAX_ROWS, templateWorkbook, errorWorkbook, parseFile, checkRows, summarise, ImportFileError, cellDate, cellMoney };
+module.exports = { COLUMNS, HEADERS, MAX_ROWS, templateWorkbook, errorWorkbook, parseFile, checkRows, summarise, ImportFileError, cellDate, cellNida };

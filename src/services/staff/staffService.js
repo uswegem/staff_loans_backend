@@ -5,7 +5,6 @@
 // rules and write the same audit entries (NFR-05).
 
 const Staff = require('../../models/Staff');
-const Salary = require('../../models/Salary');
 const User = require('../../models/User');
 const Session = require('../../models/Session');
 const RefreshToken = require('../../models/RefreshToken');
@@ -16,8 +15,9 @@ const { addMonths, localDay } = require('../../utils/dates');
 const LFB_BANK = 'Letshego Faidika Bank';
 
 // Fields People and Culture maintain (FR-01). Personal, bank, next-of-kin and pay
-// declarations belong to the staff member's profile.
-const HR_FIELDS = ['firstName', 'lastName', 'gender', 'title', 'department', 'station', 'stationHead', 'lineManagerId', 'category', 'employmentType', 'dateJoined', 'probationEndDate', 'contractEndDate', 'email', 'workPhone', 'lfbAccountNo', 'incomeClass'];
+// declarations belong to the staff member's profile. The probation end date is worked out
+// (D-100): earlier stored values are kept but no longer written or used.
+const HR_FIELDS = ['firstName', 'lastName', 'gender', 'title', 'department', 'station', 'stationHead', 'lineManagerId', 'category', 'employmentType', 'dateJoined', 'contractEndDate', 'email', 'workPhone', 'lfbAccountNo', 'incomeClass'];
 
 const fullName = (s) => [s.firstName, s.lastName].filter(Boolean).join(' ');
 
@@ -31,11 +31,12 @@ function hrSnapshot(s) {
   return out;
 }
 
-/** NS-01: on probation until the later of date joined + probation months and the HR end date. */
+/**
+ * NS-01, D-100: on probation until date joined + the probation months in the settings. A
+ * probation end date entered before D-100 is kept on the record but no longer counts.
+ */
 function probationInfo(staff, probationMonths, now = new Date()) {
-  const byRule = staff.dateJoined ? addMonths(staff.dateJoined, probationMonths) : null;
-  const byHr = staff.probationEndDate || null;
-  const endsOn = [byRule, byHr].filter(Boolean).sort((a, b) => b - a)[0] || null;
+  const endsOn = staff.dateJoined ? addMonths(staff.dateJoined, probationMonths) : null;
   return { onProbation: !!endsOn && now < endsOn, endsOn: endsOn ? localDay(endsOn) : null };
 }
 
@@ -53,8 +54,8 @@ async function endSignIns(staffId, reason, session) {
 }
 
 /**
- * Creates or updates a staff record. fields are HR fields; extra = { mobile, status,
- * exitDate, salary: { basic, allowances, commission, gross, net, effectiveFrom } }.
+ * Creates or updates a staff record. fields are HR fields; extra = { mobile, nida, status,
+ * exitDate }. No salary is recorded (D-100): affordability comes from the payslip.
  */
 async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, source = 'manual' } = {}) {
   const before = hrSnapshot(existing);
@@ -65,7 +66,7 @@ async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, 
       ...fields,
       gender: fields.gender || undefined,
       status: extra.status || 'active',
-      personal: { mobile: extra.mobile || undefined },
+      personal: { mobile: extra.mobile || undefined, nida: extra.nida || undefined },
       bank: { bank: LFB_BANK, branch: '', accountName: fullName(fields), accountNo: fields.lfbAccountNo || '' },
       nextOfKin: [],
     });
@@ -74,6 +75,7 @@ async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, 
       if (fields[k] !== undefined) staff[k] = fields[k] === '' && k === 'gender' ? undefined : fields[k];
     });
     if (extra.mobile && !staff.personal?.mobile) staff.set('personal.mobile', extra.mobile);
+    if (extra.nida) staff.set('personal.nida', extra.nida);
     if (fields.lfbAccountNo && !staff.bank?.accountNo) staff.set('bank.accountNo', fields.lfbAccountNo);
     if (extra.status && extra.status !== staff.status) {
       staff.status = extra.status;
@@ -83,11 +85,6 @@ async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, 
   await staff.save({ session });
   if (staff.status !== 'active' && (!before || before.status === 'active')) await endSignIns(staff._id, staff.status, session);
 
-  let salary = null;
-  if (extra.salary) {
-    const s = extra.salary;
-    [salary] = await Salary.create([{ staffId: staff._id, basic: s.basic, allowances: s.allowances || 0, commission: s.commission || 0, gross: s.gross ?? null, net: s.net ?? null, effectiveFrom: s.effectiveFrom, source, recordedBy: req.auth.user._id }], { session });
-  }
   await audit.record(
     {
       req,
@@ -95,22 +92,12 @@ async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, 
       description: `Staff record ${existing ? 'updated' : 'created'}: ${staffNo} ${fullName(staff)}${source !== 'manual' ? ` (${source})` : ''}`,
       entity: 'Staff',
       entityId: String(staff._id),
-      before,
-      after: { ...hrSnapshot(staff), ...(salary ? { salary: { basic: salary.basic, allowances: salary.allowances, effectiveFrom: salary.effectiveFrom } } : {}) },
+      before: before && { ...before, nida: existing.personal?.nida || null },
+      after: { ...hrSnapshot(staff), nida: staff.personal?.nida || null },
     },
     { session }
   );
   return staff;
 }
 
-async function addSalary(req, staff, s, { session } = {}) {
-  const [salary] = await Salary.create([{ staffId: staff._id, ...s, recordedBy: req.auth.user._id, source: 'manual' }], { session });
-  const prev = await Salary.findOne({ staffId: staff._id, effectiveFrom: { $lt: s.effectiveFrom } }).sort({ effectiveFrom: -1 }).session(session || null);
-  await audit.record(
-    { req, action: 'staff.salary_add', description: `Salary from ${localDay(s.effectiveFrom)} recorded for ${staff.staffNo}`, entity: 'Staff', entityId: String(staff._id), before: prev ? { basic: prev.basic, allowances: prev.allowances, effectiveFrom: prev.effectiveFrom } : null, after: { basic: salary.basic, allowances: salary.allowances, effectiveFrom: salary.effectiveFrom } },
-    { session }
-  );
-  return salary;
-}
-
-module.exports = { HR_FIELDS, saveStaff, addSalary, endSignIns, probationInfo, probationFor, hrSnapshot, fullName, LFB_BANK };
+module.exports = { HR_FIELDS, saveStaff, endSignIns, probationInfo, probationFor, hrSnapshot, fullName, LFB_BANK };

@@ -22,13 +22,13 @@ beforeEach(async () => {
 });
 
 describe('my profile', () => {
-  it('shows employment read-only, salary and the approval route', async () => {
+  it('shows employment read-only and the approval route, and no salary (D-100)', async () => {
     const neema = await signIn('LFB0412');
     const res = await api(neema.token).get('/me/profile');
     expect(res.status).toBe(200);
     expect(res.body.data.personal.nida).toBe('19890712-14112-00004-21');
     expect(res.body.data.employment).toMatchObject({ category: 'Non-management', dateJoined: '2019-03-04', probation: { onProbation: false } });
-    expect(res.body.data.salary).toMatchObject({ basic: 1850000, allowances: 220000 });
+    expect(res.body.data).not.toHaveProperty('salary');
     expect(res.body.data.route).toMatchObject({ key: 'nonmgmt', limitedCredit: false });
     expect(res.body.data.completeness.complete).toBe(true);
     // D-98: the retirement date is worked out from the verified date of birth (1989-07-12 + 60 years).
@@ -108,36 +108,34 @@ describe('my profile', () => {
 });
 
 describe('what still stops a complete profile from applying (D-97)', () => {
-  it('a date of birth waiting for People and Culture, and no employment record or salary, are listed and block every product', async () => {
+  it('a date of birth waiting for People and Culture, and no date joined, are listed and block every product', async () => {
     const neema = await signIn('LFB0412');
     const staff = await Staff.findOne({ staffNo: 'LFB0412' });
-    await Salary.deleteMany({ staffId: staff._id });
-    await Staff.collection.updateOne({ _id: staff._id }, { $unset: { dateJoined: '', employmentType: '', 'dateOfBirth.value': '' }, $set: { 'dateOfBirth.pending': { changeId: staff._id, proposed: '1989-07-12' } } });
+    await Staff.collection.updateOne({ _id: staff._id }, { $unset: { dateJoined: '', 'dateOfBirth.value': '' }, $set: { 'dateOfBirth.pending': { changeId: staff._id, proposed: '1989-07-12' } } });
 
     const me = (await api(neema.token).get('/me/profile')).body.data;
     expect(me.completeness.complete).toBe(true);
     expect(me.applyBlockers).toEqual([
       'Your date of birth (1989-07-12) is waiting for People and Culture to verify it. You can apply once it is verified.',
-      'People and Culture must complete your employment record (date joined and employment type) before you can apply.',
-      'People and Culture must record your salary before you can apply.',
+      'People and Culture must record your date joined before you can apply.',
     ]);
     const elig = (await api(neema.token).get('/me/eligibility')).body.data;
     expect(elig.blockers).toEqual(me.applyBlockers);
     elig.products.forEach((p) => {
       expect(p.canApply).toBe(false);
-      expect(p.reasons).toEqual(expect.arrayContaining(['People and Culture must record your salary before you can apply.']));
+      expect(p.reasons).toEqual(expect.arrayContaining(['People and Culture must record your date joined before you can apply.']));
     });
   });
 
-  it('a missing salary alone blocks applying, and the application cannot be started', async () => {
+  it('no salary record and no employment type do not block applying (D-100)', async () => {
     const neema = await signIn('LFB0412');
     const staff = await Staff.findOne({ staffNo: 'LFB0412' });
+    // As a staff upload leaves a new record: no employment type, and no salary history.
+    await Staff.collection.updateOne({ _id: staff._id }, { $unset: { employmentType: '' } });
     await Salary.deleteMany({ staffId: staff._id });
-    expect((await api(neema.token).get('/me/profile')).body.data.applyBlockers).toEqual(['People and Culture must record your salary before you can apply.']);
+    expect((await api(neema.token).get('/me/profile')).body.data.applyBlockers).toEqual([]);
     const res = await request(app()).post('/api/v1/applications').set(authed(neema.token)).send({ productId: String(products.PL._id) });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('NOT_ELIGIBLE');
-    expect(res.body.message).toBe('People and Culture must record your salary before you can apply.');
+    expect(res.status).toBe(201);
   });
 
   it('nothing is listed when the staff member can apply', async () => {

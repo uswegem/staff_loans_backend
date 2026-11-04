@@ -1,11 +1,10 @@
 'use strict';
 
-// The signed-in staff member's own profile (BRD 6, decision 7, FR-05). Employment and
-// salary are read-only here; People and Culture maintain them. Each section is saved
+// The signed-in staff member's own profile (BRD 6, decision 7, FR-05). Employment is
+// read-only here; People and Culture maintain it. Each section is saved
 // on its own, as in the prototype's tabs, and every save is audited (NFR-05).
 
 const Staff = require('../models/Staff');
-const Salary = require('../models/Salary');
 const audit = require('../services/audit/auditService');
 const dobService = require('../services/staff/dobService');
 const Settings = require('../models/Settings');
@@ -27,7 +26,7 @@ async function ownStaff(req) {
 const day = (d) => (d ? localDay(d) : null);
 
 async function view(req, staff) {
-  const [salary, probation, profile, dateOfBirth, settings] = await Promise.all([Salary.inForce(staff._id), probationFor(staff), completeness(staff), dobService.statusOf(staff), Settings.get()]);
+  const [probation, profile, dateOfBirth, settings] = await Promise.all([probationFor(staff), completeness(staff), dobService.statusOf(staff), Settings.get()]);
   const route = routeFor(req.auth.permissions, staff);
   const o = staff.toObject();
   return {
@@ -59,12 +58,11 @@ async function view(req, staff) {
       contractEndDate: day(o.contractEndDate),
       probation,
     },
-    salary: salary ? { basic: salary.basic, allowances: salary.allowances, commission: salary.commission, effectiveFrom: day(salary.effectiveFrom) } : null,
     route: { key: route.key, label: route.label, description: describeRoute(route), limitedCredit: route.limitedCredit },
     completeness: profile,
     // What stops applying once the profile is complete: date of birth not verified, or no
-    // employment record or salary from People and Culture (D-97).
-    applyBlockers: applyBlockers(o, salary),
+    // date joined from People and Culture (D-97, D-100).
+    applyBlockers: applyBlockers(o),
   };
 }
 

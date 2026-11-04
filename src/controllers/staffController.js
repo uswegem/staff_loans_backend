@@ -4,20 +4,23 @@
 // upload (FR-02). staff.view reads; staff.manage changes.
 
 const Staff = require('../models/Staff');
-const Salary = require('../models/Salary');
 const User = require('../models/User');
+const Settings = require('../models/Settings');
 const StaffImport = require('../models/StaffImport');
 const audit = require('../services/audit/auditService');
 const staffSvc = require('../services/staff/staffService');
 const importSvc = require('../services/staff/staffImportService');
 const { completeness, formatNida } = require('../services/staff/profileService');
+const { retirementDateFor } = require('../services/staff/retirement');
+const dobService = require('../services/staff/dobService');
+const notify = require('../services/notify/notificationService');
 const { withTransaction } = require('../config/db');
 const { localDay, localMidnight } = require('../utils/dates');
 const { badRequest, notFound, conflict } = require('../utils/errors');
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const day = (d) => (d ? localDay(d) : null);
-const DATE_FIELDS = ['dateJoined', 'probationEndDate', 'contractEndDate'];
+const DATE_FIELDS = ['dateJoined', 'contractEndDate'];
 
 async function load(id) {
   const s = await Staff.findById(id);
@@ -40,7 +43,6 @@ function checkHr(f) {
   const add = (k, m) => (errors[k] = errors[k] || []).push(m);
   const d = (k) => (f[k] ? localDay(f[k]) : null);
   if (d('dateJoined') && d('dateJoined') > localDay()) add('dateJoined', 'Date joined cannot be in the future.');
-  if (d('probationEndDate') && d('dateJoined') && d('probationEndDate') < d('dateJoined')) add('probationEndDate', 'Probation end date must not be before the date joined.');
   if (f.employmentType === 'Contract' && !f.contractEndDate) add('contractEndDate', 'Contract end date is required for contract staff.');
   if (d('contractEndDate') && d('dateJoined') && d('contractEndDate') <= d('dateJoined')) add('contractEndDate', 'Contract end date must be after the date joined.');
   if (Object.keys(errors).length) throw badRequest('Check the highlighted fields.', errors);
@@ -55,16 +57,14 @@ function hrFields(body) {
 }
 
 async function detail(staff) {
-  const [salaries, user, profile, probation, lm] = await Promise.all([
-    Salary.find({ staffId: staff._id }).sort({ effectiveFrom: -1 }).lean(),
+  const [user, profile, probation, lm, settings] = await Promise.all([
     User.findOne({ staffId: staff._id }).select('status lastLoginAt').lean(),
     completeness(staff),
     staffSvc.probationFor(staff),
     staff.lineManagerId ? Staff.findById(staff.lineManagerId).select('staffNo firstName lastName').lean() : null,
+    Settings.get(),
   ]);
   const o = staff.toObject();
-  const today = new Date();
-  const inForce = salaries.find((s) => s.effectiveFrom <= today) || null;
   return {
     id: String(o._id),
     staffNo: o.staffNo,
@@ -74,9 +74,10 @@ async function detail(staff) {
     lineManager: lm ? { staffNo: lm.staffNo, fullName: staffSvc.fullName(lm) } : null,
     status: o.status,
     exitDate: day(o.exitDate),
-    probation,
-    salary: inForce ? { basic: inForce.basic, allowances: inForce.allowances, effectiveFrom: day(inForce.effectiveFrom) } : null,
-    salaries: salaries.map((s) => ({ id: String(s._id), basic: s.basic, allowances: s.allowances, commission: s.commission, gross: s.gross, net: s.net, effectiveFrom: day(s.effectiveFrom), source: s.source, recordedAt: s.createdAt })),
+    // Worked out, never entered (D-100): date joined + probation months in the settings.
+    probation: { ...probation, months: settings.probationMonths },
+    // Verified date of birth + retirement age (D-98, D-100); null without a verified date of birth.
+    retirement: { date: retirementDateFor(o, settings), age: settings.retirementAge ?? 60 },
     profile: {
       completeness: profile,
       personal: { ...o.personal, dob: day(o.personal?.dob), nida: formatNida(o.personal?.nida) },
@@ -113,14 +114,7 @@ const StaffController = {
     }
     const [total, rows] = await Promise.all([Staff.countDocuments(filter), Staff.find(filter).sort({ staffNo: 1 }).skip((page - 1) * limit).limit(limit)]);
     const ids = rows.map((r) => r._id);
-    const [salaries, users] = await Promise.all([
-      Salary.find({ staffId: { $in: ids }, effectiveFrom: { $lte: new Date() } }).sort({ effectiveFrom: -1 }).lean(),
-      User.find({ staffId: { $in: ids } }).select('staffId status').lean(),
-    ]);
-    const basicBy = new Map();
-    salaries.forEach((s) => {
-      if (!basicBy.has(String(s.staffId))) basicBy.set(String(s.staffId), s.basic);
-    });
+    const users = await User.find({ staffId: { $in: ids } }).select('staffId status').lean();
     const userBy = new Map(users.map((u) => [String(u.staffId), u.status]));
     const items = await Promise.all(
       rows.map(async (s) => {
@@ -135,7 +129,6 @@ const StaffController = {
           category: s.category,
           employmentType: s.employmentType,
           status: s.status,
-          basic: basicBy.get(String(s._id)) ?? null,
           profile: { complete: c.complete, done: c.done, total: c.total },
           signIn: userBy.get(String(s._id)) || null,
         };
@@ -146,7 +139,7 @@ const StaffController = {
 
   async get(req, res) {
     const staff = await load(req.params.id);
-    // Viewing salary and personal data is audited (NFR-05).
+    // Viewing personal data is audited (NFR-05).
     await audit.record({ req, action: 'staff.view', description: `Staff record viewed: ${staff.staffNo}`, entity: 'Staff', entityId: String(staff._id) });
     res.json({ success: true, data: await detail(staff) });
   },
@@ -156,10 +149,9 @@ const StaffController = {
     if (await Staff.exists({ staffNo: b.staffNo })) throw conflict(`${b.staffNo} is already on file.`, 'DUPLICATE_STAFF_NO');
     const fields = hrFields(b);
     checkHr(fields);
-    if (localDay(localMidnight(b.salary.effectiveFrom)) < localDay(fields.dateJoined)) throw badRequest('Check the highlighted fields.', { 'salary.effectiveFrom': ['Salary effective from must not be before the date joined.'] });
     fields.lineManagerId = await lineManagerId(b.lineManagerStaffNo, b.staffNo);
     const staff = await withTransaction((session) =>
-      staffSvc.saveStaff(req, null, b.staffNo, fields, { mobile: b.mobile, salary: { ...b.salary, effectiveFrom: localMidnight(b.salary.effectiveFrom) } }, { session })
+      staffSvc.saveStaff(req, null, b.staffNo, fields, { mobile: b.mobile }, { session })
     );
     res.status(201).json({ success: true, data: await detail(staff) });
   },
@@ -184,15 +176,6 @@ const StaffController = {
       return s;
     });
     res.json({ success: true, data: await detail(saved) });
-  },
-
-  async addSalary(req, res) {
-    const staff = await load(req.params.id);
-    const effectiveFrom = localMidnight(req.body.effectiveFrom);
-    if (req.body.effectiveFrom < localDay(staff.dateJoined)) throw badRequest('Check the highlighted fields.', { effectiveFrom: ['Salary effective from must not be before the date joined.'] });
-    if (await Salary.exists({ staffId: staff._id, effectiveFrom })) throw conflict('A salary already starts on that date. Choose another date.', 'DUPLICATE_SALARY_DATE');
-    await withTransaction((session) => staffSvc.addSalary(req, staff, { ...req.body, effectiveFrom }, { session }));
-    res.status(201).json({ success: true, data: await detail(staff) });
   },
 
   // ---------- bulk upload (FR-02) ----------
@@ -246,25 +229,21 @@ const StaffController = {
     const result = await withTransaction(async (session) => {
       const fresh = await importSvc.checkRows(imp.rows.map((r) => ({ rowNo: r.rowNo, raw: r.raw })), session);
       const apply = fresh.filter((r) => r.outcome === 'new' || r.outcome === 'update');
-      const saved = new Map();
-      for (const r of apply.sort((a, b) => (a.outcome === 'new' ? -1 : 1) - (b.outcome === 'new' ? -1 : 1))) {
-        const { lineManagerStaffNo, ...fields } = r.record;
+      let dobs = 0;
+      for (const r of apply) {
         // eslint-disable-next-line no-await-in-loop
         const existing = r.existing ? await Staff.findById(r.existing._id).session(session) : null;
+        // Only the template's fields (D-100); everything else on the record stays as it is.
         // eslint-disable-next-line no-await-in-loop
-        const s = await staffSvc.saveStaff(req, existing, r.staffNo, fields, { mobile: r.mobile, status: r.status, salary: r.salary ? { ...r.salary, effectiveFrom: localMidnight(r.salary.effectiveFrom) } : null }, { session, source: `upload ${imp.fileName}` });
-        saved.set(r.staffNo, { staff: s, lineManagerStaffNo });
-      }
-      // Line managers last, so a manager added in the same file can be linked.
-      for (const { staff, lineManagerStaffNo } of saved.values()) {
-        if (lineManagerStaffNo) {
+        const s = await staffSvc.saveStaff(req, existing, r.staffNo, r.record, { nida: r.nida }, { session, source: `upload ${imp.fileName}` });
+        if (r.dob) {
+          // D-82: waits in the verification queue; the uploader cannot verify it.
           // eslint-disable-next-line no-await-in-loop
-          const lm = await Staff.findOne({ staffNo: lineManagerStaffNo }).select('_id').session(session);
-          // eslint-disable-next-line no-await-in-loop
-          if (lm) await Staff.updateOne({ _id: staff._id }, { $set: { lineManagerId: lm._id } }, { session });
+          await dobService.propose(req, s, r.dob, 'staff_upload', session);
+          dobs += 1;
         }
       }
-      const out = { created: apply.filter((r) => r.outcome === 'new').length, updated: apply.filter((r) => r.outcome === 'update').length, skipped: fresh.length - apply.length };
+      const out = { created: apply.filter((r) => r.outcome === 'new').length, updated: apply.filter((r) => r.outcome === 'update').length, skipped: fresh.length - apply.length, datesOfBirth: dobs };
       imp.status = 'committed';
       imp.committedAt = new Date();
       imp.committedBy = req.auth.user._id;
@@ -275,6 +254,9 @@ const StaffController = {
       await audit.record({ req, action: 'staff.import_commit', description: `Staff upload applied: ${imp.fileName} (${out.created} new, ${out.updated} updated, ${out.skipped} skipped)`, entity: 'StaffImport', entityId: String(imp._id), after: out }, { session });
       return out;
     });
+    if (result.datesOfBirth) {
+      await notify.notifyPermission('staff.verifyDob', { type: 'dob.pending', text: `Dates of birth from a staff upload are waiting for verification: ${result.datesOfBirth}.`, href: '/staff/dob-verifications' }, { exclude: [req.auth.user._id] });
+    }
     res.json({ success: true, data: { ...importView(imp), result } });
   },
 

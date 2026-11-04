@@ -125,14 +125,13 @@ const hrBody = {
   category: Joi.string().valid('Management', 'Non-management'),
   employmentType: Joi.string().valid('Permanent', 'Probation', 'Contract'),
   dateJoined: day,
-  probationEndDate: day.allow('', null),
+  // No probation end date (worked out, D-100), salary (from the payslip, D-100) or retirement date (D-98).
   contractEndDate: day.allow('', null),
   email: Joi.string().trim().lowercase().email({ tlds: false }).max(120).allow(''),
   workPhone: phone,
   lfbAccountNo: text(40),
   incomeClass: Joi.string().valid('fixed', 'commission'),
 };
-const salaryBody = Joi.object({ basic: money.min(1).required(), allowances: money.default(0), commission: money.default(0), gross: money.allow(null), net: money.allow(null), effectiveFrom: day.required() });
 const idParams = { params: Joi.object({ id: objectId.required() }) };
 
 const upload = multer({
@@ -152,25 +151,23 @@ const uploadOne = (req, res, next) =>
 /**
  * @openapi
  * /staff:
- *   get: { tags: [Staff], summary: "Staff records with salary in force and profile completeness (FR-01)", security: [{ bearer: [] }], responses: { 200: { description: Page of staff } } }
- *   post: { tags: [Staff], summary: "Add a staff record with its first salary", security: [{ bearer: [] }], responses: { 201: { description: Created } } }
+ *   get: { tags: [Staff], summary: "Staff records with profile completeness (FR-01)", security: [{ bearer: [] }], responses: { 200: { description: Page of staff } } }
+ *   post: { tags: [Staff], summary: "Add a staff record", security: [{ bearer: [] }], responses: { 201: { description: Created } } }
  * /staff/{id}:
- *   get: { tags: [Staff], summary: "Staff record with salary history; the view is audited (NFR-05)", security: [{ bearer: [] }], responses: { 200: { description: Staff record } } }
+ *   get: { tags: [Staff], summary: "Staff record with the worked-out probation end and retirement dates; the view is audited (NFR-05)", security: [{ bearer: [] }], responses: { 200: { description: Staff record } } }
  *   patch: { tags: [Staff], summary: "Change employment details", security: [{ bearer: [] }], responses: { 200: { description: Saved } } }
  * /staff/{id}/status:
  *   post: { tags: [Staff], summary: "Activate, deactivate or record an exit; inactive staff cannot sign in (FR-04)", security: [{ bearer: [] }], responses: { 200: { description: Saved } } }
- * /staff/{id}/salaries:
- *   post: { tags: [Staff], summary: "Add an effective-dated salary (FR-03)", security: [{ bearer: [] }], responses: { 201: { description: Added } } }
  * /staff/import/template:
  *   get: { tags: [Staff], summary: "Excel template with an Instructions sheet (FR-02)", security: [{ bearer: [] }], responses: { 200: { description: xlsx file } } }
  * /staff/import:
- *   post: { tags: [Staff], summary: "Upload .xlsx, .xls or .csv; every row is checked; nothing changes yet (FR-02)", security: [{ bearer: [] }], responses: { 201: { description: Preview of new, updated, unchanged and error rows } } }
+ *   post: { tags: [Staff], summary: "Upload .xlsx, .xls or .csv with the eight template columns; every row is checked; nothing changes yet (FR-02, D-100)", security: [{ bearer: [] }], responses: { 201: { description: Preview of new, updated, unchanged and error rows } } }
  * /staff/import/{id}:
  *   get: { tags: [Staff], summary: "An upload's preview", security: [{ bearer: [] }], responses: { 200: { description: Preview } } }
  * /staff/import/{id}/errors.xlsx:
  *   get: { tags: [Staff], summary: "Error rows with reasons, in template columns, to fix and upload again", security: [{ bearer: [] }], responses: { 200: { description: xlsx file } } }
  * /staff/import/{id}/commit:
- *   post: { tags: [Staff], summary: "Apply the valid rows in one transaction", security: [{ bearer: [] }], responses: { 200: { description: Result } } }
+ *   post: { tags: [Staff], summary: "Apply the valid rows in one transaction; dates of birth go to the verification queue (D-82)", security: [{ bearer: [] }], responses: { 200: { description: Result } } }
  * /staff/import/{id}/discard:
  *   post: { tags: [Staff], summary: "Discard an upload", security: [{ bearer: [] }], responses: { 200: { description: Discarded } } }
  */
@@ -199,7 +196,7 @@ router.get(
 router.post(
   '/staff',
   requireAll('staff.manage'),
-  validate({ body: Joi.object({ ...hrBody, staffNo: staffNo.required(), mobile: phone, salary: salaryBody.required() }).fork(['firstName', 'lastName', 'title', 'station', 'category', 'employmentType', 'dateJoined'], (s) => s.required()) }),
+  validate({ body: Joi.object({ ...hrBody, staffNo: staffNo.required(), mobile: phone }).fork(['firstName', 'lastName', 'title', 'station', 'category', 'employmentType', 'dateJoined'], (s) => s.required()) }),
   asyncHandler(StaffController.create)
 );
 router.get('/staff/:id', requireAny('staff.view', 'staff.manage'), validate(idParams), asyncHandler(StaffController.get));
@@ -210,6 +207,5 @@ router.post(
   validate({ ...idParams, body: Joi.object({ status: Joi.string().valid('active', 'deactivated', 'exited').required(), exitDate: day.when('status', { is: 'exited', then: Joi.required() }), reason: text(400) }) }),
   asyncHandler(StaffController.setStatus)
 );
-router.post('/staff/:id/salaries', requireAll('staff.manage'), validate({ ...idParams, body: salaryBody }), asyncHandler(StaffController.addSalary));
 
 module.exports = router;

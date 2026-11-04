@@ -459,7 +459,7 @@
         "tags": [
           "Staff"
         ],
-        "summary": "Staff records with salary in force and profile completeness (FR-01)",
+        "summary": "Staff records with profile completeness (FR-01)",
         "security": [
           {
             "bearer": []
@@ -475,7 +475,7 @@
         "tags": [
           "Staff"
         ],
-        "summary": "Add a staff record with its first salary",
+        "summary": "Add a staff record",
         "security": [
           {
             "bearer": []
@@ -493,7 +493,7 @@
         "tags": [
           "Staff"
         ],
-        "summary": "Staff record with salary history; the view is audited (NFR-05)",
+        "summary": "Staff record with the worked-out probation end and retirement dates; the view is audited (NFR-05)",
         "security": [
           {
             "bearer": []
@@ -540,24 +540,6 @@
         }
       }
     },
-    "/staff/{id}/salaries": {
-      "post": {
-        "tags": [
-          "Staff"
-        ],
-        "summary": "Add an effective-dated salary (FR-03)",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Added"
-          }
-        }
-      }
-    },
     "/staff/import/template": {
       "get": {
         "tags": [
@@ -581,7 +563,7 @@
         "tags": [
           "Staff"
         ],
-        "summary": "Upload .xlsx, .xls or .csv; every row is checked; nothing changes yet (FR-02)",
+        "summary": "Upload .xlsx, .xls or .csv with the eight template columns; every row is checked; nothing changes yet (FR-02, D-100)",
         "security": [
           {
             "bearer": []
@@ -637,7 +619,7 @@
         "tags": [
           "Staff"
         ],
-        "summary": "Apply the valid rows in one transaction",
+        "summary": "Apply the valid rows in one transaction; dates of birth go to the verification queue (D-82)",
         "security": [
           {
             "bearer": []

@@ -27,7 +27,7 @@ const staffImportSchema = new mongoose.Schema(
     summary: { new: Number, update: Number, unchanged: Number, error: Number },
     committedAt: Date,
     committedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    result: { created: Number, updated: Number, skipped: Number },
+    result: { created: Number, updated: Number, skipped: Number, datesOfBirth: Number },
   },
   { timestamps: true }
 );

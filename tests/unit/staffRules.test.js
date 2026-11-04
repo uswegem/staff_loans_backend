@@ -2,7 +2,7 @@
 
 const XLSX = require('xlsx');
 const { normaliseNida, formatNida } = require('../../src/services/staff/profileService');
-const { cellDate, cellMoney, parseFile, HEADERS, templateWorkbook } = require('../../src/services/staff/staffImportService');
+const { cellDate, cellNida, parseFile, HEADERS, COLUMNS, templateWorkbook } = require('../../src/services/staff/staffImportService');
 const { cooling } = require('../../src/services/staff/eligibilityService');
 const { probationInfo } = require('../../src/services/staff/staffService');
 const { addMonths } = require('../../src/utils/dates');
@@ -37,13 +37,12 @@ describe('import cells', () => {
     expect(cellDate('next week')).toBe('bad');
   });
 
-  it('reads whole shillings with or without separators', () => {
-    expect(cellMoney('1,950,000')).toBe(1950000);
-    expect(cellMoney(1150000)).toBe(1150000);
-    expect(cellMoney('TZS 500 000')).toBe(500000);
-    expect(cellMoney('')).toBeNull();
-    expect(Number.isNaN(cellMoney('12.5'))).toBe(true);
-    expect(Number.isNaN(cellMoney(-5))).toBe(true);
+  it('reads a NIDA number with the existing format helper (D-93, D-100)', () => {
+    expect(cellNida('19900514123450000123')).toBe('19900514-12345-00001-23');
+    expect(cellNida(' 19900514-12345-00001-23 ')).toBe('19900514-12345-00001-23');
+    expect(cellNida('')).toBeNull();
+    expect(cellNida('1990051412345')).toBe('bad');
+    expect(cellNida('19901314-12345-00001-23')).toBe('bad'); // month 13
   });
 });
 
@@ -54,18 +53,24 @@ describe('import file', () => {
     return XLSX.write(wb, { type: 'buffer', bookType: type });
   };
 
-  it('the template has the staff sheet, instructions and lists', () => {
+  it('the template has exactly the eight columns, their instructions and an example (D-100)', () => {
+    expect(HEADERS).toEqual(['First name', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
     const wb = XLSX.read(templateWorkbook(), { type: 'buffer' });
     expect(wb.SheetNames).toEqual(['Staff records', 'Instructions', 'Lists']);
-    const head = XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 })[0];
+    const [head, example] = XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 });
     expect(head).toEqual(HEADERS);
+    expect(example).toEqual(['Baraka', 'Mwakyusa', '19900514-12345-00001-23', 'Teller', 'AT901', '14/05/1990', '03/11/2026', 'Non-management']);
+    const ins = XLSX.utils.sheet_to_json(wb.Sheets.Instructions, { header: 1 });
+    expect(ins.slice(1, 9)).toEqual(COLUMNS.map((c) => [c[1], c[2]]));
+    expect(ins[3]).toEqual(['NIDA', 'Required. Used by Credit for CRB checks. Format 19800630-13140-00004-20.']);
+    expect(ins[5]).toEqual(['Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.']);
   });
 
-  it('maps headings loosely and skips blank rows', () => {
-    const rows = parseFile(book([['STAFF NUMBER', 'first name', 'Basic salary'], ['LFB0700', 'Baraka', 1200000], ['', '', ''], ['LFB0701', 'Zawadi', 900000]]));
+  it('maps headings loosely, ignores columns that are not in the template and skips blank rows', () => {
+    const rows = parseFile(book([['STAFF NUMBER/CODE', 'first name', 'Basic salary', 'date of birth'], ['LFB0700', 'Baraka', 1200000, '14/05/1990'], ['', '', '', ''], ['LFB0701', 'Zawadi', 900000, '']]));
     expect(rows).toEqual([
-      { rowNo: 2, raw: { staffNo: 'LFB0700', firstName: 'Baraka', basic: 1200000 } },
-      { rowNo: 4, raw: { staffNo: 'LFB0701', firstName: 'Zawadi', basic: 900000 } },
+      { rowNo: 2, raw: { staffNo: 'LFB0700', firstName: 'Baraka', dob: '14/05/1990' } },
+      { rowNo: 4, raw: { staffNo: 'LFB0701', firstName: 'Zawadi', dob: '' } },
     ]);
   });
 
@@ -76,7 +81,7 @@ describe('import file', () => {
   });
 
   it('refuses a file without a staff number column', () => {
-    expect(() => parseFile(book([['Name'], ['Baraka']]))).toThrow(/Staff number/);
+    expect(() => parseFile(book([['Name'], ['Baraka']]))).toThrow('Staff Number/Code');
   });
 });
 
@@ -116,9 +121,14 @@ describe('probation (NS-01)', () => {
     expect(p).toEqual({ onProbation: true, endsOn: '2026-08-02' });
   });
 
-  it('a later end date set by People and Culture wins', () => {
-    const p = probationInfo({ dateJoined: new Date('2026-02-02T00:00:00+03:00'), probationEndDate: new Date('2026-12-31T00:00:00+03:00') }, 6, new Date('2026-10-01T00:00:00+03:00'));
-    expect(p).toEqual({ onProbation: true, endsOn: '2026-12-31' });
+  it('a probation end date entered before D-100 no longer counts, earlier or later', () => {
+    const joined = new Date('2026-02-02T00:00:00+03:00');
+    expect(probationInfo({ dateJoined: joined, probationEndDate: new Date('2026-12-31T00:00:00+03:00') }, 6, new Date('2026-10-01T00:00:00+03:00'))).toEqual({ onProbation: false, endsOn: '2026-08-02' });
+    expect(probationInfo({ dateJoined: joined, probationEndDate: new Date('2026-03-01T00:00:00+03:00') }, 6, new Date('2026-05-01T00:00:00+03:00'))).toEqual({ onProbation: true, endsOn: '2026-08-02' });
+  });
+
+  it('follows the probation months in the settings', () => {
+    expect(probationInfo({ dateJoined: new Date('2026-02-02T00:00:00+03:00') }, 3).endsOn).toBe('2026-05-02');
   });
 
   it('long-serving staff are not on probation', () => {

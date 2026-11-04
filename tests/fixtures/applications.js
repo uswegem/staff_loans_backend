@@ -11,7 +11,7 @@ const Agreement = require('../../src/models/Agreement');
 const Decision = require('../../src/models/Decision');
 const Counter = require('../../src/models/Counter');
 const Staff = require('../../src/models/Staff');
-const Salary = require('../../src/models/Salary');
+const { PEOPLE } = require('../../seed/data/people');
 const Settings = require('../../src/models/Settings');
 const Notification = require('../../src/models/Notification');
 const products = require('../../src/services/products/productService');
@@ -112,12 +112,12 @@ async function seedSampleApplications({ users, products: byCode }) {
   for (const s of SAMPLES) {
     /* eslint-disable no-await-in-loop */
     const staff = await Staff.findOne({ staffNo: s.a });
-    const salary = await Salary.inForce(staff._id);
+    const salary = PEOPLE.find((p) => p.staffNo === s.a).pay;
     const { product, version } = await products.liveProductVersion(byCode[s.p]._id);
     const submittedAt = s.submittedWh != null ? wt.subtractWorkingHours(cal, now, s.submittedWh) : new Date(now.getTime() - s.submittedDays * DAY);
     // A fictional payslip dated a few days before submission, read as an upload would be.
     const payDate = localDay(new Date(submittedAt.getTime() - 5 * DAY));
-    const slipPdf = await samplePayslip({ staff: { fullName: fullName(staff), staffNo: staff.staffNo, title: staff.title, department: staff.department }, basic: salary.basic, allowances: salary.allowances, payDate, pricing });
+    const slipPdf = await samplePayslip({ staff: { fullName: fullName(staff), staffNo: staff.staffNo, title: staff.title, department: staff.department }, basic: salary.basic, allowances: salary.allowances || 0, payDate, pricing });
     const read = await payslipReader.read(slipPdf, { staff });
     const pay = rules.payInputs(read);
     const q = calc.quote({ amount: s.amount, tenor: s.tenor, pay, pricing, startDay: localDay(submittedAt), dueDay: settings.firstDueDay });
@@ -144,7 +144,7 @@ async function seedSampleApplications({ users, products: byCode }) {
       repayment,
       consents: { truth: true, deduct: true, crb: true, sms: true, at: submittedAt },
       calcSnapshot: q,
-      applicantSnapshot: { staffNo: staff.staffNo, fullName: fullName(staff), category: staff.category, employmentType: staff.employmentType, salary: { basic: salary.basic, allowances: salary.allowances, effectiveFrom: salary.effectiveFrom }, pay },
+      applicantSnapshot: { staffNo: staff.staffNo, fullName: fullName(staff), category: staff.category, employmentType: staff.employmentType, pay },
       probation: { onProbation: false },
       ...(s.crb ? { crb: { outcome: s.crb, reportDate: new Date(submittedAt.getTime() + DAY) } } : {}),
       ...(s.appraisal ? { appraisalNote: s.appraisal } : {}),

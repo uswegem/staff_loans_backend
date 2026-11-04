@@ -98,7 +98,7 @@ function cutoffCheck({ staff, settings, version, tenor, lastDue, startDay }) {
 
 /**
  * Can this staff member start (or keep) an application for this product?
- * ctx: { staff, salary, profile, settings, product, version, apps, appId, topUp, today }
+ * ctx: { staff, profile, settings, product, version, apps, appId, topUp, today }
  */
 function eligibility(ctx) {
   const { staff, profile, version: v, settings, apps, today } = ctx;
@@ -106,8 +106,8 @@ function eligibility(ctx) {
   if (staff.status !== 'active') out.push('Your staff record is not active. Contact People and Culture.');
   // When the date of birth is all that is missing, its own message (below) says what to do (D-82).
   if (!profile.complete && !profile.missing.every((m) => m.key === 'personal.dob')) out.push(`You can apply once your profile is complete. Missing: ${profile.missing.map((m) => m.label).join(', ')}.`);
-  // D-91, D-97: People and Culture must complete the employment record and record a salary first.
-  out.push(...recordProblems(staff, ctx.salary));
+  // D-91, D-100: People and Culture must record the date joined first.
+  out.push(...recordProblems(staff));
   if (staff.employmentType === 'Contract' && !v.contractStaffAllowed) out.push(`${v.name} is for permanent staff only.`);
   if (!v.eligibleCategories.includes(staff.category)) out.push(`${v.name} is not open to ${staff.category.toLowerCase()} staff.`);
 
@@ -186,7 +186,7 @@ function loanChecks(input, version, staff, q, settings = {}) {
 
 /**
  * Everything the wizard and submission need.
- * ctx: { staff, salary, profile, settings, product, version, pricing, apps, appId, today }
+ * ctx: { staff, profile, settings, product, version, pricing, apps, appId, today }
  * input: { amount, tenor, purpose, productFields, repayment, topUp, probationReason }
  */
 function evaluate(ctx, input) {
@@ -211,10 +211,7 @@ function evaluate(ctx, input) {
   if (slip) fields.payslip = slip;
   const checks = loanChecks(input, ctx.version, ctx.staff, q, ctx.settings);
   const flags = elig.onProbation ? ['Applied during probation: verify the reason (NS-01).'] : [];
-  // People and Culture's salary record is the check on the payslip (D-79).
-  if (input.payslip?.basic && ctx.salary?.basic && input.payslip.basic !== ctx.salary.basic) {
-    flags.push(`Basic Pay on the payslip (${tzs(input.payslip.basic)}) differs from the staff record (${tzs(ctx.salary.basic)}): confirm with Payroll.`);
-  }
+  // No salary record to compare the payslip with (D-100): HR confirm Basic Pay from the payslip.
   // D-87: the topped-up loan's SLAS instalment should be one of the STAFF LOAN deductions on the payslip.
   if (existing.topUpLoan && input.payslip?.lfbLines && !input.payslip.lfbLines.some((l) => l.amount === existing.topUpLoan.instalment)) {
     const shown = input.payslip.lfbLines.map((l) => tzs(l.amount)).join(', ') || 'none';
