@@ -89,7 +89,7 @@ const ApplicationController = {
     res.json({ success: true, data: await svc.view(req, app) });
   },
 
-  // ---------- documents (FR-09: optional; PDF, JPG, PNG) ----------
+  // ---------- documents: optional or required by the effective product configuration ----------
 
   async addDocument(req, res) {
     const app = await svc.own(req, req.params.id);
@@ -103,7 +103,7 @@ const ApplicationController = {
     const file = await withTransaction(async (session) => {
       const f = await fileStore.store(req.file.buffer, { kind: 'document', originalName: req.file.originalname, label: req.body.label, documentCode, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id }, { session });
       await Application.updateOne({ _id: app._id }, { $push: { documentIds: f._id } }, { session });
-      await audit.record({ req, action: 'document.upload', description: `${app.ref}: ${f.originalName} uploaded`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { fileId: String(f._id), sha256: f.sha256, size: f.size } }, { session });
+      await audit.record({ req, action: 'document.upload', description: `${app.ref}: ${f.originalName} uploaded`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { fileId: String(f._id), documentCode: f.documentCode, sha256: f.sha256, size: f.size } }, { session });
       return f;
     });
     res.status(201).json({ success: true, data: svc.DOC_VIEW(file) });
