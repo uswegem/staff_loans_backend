@@ -167,6 +167,7 @@ async function fullView(req, app, actor) {
       runningLoans: running.map((r) => ({ ref: r.ref, amount: r.approved?.amount, status: r.status })),
     },
     documents: docs.filter((d) => d.kind === 'document').map(appSvc.DOC_VIEW),
+    documentChecklist: (version.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.kind === 'document' && f.documentCode === d.code).length })),
     // D-79: what affordability used, and the payslip it was read from.
     payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [] } : null,
     crbReport: docs.find((d) => d.kind === 'crb_report') ? appSvc.DOC_VIEW(docs.find((d) => d.kind === 'crb_report')) : null,
