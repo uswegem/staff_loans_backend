@@ -78,8 +78,9 @@ No publicly accessible storage links are used.
 
 Full-access reviewers receive `documents` and `documentChecklist` from
 `GET /api/v1/review/:id`; Operations receives them from its existing
-disbursement-detail endpoint. Limited-review permissions continue to hide
-documents, as required by the original confidentiality rule.
+disbursement-detail endpoint. Credit Analysts with an active limited credit-stage review can view only
+supporting attachments and their checklist; their existing restrictions on
+payslips, agreements and financial/application terms remain in force.
 
 ## Acceptance and operations
 
