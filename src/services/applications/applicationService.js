@@ -257,10 +257,13 @@ async function agreementFor(req, app, { session } = {}) {
     throw badRequest('Fix the application before you sign.', { eligibility: result.eligibility, fieldErrors: result.fieldErrors, checks: result.checks }, 'NOT_READY');
   }
   const { validateAttachments } = require('./requiredDocuments');
-  await validateAttachments(app, ctx.version);
+  if (ctx.settings.productConfigEnforcementEnabled) {
+    await require('../products/configReadiness').assertReady(ctx.version, { session });
+    await validateAttachments(app, ctx.version);
+  }
   const doc = await agreementService.build(
     { ref: app.ref, kind: 'original', staff: ctx.staff, product: ctx.version, quote: result.quote, amount: app.amount, tenor: app.tenor, repayment: app.repayment, topUp: app.topUp },
-    { session, template: await require('../agreement/productTemplate').resolve(ctx.version, { session }) }
+    { session, template: await require('../agreement/productTemplate').resolve(ctx.version, { session, enforce: !!ctx.settings.productConfigEnforcementEnabled }) }
   );
   return { ctx, result, doc };
 }
