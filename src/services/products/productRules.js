@@ -20,6 +20,7 @@ const PRODUCT_FIELDS = [
   ['contractStaffAllowed', 'Contract staff allowed'],
   ['eligibleCategories', 'Eligible employee categories'],
   ['fields', 'Application fields'],
+  ['requiredDocuments', 'Required documents'],
   ['reapplyCoolingMonths', 'Minimum number of Months Before Applying for Topup'],
   ['agreementTemplateId', 'Agreement template'],
 ];
@@ -56,6 +57,15 @@ function validateProduct(v) {
     if (!FIELD_TYPES.includes(f.type)) add(errors, `fields.${i}.type`, 'Unknown field type.');
     if (f.type === 'select' && (!f.options || f.options.length < 2)) add(errors, `fields.${i}.options`, 'A choice list needs at least two options.');
     if (f.type !== 'select' && f.options?.length) add(errors, `fields.${i}.options`, 'Only choice lists have options.');
+  });
+  const documentCodes = new Set();
+  (v.requiredDocuments || []).forEach((d, i) => {
+    if (documentCodes.has(d.code)) add(errors, `requiredDocuments.${i}.code`, 'Document codes must be unique.');
+    documentCodes.add(d.code);
+    if (!Number.isInteger(d.minFiles) || d.minFiles < 0) add(errors, `requiredDocuments.${i}.minFiles`, 'Minimum files must be zero or greater.');
+    if (!Number.isInteger(d.maxFiles) || d.maxFiles < 1 || d.maxFiles > 20 || d.maxFiles < d.minFiles) add(errors, `requiredDocuments.${i}.maxFiles`, 'Maximum must be between the minimum and 20.');
+    if (d.active !== false && d.mandatory && d.minFiles < 1) add(errors, `requiredDocuments.${i}.minFiles`, 'Mandatory documents require at least one file.');
+    if (!d.allowedTypes?.length || d.allowedTypes.some((t) => !['pdf', 'jpg', 'jpeg', 'png'].includes(t))) add(errors, `requiredDocuments.${i}.allowedTypes`, 'Choose supported file types.');
   });
   return errors;
 }
