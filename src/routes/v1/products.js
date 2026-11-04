@@ -9,6 +9,7 @@ const { FIELD_TYPES, CATEGORIES, REPAYMENT_METHODS } = require('../../models/Pro
 const { asyncHandler } = require('../../utils/errors');
 
 const router = express.Router();
+const ProductConfigController = require('../../controllers/productConfigController');
 const objectId = Joi.string().hex().length(24);
 const day = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).messages({ 'string.pattern.base': 'Use a date like 2026-11-01.' });
 const text = (max) => Joi.string().trim().max(max);
@@ -143,6 +144,16 @@ router.post(
   }),
   asyncHandler(ProductController.create)
 );
+// Product administrators can inspect the current readiness state without changing products.
+router.get('/admin/products/config-readiness', requireAny('products.view', 'products.make', 'products.approveCredit', 'products.approveRisk', 'admin.workflow'), asyncHandler(ProductConfigController.report));
+router.post('/admin/products/config-enforcement', requireAll('admin.workflow'),
+  validate({ body: Joi.object({
+    enabled: Joi.boolean().required(),
+    confirmation: Joi.string().valid('ACTIVATE_PRODUCT_CONFIG_ENFORCEMENT', 'DEACTIVATE_PRODUCT_CONFIG_ENFORCEMENT').required(),
+  }) }),
+  asyncHandler(ProductConfigController.activate));
+// Approved and effective template metadata only; never expose agreement body to product makers.
+router.get('/admin/products/agreements', requireAny('products.view', 'products.make', 'products.approveCredit', 'products.approveRisk'), asyncHandler(ProductController.availableAgreements));
 router.get('/admin/products/:id', requireAny('products.view', 'products.make', 'products.approveCredit', 'products.approveRisk'), validate({ params: Joi.object({ id: objectId.required() }) }), asyncHandler(ProductController.adminGet));
 router.post(
   '/admin/products/:id/drafts',
