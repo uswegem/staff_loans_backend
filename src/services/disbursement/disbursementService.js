@@ -116,13 +116,19 @@ async function detail(req, id) {
   const app = await load(id);
   const settings = await Settings.get();
   const maps = await loadAll([app]);
-  const names = await namesOf([app.disbursement?.confirmedBy].filter(Boolean));
+  const StoredFile = require('../../models/StoredFile');
+  const appSvc = require('../applications/applicationService');
+  const docs = await StoredFile.find({ _id: { $in: app.documentIds }, applicationId: app._id, kind: 'document', removedAt: null }).lean();
+  const version = maps.versions.get(String(app.productVersionId));
+  const names = await namesOf([app.disbursement?.confirmedBy, ...docs.map((d) => d.uploadedBy)].filter(Boolean));
   const staff = maps.staff.get(String(app.applicantStaffId));
   const ag = maps.agreements.get(String(app.currentAgreementId));
   await audit.record({ req, action: 'disbursement.view', description: `${app.ref} opened by OPS`, entity: 'Application', entityId: String(app._id), appRef: app.ref });
   return {
     ...row(app.toObject(), maps, settings, names),
     agreement: ag && { id: String(ag._id), number: ag.number, kind: ag.kind, signedAt: ag.acceptance?.at, effectiveAt: ag.effectiveAt, terms: ag.terms },
+    documents: docs.map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: names.get(String(d.uploadedBy))?.name || null })),
+    documentChecklist: (version?.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.documentCode === d.code && f.scan?.status === 'clean').length })),
     creditTo: staff.bank || null,
     staff: { ...row(app.toObject(), maps, settings).staff, mobile: staff.personal?.mobile },
     // D-101: the payslip deduction topped up, and the SLAS loan it settles when there is one.
