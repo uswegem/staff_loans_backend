@@ -98,8 +98,10 @@ const ApplicationController = {
     const settings = await Settings.get();
     if (req.file.size > settings.maxUploadMb * 1024 * 1024) throw badRequest(`Files can be up to ${settings.maxUploadMb} MB.`, { file: [`Files can be up to ${settings.maxUploadMb} MB.`] }, 'FILE_TOO_LARGE');
     if (app.documentIds.length >= 20) throw badRequest('You can attach up to 20 documents.', undefined, 'TOO_MANY_FILES');
+    const { validateUpload } = require('../services/applications/requiredDocuments');
+    const documentCode = await validateUpload(app, req.body.documentCode, req.file, settings);
     const file = await withTransaction(async (session) => {
-      const f = await fileStore.store(req.file.buffer, { kind: 'document', originalName: req.file.originalname, label: req.body.label, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id }, { session });
+      const f = await fileStore.store(req.file.buffer, { kind: 'document', originalName: req.file.originalname, label: req.body.label, documentCode, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id }, { session });
       await Application.updateOne({ _id: app._id }, { $push: { documentIds: f._id } }, { session });
       await audit.record({ req, action: 'document.upload', description: `${app.ref}: ${f.originalName} uploaded`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { fileId: String(f._id), sha256: f.sha256, size: f.size } }, { session });
       return f;
