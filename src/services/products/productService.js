@@ -20,6 +20,7 @@ const PRODUCT_DEFAULTS = {
   contractStaffAllowed: false,
   repaymentMethods: ['payroll'],
   fields: [],
+  requiredDocuments: [],
   reapplyCoolingMonths: 6,
   agreementTemplateId: null,
 };
