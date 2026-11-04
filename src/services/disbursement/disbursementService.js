@@ -46,7 +46,7 @@ async function blockedReason(userId, app) {
 async function loadAll(apps) {
   const [staff, versions, agreements] = await Promise.all([
     Staff.find({ _id: { $in: apps.map((a) => a.applicantStaffId) } }).lean(),
-    ProductVersion.find({ _id: { $in: apps.map((a) => a.productVersionId) } }).select('name').lean(),
+    ProductVersion.find({ _id: { $in: apps.map((a) => a.productVersionId) } }).select('name requiredDocuments').lean(),
     Agreement.find({ _id: { $in: apps.map((a) => a.currentAgreementId) } }).select('-text -schedule').lean(),
   ]);
   const by = (rows) => new Map(rows.map((r) => [String(r._id), r]));
