@@ -72,6 +72,23 @@ describe('product configuration readiness and controlled activation', () => {
     expect(created.body.code).toBe('PRODUCT_UNAVAILABLE');
   });
 
+  it('keeps Vehicle and Personal Loan agreement assignments independent', async () => {
+    const personal = await configureAll();
+    const vehicle = await AgreementTemplate.create({
+      version: '2027.01', body: BODY, status: 'approved', sample: false,
+      effectiveFrom: new Date('2026-10-01T00:00:00+03:00'), approvedAt: new Date(),
+      note: 'Separate legal clauses for Vehicle Loan test',
+    });
+    await ProductVersion.updateOne({ productId: products.VL._id }, { $set: { agreementTemplateId: vehicle._id } });
+    const selected = require('../../src/services/agreement/productTemplate');
+    const [pl, vl] = await Promise.all([
+      ProductVersion.findOne({ productId: products.PL._id }),
+      ProductVersion.findOne({ productId: products.VL._id }),
+    ]);
+    expect(String((await selected.resolve(pl, { enforce: true }))._id)).toBe(String(personal._id));
+    expect(String((await selected.resolve(vl, { enforce: true }))._id)).toBe(String(vehicle._id));
+  });
+
   it('requires categorized uploads and selects the product agreement before signing', async () => {
     const legalTemplate = await configureAll();
     await ProductVersion.updateOne({ productId: products.PL._id }, { $set: {
