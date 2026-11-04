@@ -282,7 +282,7 @@ async function revisedAgreement(req, app, session) {
   ]);
   const ctx = await appSvc.context(req, app.productId, { app, versions: { product: { _id: app.productId }, version, pricing } });
   const result = rules.evaluate(ctx, { ...appSvc.inputOf(app), amount: app.approved.amount, tenor: app.approved.tenor });
-  const doc = await agreementService.build({ ref: app.ref, kind: 'revised', staff, product: version, quote: result.quote, amount: app.approved.amount, tenor: app.approved.tenor, repayment: app.repayment, topUp: app.topUp }, { session });
+  const doc = await agreementService.build({ ref: app.ref, kind: 'revised', staff, product: version, quote: result.quote, amount: app.approved.amount, tenor: app.approved.tenor, repayment: app.repayment, topUp: app.topUp }, { session, template: await require('../agreement/productTemplate').resolve(version, { session, historicalTemplateId: signed?.templateId }) });
   return { doc, quote: result.quote, signed, staff };
 }
 

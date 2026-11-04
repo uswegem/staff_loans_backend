@@ -97,7 +97,7 @@ async function versionsFor(app) {
   return { product, version, pricing, live: true };
 }
 
-const DOC_VIEW = (f) => ({ id: String(f._id), label: f.label, originalName: f.originalName, mime: f.mime, size: f.size, uploadedAt: f.createdAt });
+const DOC_VIEW = (f) => ({ id: String(f._id), label: f.label, documentCode: f.documentCode || null, originalName: f.originalName, mime: f.mime, size: f.size, uploadedAt: f.createdAt });
 
 async function view(req, app) {
   const v = await versionsFor(app);
@@ -177,6 +177,7 @@ function pick(v) {
     topUpAllowed: v.topUpAllowed,
     payslipLabel: v.payslipLabel || '',
     fields: v.fields,
+    requiredDocuments: v.requiredDocuments || [],
   };
 }
 
@@ -255,9 +256,14 @@ async function agreementFor(req, app, { session } = {}) {
   if (!result.canSubmit) {
     throw badRequest('Fix the application before you sign.', { eligibility: result.eligibility, fieldErrors: result.fieldErrors, checks: result.checks }, 'NOT_READY');
   }
+  const { validateAttachments } = require('./requiredDocuments');
+  if (ctx.settings.productConfigEnforcementEnabled) {
+    await require('../products/configReadiness').assertReady(ctx.version, { session });
+    await validateAttachments(app, ctx.version);
+  }
   const doc = await agreementService.build(
     { ref: app.ref, kind: 'original', staff: ctx.staff, product: ctx.version, quote: result.quote, amount: app.amount, tenor: app.tenor, repayment: app.repayment, topUp: app.topUp },
-    { session }
+    { session, template: await require('../agreement/productTemplate').resolve(ctx.version, { session, enforce: !!ctx.settings.productConfigEnforcementEnabled }) }
   );
   return { ctx, result, doc };
 }

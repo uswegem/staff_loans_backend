@@ -6,6 +6,7 @@
 const Product = require('../models/Product');
 const ProductVersion = require('../models/ProductVersion');
 const PricingVersion = require('../models/PricingVersion');
+const AgreementTemplate = require('../models/AgreementTemplate');
 const User = require('../models/User');
 const Staff = require('../models/Staff');
 const mc = require('../services/products/makerChecker');
@@ -157,6 +158,17 @@ function summary(v) {
 }
 
 const ProductController = {
+  async availableAgreements(req, res) {
+    const now = new Date();
+    const items = await AgreementTemplate.find({
+      status: 'approved', sample: { $ne: true },
+      $or: [{ effectiveFrom: null }, { effectiveFrom: { $lte: now } }],
+    }).select('version note effectiveFrom approvedAt').sort({ effectiveFrom: -1, approvedAt: -1 }).lean();
+    res.json({ success: true, data: items.map((t) => ({
+      id: String(t._id), version: t.version, note: t.note || '',
+      effectiveFrom: t.effectiveFrom, approvedAt: t.approvedAt,
+    })) });
+  },
   /** Live products for the application form (FR-05, FR-62). */
   async listLive(req, res) {
     const live = await svc.liveProducts();
@@ -185,6 +197,7 @@ const ProductController = {
         code: product.code,
         status: product.status,
         name: shown?.name,
+        configuration: live && live.changeType !== 'deactivate' ? await require('../services/products/configReadiness').assess(live) : null,
         live: live ? { ...summary(live), ...values(PRODUCT_FIELDS, live) } : null,
         scheduled: latest && (!live || String(latest._id) !== String(live._id)) ? summary(latest) : null,
         openChange: open ? summary(open) : null,

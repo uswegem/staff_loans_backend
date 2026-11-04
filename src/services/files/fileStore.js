@@ -30,7 +30,7 @@ const safeName = (name) => String(name || 'file').replace(/[^\w.\- ()]/g, '_').s
  * Stores a file and creates its record. Refuses types other than PDF, JPG and PNG,
  * and files the scanner flags.
  */
-async function store(buffer, { kind, originalName, label, applicationId, ownerUserId, uploadedBy }, { session } = {}) {
+async function store(buffer, { kind, originalName, label, documentCode, applicationId, ownerUserId, uploadedBy }, { session } = {}) {
   const mime = sniff(buffer);
   if (!mime) throw badRequest('Only PDF, JPG and PNG files can be uploaded.', { file: ['Only PDF, JPG and PNG files can be uploaded.'] }, 'FILE_TYPE');
   const scan = await scanner.scan(buffer, { originalName });
@@ -43,7 +43,7 @@ async function store(buffer, { kind, originalName, label, applicationId, ownerUs
   await fs.writeFile(full, buffer, { flag: 'wx' });
   const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
   const [doc] = await StoredFile.create(
-    [{ kind, applicationId, ownerUserId, uploadedBy, label, originalName: safeName(originalName), mime, size: buffer.length, sha256, storageKey, scan: { status: scan.status, at: now, engine: scan.engine } }],
+    [{ kind, applicationId, ownerUserId, uploadedBy, label, documentCode, originalName: safeName(originalName), mime, size: buffer.length, sha256, storageKey, scan: { status: scan.status, at: now, engine: scan.engine } }],
     { session }
   );
   return doc;
@@ -54,11 +54,11 @@ async function read(file) {
 }
 
 /** Streams a stored file as a download with safe headers. */
-async function send(res, file) {
+async function send(res, file, { inline = false } = {}) {
   const buffer = await read(file);
   res.set('Content-Type', file.mime);
   res.set('Content-Length', String(buffer.length));
-  res.set('Content-Disposition', `attachment; filename="${safeName(file.originalName).replace(/"/g, '')}"`);
+  res.set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${safeName(file.originalName).replace(/"/g, '')}"`);
   res.set('X-Content-Type-Options', 'nosniff');
   res.send(buffer);
 }

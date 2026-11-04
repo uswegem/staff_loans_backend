@@ -24,6 +24,19 @@ const fieldSchema = new Schema(
   { _id: false }
 );
 
+const documentRequirementSchema = new Schema({
+  code: { type: String, required: true, trim: true },
+  name: { type: String, required: true, trim: true },
+  description: { type: String, default: '' },
+  mandatory: { type: Boolean, default: false },
+  minFiles: { type: Number, default: 0 },
+  maxFiles: { type: Number, default: 1 },
+  allowedTypes: { type: [String], default: ['pdf', 'jpg', 'jpeg', 'png'] },
+  maxFileMb: { type: Number, default: 10 },
+  displayOrder: { type: Number, default: 0 },
+  active: { type: Boolean, default: true },
+}, { _id: false });
+
 const versionSchema = new Schema(
   {
     productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -44,9 +57,10 @@ const versionSchema = new Schema(
     eligibleCategories: { type: [{ type: String, enum: CATEGORIES }], default: CATEGORIES },
     repaymentMethods: { type: [{ type: String, enum: REPAYMENT_METHODS }], default: REPAYMENT_METHODS },
     fields: { type: [fieldSchema], default: [] },
+    requiredDocuments: { type: [documentRequirementSchema], default: undefined },
     // Minimum number of months before applying for a top-up of this product (NS-02, D-84).
     reapplyCoolingMonths: { type: Number, default: 6 },
-    agreementTemplateId: { type: Schema.Types.ObjectId, ref: 'AgreementTemplate', default: null }, // null = the active template
+    agreementTemplateId: { type: Schema.Types.ObjectId, ref: 'AgreementTemplate', default: null }, // null allowed only before product configuration enforcement is activated
   },
   { timestamps: true }
 );

@@ -22,16 +22,17 @@ const { productLabels, readerLabels } = require('../services/payslip/deductionLi
 const Staff = require('../models/Staff');
 
 /**
- * Files and agreements: the applicant, or a reviewer with the full view. Never a
- * limited (FR-55) viewer: documents and the agreement are among the hidden fields.
- * OPS sees the agreement and documents of loans with them (FR-20), not the bureau report.
+ * Files and agreements: applicant and full-view reviewers. Limited credit-stage
+ * reviewers may access supporting documents only, never payslips or agreements.
+ * OPS sees agreements and supporting documents (FR-20), not bureau reports.
  */
-async function canSee(req, applicationId) {
+async function canSee(req, applicationId, { allowLimitedDocuments = false } = {}) {
   const app = await Application.findById(applicationId);
   if (!app) return null;
   if (String(app.applicantUserId) === String(req.auth.user._id)) return { app, as: 'applicant' };
   const access = await workflow.reviewAccess(req.auth, app);
   if (access && !access.limited) return { app, as: 'reviewer' };
+  if (access?.limited && allowLimitedDocuments && app.currentStage === 'credit') return { app, as: 'limited-document-reviewer' };
   if (req.auth.permissions.has('disb.confirm') && ['pending_disbursement', 'disbursed'].includes(app.status)) return { app, as: 'ops' };
   return null;
 }
@@ -89,7 +90,7 @@ const ApplicationController = {
     res.json({ success: true, data: await svc.view(req, app) });
   },
 
-  // ---------- documents (FR-09: optional; PDF, JPG, PNG) ----------
+  // ---------- documents: optional or required by the effective product configuration ----------
 
   async addDocument(req, res) {
     const app = await svc.own(req, req.params.id);
@@ -98,10 +99,12 @@ const ApplicationController = {
     const settings = await Settings.get();
     if (req.file.size > settings.maxUploadMb * 1024 * 1024) throw badRequest(`Files can be up to ${settings.maxUploadMb} MB.`, { file: [`Files can be up to ${settings.maxUploadMb} MB.`] }, 'FILE_TOO_LARGE');
     if (app.documentIds.length >= 20) throw badRequest('You can attach up to 20 documents.', undefined, 'TOO_MANY_FILES');
+    const { validateUpload } = require('../services/applications/requiredDocuments');
+    const documentCode = await validateUpload(app, req.body.documentCode, req.file, settings);
     const file = await withTransaction(async (session) => {
-      const f = await fileStore.store(req.file.buffer, { kind: 'document', originalName: req.file.originalname, label: req.body.label, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id }, { session });
+      const f = await fileStore.store(req.file.buffer, { kind: 'document', originalName: req.file.originalname, label: req.body.label, documentCode, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id }, { session });
       await Application.updateOne({ _id: app._id }, { $push: { documentIds: f._id } }, { session });
-      await audit.record({ req, action: 'document.upload', description: `${app.ref}: ${f.originalName} uploaded`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { fileId: String(f._id), sha256: f.sha256, size: f.size } }, { session });
+      await audit.record({ req, action: 'document.upload', description: `${app.ref}: ${f.originalName} uploaded`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { fileId: String(f._id), documentCode: f.documentCode, sha256: f.sha256, size: f.size } }, { session });
       return f;
     });
     res.status(201).json({ success: true, data: svc.DOC_VIEW(file) });
@@ -159,11 +162,12 @@ const ApplicationController = {
     const uploader = file && file.kind === 'crb_report' && String(file.uploadedBy) === String(req.auth.user._id);
     // The applicant sees their own documents and agreement PDFs; the bureau report is
     // for reviewers only (and the Credit Analyst who attached it).
-    const seen = file && !own && !uploader ? (await canSee(req, file.applicationId))?.as : null;
-    const allowed = file && !file.removedAt && (own || uploader || seen === 'reviewer' || (seen === 'ops' && file.kind !== 'crb_report'));
+    const seen = file && !own && !uploader ? (await canSee(req, file.applicationId, { allowLimitedDocuments: file.kind === 'document' }))?.as : null;
+    const allowed = file && !file.removedAt && (own || uploader || seen === 'reviewer' || (seen === 'limited-document-reviewer' && file.kind === 'document') || (seen === 'ops' && file.kind !== 'crb_report'));
     if (!allowed) throw notFound('File not found.');
-    await audit.record({ req, action: 'file.download', description: `${file.originalName} downloaded`, entity: 'StoredFile', entityId: String(file._id) });
-    await fileStore.send(res, file);
+    const inline = req.query.preview === '1' && ['document', 'payslip'].includes(file.kind);
+    await audit.record({ req, action: inline ? 'file.preview' : 'file.download', description: `${file.originalName} ${inline ? 'previewed' : 'downloaded'}`, entity: 'StoredFile', entityId: String(file._id) });
+    await fileStore.send(res, file, { inline });
   },
 
   // ---------- agreements (FR-25, FR-37) ----------

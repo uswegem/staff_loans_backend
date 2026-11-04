@@ -20,6 +20,7 @@ const PRODUCT_DEFAULTS = {
   contractStaffAllowed: false,
   repaymentMethods: ['payroll'],
   fields: [],
+  requiredDocuments: [],
   reapplyCoolingMonths: 6,
   agreementTemplateId: null,
 };
@@ -71,12 +72,17 @@ async function promoteAll({ now = new Date() } = {}) {
  * deactivation (FR-62). Returns [{ product, version }].
  */
 async function liveProducts(at = new Date()) {
+  const Settings = require('../../models/Settings');
+  const settings = await Settings.get();
   const products = await Product.find().sort({ code: 1 });
   const out = [];
   for (const product of products) {
     // eslint-disable-next-line no-await-in-loop
     const version = await mc.liveAt(productChain(product), at);
-    if (version && version.changeType !== 'deactivate') out.push({ product, version });
+    if (version && version.changeType !== 'deactivate') {
+      if (settings.productConfigEnforcementEnabled && !(await require('./configReadiness').assess(version, { now: at })).ready) continue;
+      out.push({ product, version });
+    }
   }
   return out;
 }
@@ -85,7 +91,13 @@ async function liveProductVersion(productId, at = new Date()) {
   const product = await Product.findById(productId);
   if (!product) throw notFound('Product not found.');
   const version = await mc.liveAt(productChain(product), at);
-  return { product, version: version && version.changeType !== 'deactivate' ? version : null };
+  let available = version && version.changeType !== 'deactivate' ? version : null;
+  if (available) {
+    const Settings = require('../../models/Settings');
+    const settings = await Settings.get();
+    if (settings.productConfigEnforcementEnabled && !(await require('./configReadiness').assess(available, { now: at })).ready) available = null;
+  }
+  return { product, version: available };
 }
 
 const livePricing = (at = new Date()) => mc.liveAt(pricingChain(), at);

@@ -37,7 +37,7 @@ const uploadOne = (req, res, next) => upload.single('file')(req, res, (err) => n
  * /applications/{id}/withdraw:
  *   post: { tags: [Applications], summary: "Withdraw before final approval; voids the agreement (FR-11)", security: [{ bearer: [] }], responses: { 200: { description: Withdrawn } } }
  * /applications/{id}/documents:
- *   post: { tags: [Applications], summary: "Attach an optional document: PDF, JPG or PNG (FR-09)", security: [{ bearer: [] }], responses: { 201: { description: Document } } }
+ *   post: { tags: [Applications], summary: "Attach a configured supporting document category: PDF, JPG or PNG", security: [{ bearer: [] }], responses: { 201: { description: Document } } }
  * /applications/{id}/payslip:
  *   post: { tags: [Applications], summary: "Attach the latest payslip PDF; Basic Pay, LFB deductions and pay date are read from it (D-78, D-79)", security: [{ bearer: [] }], responses: { 201: { description: Application with the payslip figures }, 400: { description: Payslip not readable, not yours, or not a PDF } } }
  * /applications/{id}/documents/{fileId}:

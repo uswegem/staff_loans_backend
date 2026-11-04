@@ -65,8 +65,25 @@ describe('product validation (FR-58)', () => {
     expect(Object.keys(e).sort()).toEqual(['fields.0.options', 'fields.1.key', 'fields.1.options']);
   });
 
-  it('has no document lists or OPS conditions any more (D-84)', () => {
-    expect(PRODUCT_FIELDS.map((x) => x[0])).not.toEqual(expect.arrayContaining(['requiredDocuments']));
+  it('accepts product-specific mandatory documents and rejects duplicate codes', () => {
+    const invoice = { code: 'invoice', name: 'Vehicle invoice', mandatory: true, minFiles: 1, maxFiles: 1, allowedTypes: ['pdf', 'jpg'], maxFileMb: 10, active: true };
+    expect(validateProduct({ ...base, requiredDocuments: [invoice] })).toEqual({});
+    const repeated = validateProduct({ ...base, requiredDocuments: [invoice, { ...invoice, name: 'Other invoice' }] });
+    expect(repeated['requiredDocuments.1.code']).toBeDefined();
+  });
+
+  it('requires at least one attachment for mandatory categories and a valid file limit', () => {
+    const bad = validateProduct({ ...base, requiredDocuments: [{
+      code: 'front', name: 'Front photograph', mandatory: true, minFiles: 0,
+      maxFiles: 0, allowedTypes: ['exe'], active: true,
+    }] });
+    expect(bad['requiredDocuments.0.minFiles']).toBeDefined();
+    expect(bad['requiredDocuments.0.maxFiles']).toBeDefined();
+    expect(bad['requiredDocuments.0.allowedTypes']).toBeDefined();
+  });
+
+  it('tracks versioned document requirements without old optional document fields or OPS conditions', () => {
+    expect(PRODUCT_FIELDS.map((x) => x[0])).toContain('requiredDocuments');
     expect(PRODUCT_FIELDS.map((x) => x[0])).not.toContain('optionalDocuments');
     expect(PRODUCT_FIELDS.map((x) => x[0])).not.toContain('disbursementConditions');
     expect(PRODUCT_FIELDS.find((x) => x[0] === 'reapplyCoolingMonths')[1]).toBe('Minimum number of Months Before Applying for Topup');
