@@ -24,6 +24,7 @@ const productValues = {
   minServiceMonths: whole.min(0),
   maxConcurrent: whole.min(1).max(20),
   topUpAllowed: Joi.boolean(),
+  payslipLabel: text(80).allow(''), // D-101
   contractStaffAllowed: Joi.boolean(),
   eligibleCategories: Joi.array().items(Joi.string().valid(...CATEGORIES)).unique(),
   // Salary deduction is the only method; anything else is refused (D-84).

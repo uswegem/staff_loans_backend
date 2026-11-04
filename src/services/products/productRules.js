@@ -16,6 +16,7 @@ const PRODUCT_FIELDS = [
   ['minServiceMonths', 'Minimum service (months)'],
   ['maxConcurrent', 'Running loans allowed'],
   ['topUpAllowed', 'Top-up allowed'],
+  ['payslipLabel', 'Payslip deduction label'],
   ['contractStaffAllowed', 'Contract staff allowed'],
   ['eligibleCategories', 'Eligible employee categories'],
   ['fields', 'Application fields'],
@@ -44,6 +45,9 @@ function validateProduct(v) {
   posInt('maxConcurrent', 'Running loans allowed');
   posInt('reapplyCoolingMonths', 'Minimum number of months before applying for a top-up', 0);
   if (!v.eligibleCategories?.length) add(errors, 'eligibleCategories', 'Choose at least one employee category.');
+  // D-101: a top-up is matched to its payslip line by this label.
+  if (v.topUpAllowed && !String(v.payslipLabel || '').trim()) add(errors, 'payslipLabel', 'Enter the payslip deduction label: a top-up is matched to its payslip line by it.');
+  if (v.payslipLabel && !/[A-Za-z]/.test(v.payslipLabel)) add(errors, 'payslipLabel', 'The payslip deduction label needs letters, as printed on the payslip.');
 
   const keys = new Set();
   (v.fields || []).forEach((f, i) => {
@@ -72,7 +76,8 @@ const canon = (value) => {
 function diff(fields, before, after) {
   return fields
     .map(([field, label]) => ({ field, label, before: canon(before ? before[field] : null), after: canon(after[field]) }))
-    .filter((d) => JSON.stringify(d.before) !== JSON.stringify(d.after));
+    // An empty text and a field an older version never had are the same (D-101: payslipLabel).
+    .filter((d) => JSON.stringify(d.before ?? '') !== JSON.stringify(d.after ?? ''));
 }
 
 const pick = (fields, doc) => Object.fromEntries(fields.map(([f]) => [f, doc[f]]));

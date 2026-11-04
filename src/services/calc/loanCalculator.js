@@ -5,11 +5,13 @@
 // (scripts/sync-calc.js). Money is integer shillings; rates are basis points
 // (DECISIONS D-07). Dates are calendar days as 'YYYY-MM-DD' strings.
 //
-// Affordability (DECISIONS D-78, D-87):
+// Affordability (DECISIONS D-78, D-87, D-101):
 //   Pension = 10% of Basic Pay; Taxable Pay = Basic Pay − Pension; PAYE on Taxable Pay
 //   (Tanzania bands); Total Deductions = Pension + PAYE; Net Pay = Basic Pay − Total
-//   Deductions. The combined cap is 50% of Net Pay for all running SLAS loans together,
-//   the new one included. Basic Pay comes from the applicant's payslip.
+//   Deductions. The combined limit is 50% of Net Pay for all staff loans together.
+//   Room, the instalment the staff member can afford, is the combined limit less the staff
+//   loan deductions on the payslip (for a top-up, less those other than the line topped
+//   up) and less the SLAS loans the payslip cannot show yet. Basic Pay comes from the payslip.
 //
 // Worked example (Neema Mushi, basic 1,850,000, no other SLAS loans, TZS 4,500,000 over
 // 36 months): pension 185,000; PAYE 327,500; net 1,337,500; cap 668,750; instalment
@@ -44,21 +46,31 @@ function payslip(pay, pricing) {
 const maxInstalmentFor = (figure, affordabilityBps) => Math.max(0, Math.floor((figure * affordabilityBps) / BPS));
 
 /**
- * The combined cap (D-87): all of a staff member's running SLAS loans together, across
- * every product and including approved loans not yet disbursed, plus the new loan, must
- * not exceed 50% of Net Pay (Basic − Pension − PAYE). Net Pay here is worked out from
- * Basic Pay, so no loan is deducted from it: existing instalments are counted in the
- * total instead. A top-up takes the old loan's instalment (as recorded in SLAS) out of
- * the total, because the new instalment replaces it.
- * existing: { others, addBack } — others: the other running loans; addBack: the loan
- * being topped up (0 when not a top-up).
+ * Room inputs (D-101) from the payslip's staff loan lines and the SLAS loans it cannot show.
+ * lines: [{ amount, replaced }] in payslip order; replaced marks a line a SLAS top-up has
+ * already replaced, so it is not counted twice. topUpLine: index of the line being topped
+ * up, or -1 for a new loan. slas: [{ applicationId, instalment }], SLAS loans not yet on the
+ * payslip; topUpLoanId: the SLAS loan being topped up, which is not counted.
+ */
+function roomInputs({ lines = [], topUpLine = -1, slas = [], topUpLoanId = null } = {}) {
+  const payslipDeductions = lines.reduce((sum, l, i) => (l.replaced || i === topUpLine ? sum : sum + (l.amount || 0)), 0);
+  const slasNotOnPayslip = slas.filter((l) => !topUpLoanId || String(l.applicationId) !== String(topUpLoanId)).reduce((sum, l) => sum + (l.instalment || 0), 0);
+  return { payslipDeductions, slasNotOnPayslip, topUp: topUpLine >= 0 };
+}
+
+/**
+ * The combined limit and Room (D-87, D-101). The limit is 50% of Net Pay (Basic − Pension −
+ * PAYE), for all staff loans together. Room = limit − staff loan deductions on the payslip
+ * (other than the line topped up) − SLAS loans not yet on the payslip, never below 0. The
+ * new instalment must fit in Room.
+ * existing: roomInputs(...) — { payslipDeductions, slasNotOnPayslip, topUp }.
  */
 function combinedCap(net, affordabilityBps, existing = {}, newInstalment = 0) {
   const cap = maxInstalmentFor(net, affordabilityBps);
-  const others = existing.others || 0;
-  const addBack = existing.addBack || 0;
-  const available = Math.max(0, cap - others);
-  return { basis: 'net', cap, existingTotal: others + addBack, addBack, others, available, newInstalment, remaining: available - newInstalment };
+  const payslipDeductions = existing.payslipDeductions || 0;
+  const slasNotOnPayslip = existing.slasNotOnPayslip || 0;
+  const available = Math.max(0, cap - payslipDeductions - slasNotOnPayslip);
+  return { basis: 'payslip', cap, payslipDeductions, slasNotOnPayslip, topUp: !!existing.topUp, available, newInstalment, remaining: available - newInstalment };
 }
 
 /** Monthly instalment on a reducing balance, rounded up (BR-14). */
@@ -157,9 +169,9 @@ function schedule(principal, months, interestBps, rounding, firstDue) {
 }
 
 /**
- * Full quote (BR-14, BR-15, D-78). A top-up changes only the processing fee rate: the
- * old loan's instalment is already among the LFB deductions on the payslip.
- * { amount, tenor, topUp, pay, pricing, startDay, dueDay, maxTenor, maxAmountCap }
+ * Full quote (BR-14, BR-15, D-78, D-101). existing: roomInputs(...). A top-up also
+ * changes the processing fee rate.
+ * { amount, tenor, topUp, pay, existing, pricing, startDay, dueDay, maxTenor, maxAmountCap }
  * maxTenor: the longest tenor this person may take (product maximum, cut short by
  * retirement or contract end); maxAmountCap: the product's maximum amount.
  */
@@ -168,7 +180,7 @@ function quote({ amount, tenor, topUp = false, pay, existing = {}, pricing, star
   const limitTenor = maxTenor || tenor || 0;
   const inst = instalment(amount, tenor, pricing.interestBps, pricing.instalmentRounding);
   const combined = combinedCap(ps.net, pricing.affordabilityBps, existing, inst);
-  // The new loan may use whatever the combined cap leaves (D-87).
+  // The new loan may use Room (D-101).
   const maxInstalment = combined.available;
   const first = startDay ? firstDueDate(startDay, dueDay) : null;
   const rows = amount && tenor && first ? schedule(amount, tenor, pricing.interestBps, pricing.instalmentRounding, first) : [];
@@ -203,4 +215,4 @@ function quote({ amount, tenor, topUp = false, pay, existing = {}, pricing, star
   };
 }
 
-module.exports = { paye, payslip, maxInstalmentFor, combinedCap, maxAmount, instalment, schedule, quote, addMonthsToDay, addDaysToDay, firstDueDate, retirementCutoff, instalmentsBefore };
+module.exports = { paye, payslip, maxInstalmentFor, roomInputs, combinedCap, maxAmount, instalment, schedule, quote, addMonthsToDay, addDaysToDay, firstDueDate, retirementCutoff, instalmentsBefore };

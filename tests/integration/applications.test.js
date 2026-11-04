@@ -133,7 +133,7 @@ describe('live checks (BR-03 to BR-06, BR-14, BR-15)', () => {
   it.each([
     [{ amount: 400000, tenor: 12 }, 'The minimum for Personal Loan is TZS 500,000.'],
     [{ amount: 2000000, tenor: 72 }, 'Choose a tenor between 6 and 60 months.'],
-    [{ amount: 14000000, tenor: 6 }, 'The instalment of TZS 2,374,400 is above what your combined limit leaves: TZS 668,750 a month (50% of Net Pay is TZS 668,750; your other loans in Staff Loans take TZS 0). Borrow up to TZS 3,942,000 over 6 months, or up to TZS 34,588,000 over 60 months.'],
+    [{ amount: 14000000, tenor: 6 }, 'The instalment of TZS 2,374,400 is above your Room of TZS 668,750 a month: 50% of Net Pay is TZS 668,750, less TZS 0 of staff loan deductions on your payslip and TZS 0 of Staff Loans loans not yet on it. Borrow up to TZS 3,942,000 over 6 months, or up to TZS 34,588,000 over 60 months.'],
   ])('%j → %s', async (terms, message) => {
     const neema = await signIn('LFB0412');
     const { res } = await draft(neema, PL(), { ...terms, purpose: 'Test' });
@@ -162,47 +162,46 @@ describe('live checks (BR-03 to BR-06, BR-14, BR-15)', () => {
     expect(a.repayment.method).toBe('payroll');
   });
 
-  it('the 50% cap is combined across every running Staff Loans loan (D-87)', async () => {
+  it('Room counts every running Staff Loans loan the payslip cannot show yet (D-87, D-101)', async () => {
     const neema = await signIn('LFB0412');
-    // Net Pay 1,337,500: cap 668,750. Another product's loan takes 300,000; an approved,
-    // not yet disbursed one takes 200,000; 168,750 is left.
+    // Net Pay 1,337,500: limit 668,750. Another product's loan whose first instalment is after
+    // the payslip takes 300,000; an approved, not yet disbursed one takes 200,000: Room 168,750.
     await runningLoan('LFB0412', 'VL', 300000);
     await runningLoan('LFB0412', 'HE', 200000, 'pending_disbursement');
     const { res } = await draft(neema, PL(), NEEMA_TERMS);
-    expect(res.body.data.quote.combined).toMatchObject({ basis: 'net', cap: 668750, others: 500000, addBack: 0, available: 168750, newInstalment: 136900, remaining: 31850 });
+    expect(res.body.data.quote.combined).toMatchObject({ basis: 'payslip', cap: 668750, payslipDeductions: 0, slasNotOnPayslip: 500000, available: 168750, newInstalment: 136900, remaining: 31850 });
     expect(res.body.data.checks.canSubmit).toBe(true);
     const over = await api(neema.token).patch(`/applications/${res.body.data.id}`, { amount: 6000000 });
     expect(over.body.data.checks.canSubmit).toBe(false);
-    expect(over.body.data.checks.checks).toContainEqual(expect.stringMatching(/combined limit leaves: TZS 168,750 a month \(50% of Net Pay is TZS 668,750; your other loans in Staff Loans take TZS 500,000\)/));
+    expect(over.body.data.checks.checks).toContainEqual(expect.stringMatching(/is above your Room of TZS 168,750 a month: 50% of Net Pay is TZS 668,750, less TZS 0 of staff loan deductions on your payslip and TZS 500,000 of Staff Loans loans not yet on it/));
   });
 
-  it('a top-up adds back the old loan\'s Staff Loans instalment and charges 0.5% (BR-09, D-87)', async () => {
+  it("a top-up leaves out the payslip line topped up, links the product's Staff Loans loan and charges 0.5% (BR-09, D-101)", async () => {
     const neema = await signIn('LFB0412');
     const old = await runningLoan('LFB0412', 'PL', 250000);
     // At the limit of one Personal Loan, a top-up draft can still be started.
-    const { id, res } = await draft(neema, PL(), { ...NEEMA_TERMS, topUp: { on: true, applicationId: String(old._id) } }, { payslip: { lfbLines: [{ label: 'STAFF LOAN', amount: 250000 }] } });
-    expect(res.body.data.topUp).toMatchObject({ on: true, loanRef: old.ref });
-    expect(res.body.data.quote.combined).toMatchObject({ cap: 668750, others: 0, addBack: 250000, available: 668750 });
+    const { id, res } = await draft(neema, PL(), { ...NEEMA_TERMS, topUp: { on: true } }, { payslip: { lfbLines: [{ label: 'Staff Loan - Personal', amount: 250000 }] } });
+    expect(res.body.data.deductions.topUpLoan).toMatchObject({ ref: old.ref, instalment: 250000 });
+    expect(res.body.data.quote.combined).toMatchObject({ cap: 668750, payslipDeductions: 0, slasNotOnPayslip: 0, available: 668750, topUp: true });
     expect(res.body.data.quote.processingFee).toBe(22500);
     expect(res.body.data.checks.canSubmit).toBe(true);
-    // Without naming the loan, the limit of one Personal Loan applies.
+    // Not a top-up: the limit of one Personal Loan applies.
     const plain = await api(neema.token).patch(`/applications/${id}`, { topUp: { on: false } });
     expect(plain.body.data.checks.canSubmit).toBe(false);
   });
 
-  it('a top-up must name a running loan of the same product, and a payslip mismatch is flagged', async () => {
+  it("a top-up needs the product's deduction on the payslip; a linked loan's different instalment is flagged (D-101)", async () => {
     const neema = await signIn('LFB0412');
-    const other = await runningLoan('LFB0412', 'VL', 250000);
-    const { res } = await draft(neema, PL(), { ...NEEMA_TERMS, topUp: { on: true, applicationId: String(other._id) } });
-    expect(res.body.data.checks.fieldErrors['topUp.applicationId']).toBe('Choose one of your running loans of this product recorded in Staff Loans.');
+    await runningLoan('LFB0412', 'VL', 250000);
+    const { id, res } = await draft(neema, PL(), { ...NEEMA_TERMS, topUp: { on: true } });
+    expect(res.body.data.checks.fieldErrors['topUp.on']).toBe('Your payslip shows no Personal Loan deduction (Staff Loan - Personal), so there is no loan to top up. Untick top-up to apply for a new loan, or attach a payslip that shows it.');
     const old = await runningLoan('LFB0412', 'PL', 250000);
-    const id = res.body.data.id;
-    await api(neema.token).patch(`/applications/${id}`, { topUp: { on: true, applicationId: String(old._id) } });
-    // The payslip shows 90,000 of staff loan deductions, not the 250,000 recorded here.
-    await attachPayslip(neema, id, { lfbLines: [{ label: 'STAFF LOAN', amount: 90000 }] });
+    // The payslip shows 90,000 for the Personal Loan, not the 250,000 recorded here.
+    await attachPayslip(neema, id, { lfbLines: [{ label: 'Staff Loan - Personal', amount: 90000 }] });
     expect((await signAndSubmit(neema, id)).status).toBe(200);
     const a = await Application.findById(id);
-    expect(a.ruleFlags).toContainEqual(expect.stringMatching(new RegExp(`^Top-up of ${old.ref}: its instalment in Staff Loans is TZS 250,000, but the payslip shows staff loan deductions of`)));
+    expect(a.topUp).toMatchObject({ on: true, loanRef: old.ref, payslipLine: { label: 'Staff Loan - Personal', amount: 90000 } });
+    expect(a.ruleFlags).toContain(`Top-up of ${old.ref}: its instalment in Staff Loans is TZS 250,000, but the payslip line Staff Loan - Personal shows TZS 90,000. Confirm the deduction with Payroll.`);
   });
 
   it('the maximum amount is the reverse calculation over the longest tenor, capped by the product', async () => {
@@ -226,7 +225,10 @@ describe('payslip (D-78, D-79)', () => {
     expect(up.body.data.payInputs).toEqual({ basic: 2000000 });
     // Basic 2,000,000: pension 200,000; PAYE 128,000 + 30% × 800,000 = 368,000; Net Pay 1,432,000 (D-87).
     expect(up.body.data.quote.payslip).toMatchObject({ pension: 200000, taxable: 1800000, tax: 368000, totalDeductions: 568000, net: 1432000 });
-    expect(up.body.data.quote.maxInstalment).toBe(716000);
+    // D-101: the staff loan deductions on it come off the limit of 716,000; neither line matches a product.
+    expect(up.body.data.quote.combined).toMatchObject({ cap: 716000, payslipDeductions: 150000, available: 566000 });
+    expect(up.body.data.quote.maxInstalment).toBe(566000);
+    expect(up.body.data.deductions.lines.map((l) => [l.label, l.productId])).toEqual([['STAFF LOAN', null], ['LFB LOAN', null]]);
     expect(await AuditLog.countDocuments({ action: 'payslip.upload' })).toBe(1);
   });
 

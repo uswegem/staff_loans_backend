@@ -125,7 +125,8 @@ async function detail(req, id) {
     agreement: ag && { id: String(ag._id), number: ag.number, kind: ag.kind, signedAt: ag.acceptance?.at, effectiveAt: ag.effectiveAt, terms: ag.terms },
     creditTo: staff.bank || null,
     staff: { ...row(app.toObject(), maps, settings).staff, mobile: staff.personal?.mobile },
-    topUp: app.topUp?.on ? { loanRef: app.topUp.loanRef, outstanding: app.topUp.outstanding ?? null } : null,
+    // D-101: the payslip deduction topped up, and the SLAS loan it settles when there is one.
+    topUp: app.topUp?.on ? { loanRef: app.topUp.loanRef || null, payslipLine: app.topUp.payslipLine?.label ? app.topUp.payslipLine : null, outstanding: app.topUp.outstanding ?? null } : null,
     earliestDate: localDay(app.stageEnteredAt),
     today: localDay(),
     schedule: app.schedule || [],

@@ -73,9 +73,12 @@ const decide = (person, id, body) => api(person.token).post(`/review/${id}/decis
 const CRB = { outcome: 'Low Risk', reportDate: '2026-10-28' };
 const HR_OK = { employment: true, category: true, salary: true };
 
-/** Another running Staff Loans loan for the combined cap (D-87): approved, instalments still due. */
+/**
+ * Another running Staff Loans loan (D-87): approved, instalments still due. opts.firstDue: its
+ * first instalment (default far ahead, so no payslip shows it yet; D-101).
+ */
 let refNo = 80000;
-async function runningLoan(staffNo, productId, instalment, status = 'disbursed') {
+async function runningLoan(staffNo, productId, instalment, status = 'disbursed', { firstDue } = {}) {
   const Application = require('../src/models/Application');
   const ProductVersion = require('../src/models/ProductVersion');
   const User = require('../src/models/User');
@@ -91,7 +94,10 @@ async function runningLoan(staffNo, productId, instalment, status = 'disbursed')
     repayment: { method: 'payroll' },
     approved: { amount: 3000000, tenor: 24, instalment },
     finalApprovedAt: new Date(),
-    schedule: [{ n: 1, due: localDay(new Date(Date.now() + 400 * 24 * 3600 * 1000)), instalment }],
+    schedule: [
+      { n: 1, due: firstDue || localDay(new Date(Date.now() + 400 * 24 * 3600 * 1000)), instalment },
+      { n: 2, due: localDay(new Date(Date.now() + 430 * 24 * 3600 * 1000)), instalment },
+    ],
   });
 }
 

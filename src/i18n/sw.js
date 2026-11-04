@@ -164,12 +164,7 @@ module.exports = [
   ['Say what the loan is for.', 'Eleza mkopo ni kwa ajili ya nini.'],
   ['Say why you are applying during probation. People and Culture will verify it.', 'Eleza kwa nini unaomba ukiwa kwenye matazamio. Rasilimali Watu wataithibitisha.'],
   ['Choose one of the options for {a}.', 'Chagua mojawapo ya machaguo ya {a}.'],
-  ['Choose the loan being topped up.', 'Chagua mkopo unaoongezewa.'],
-  ['Choose one of your running loans of this product recorded in Staff Loans.', 'Chagua mojawapo ya mikopo yako inayoendelea ya bidhaa hii iliyorekodiwa katika Mikopo ya Wafanyakazi.'],
   ['Salary deduction is the only repayment method.', 'Makato ya mshahara ndiyo njia pekee ya urejeshaji.'],
-  ['The instalment of {a} is above what your combined limit leaves: {b} a month ({c}% of Net Pay is {d}; your other loans in Staff Loans take {e}). Borrow up to {f} over {g} months, or up to {h} over {i} months.', 'Rejesho la {a} ni zaidi ya kinachobaki kwenye kikomo chako cha jumla: {b} kwa mwezi ({c}% ya Mshahara Halisi ni {d}; mikopo yako mingine katika Mikopo ya Wafanyakazi inachukua {e}). Kopa hadi {f} kwa miezi {g}, au hadi {h} kwa miezi {i}.'],
-  ['The instalment of {a} no longer fits the combined limit: {b}% of Net Pay is {c}, and the applicant\'s other loans in Staff Loans now take {d}, leaving {e}.', 'Rejesho la {a} halitoshei tena kwenye kikomo cha jumla: {b}% ya Mshahara Halisi ni {c}, na mikopo mingine ya mwombaji katika Mikopo ya Wafanyakazi sasa inachukua {d}, na kubaki {e}.'],
-  ['Top-up of {a}: its instalment in Staff Loans is {b}, but the payslip shows staff loan deductions of {c}. Confirm the deduction with Payroll.', 'Nyongeza ya {a}: rejesho lake katika Mikopo ya Wafanyakazi ni {b}, lakini hati ya mshahara inaonyesha makato ya mikopo ya {c}. Thibitisha makato na Idara ya Mishahara.'],
   ['Applied during probation: verify the reason (NS-01).', 'Ameomba akiwa kwenye matazamio: thibitisha sababu (NS-01).'],
 
   // ---------- payslip ----------
@@ -410,4 +405,13 @@ module.exports = [
   ['Date of Birth: {a}', 'Tarehe ya kuzaliwa: {a}'],
   ['A different date of birth ({a}) is already waiting for verification. Decide or withdraw it first, or leave Date of Birth blank', 'Tarehe nyingine ya kuzaliwa ({a}) tayari inasubiri kuthibitishwa. Iamue au iondoe kwanza, au acha Tarehe ya Kuzaliwa wazi'],
   ['Dates of birth from a staff upload are waiting for verification: {a}.', 'Tarehe za kuzaliwa kutoka kwenye upakiaji wa wafanyakazi zinasubiri kuthibitishwa: {a}.'],
+  ['{a} has no payslip deduction label yet, so a top-up cannot be matched to your payslip. Ask the Head of Credit to set it.', '{a} bado haina jina la makato kwenye hati ya mshahara, kwa hiyo nyongeza haiwezi kulinganishwa na hati yako ya mshahara. Muombe Mkuu wa Mikopo aliweke.'],
+  ['Your payslip shows no {a} deduction ({b}), so there is no loan to top up. Untick top-up to apply for a new loan, or attach a payslip that shows it.', 'Hati yako ya mshahara haionyeshi makato ya {a} ({b}), kwa hiyo hakuna mkopo wa kuongezewa. Ondoa alama ya nyongeza ili uombe mkopo mpya, au ambatisha hati ya mshahara inayoyaonyesha.'],
+  ['Your payslip shows {a} {b} deductions. Choose the one being topped up.', 'Hati yako ya mshahara inaonyesha makato {a} ya {b}. Chagua yanayoongezewa.'],
+  ['The instalment of {a} is above your Room of {b} a month: {c}% of Net Pay is {d}, less {e} of staff loan deductions on your payslip and {f} of Staff Loans loans not yet on it. Borrow up to {g} over {h} months, or up to {i} over {j} months.', 'Rejesho la {a} ni zaidi ya Nafasi yako ya {b} kwa mwezi: {c}% ya Mshahara Halisi ni {d}, ukiondoa {e} ya makato ya mikopo ya wafanyakazi kwenye hati yako ya mshahara na {f} ya mikopo ya Mikopo ya Wafanyakazi ambayo bado haijaonekana humo. Kopa hadi {g} kwa miezi {h}, au hadi {i} kwa miezi {j}.'],
+  ['The instalment of {a} no longer fits Room: {b}% of Net Pay is {c}, less {d} of staff loan deductions on the payslip and {e} of Staff Loans loans not yet on it, leaving {f}.', 'Rejesho la {a} halitoshei tena kwenye Nafasi: {b}% ya Mshahara Halisi ni {c}, ukiondoa {d} ya makato ya mikopo ya wafanyakazi kwenye hati ya mshahara na {e} ya mikopo ya Mikopo ya Wafanyakazi ambayo bado haijaonekana humo, na kubaki {f}.'],
+  ['The payslip shows a staff loan deduction that matches no product: {a}, {b}. It is counted against Room; confirm it with Payroll.', 'Hati ya mshahara inaonyesha makato ya mkopo wa mfanyakazi yasiyolingana na bidhaa yoyote: {a}, {b}. Yanahesabiwa dhidi ya Nafasi; yathibitishe na Idara ya Mishahara.'],
+  ['Top-up of {a}: its instalment in Staff Loans is {b}, but the payslip line {c} shows {d}. Confirm the deduction with Payroll.', 'Nyongeza ya {a}: rejesho lake katika Mikopo ya Wafanyakazi ni {b}, lakini mstari wa hati ya mshahara {c} unaonyesha {d}. Thibitisha makato na Idara ya Mishahara.'],
+  ['Enter the payslip deduction label: a top-up is matched to its payslip line by it.', 'Weka jina la makato kwenye hati ya mshahara: nyongeza inalinganishwa na mstari wake kwa jina hilo.'],
+  ['The payslip deduction label needs letters, as printed on the payslip.', 'Jina la makato linahitaji herufi, kama lilivyochapishwa kwenye hati ya mshahara.'],
 ];

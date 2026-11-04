@@ -18,6 +18,7 @@ const { withTransaction } = require('../config/db');
 const { badRequest, conflict, notFound } = require('../utils/errors');
 const workflow = require('../services/workflow/workflowService');
 const payslipReader = require('../services/payslip/payslipReader');
+const { productLabels, readerLabels } = require('../services/payslip/deductionLines');
 const Staff = require('../models/Staff');
 
 /**
@@ -119,7 +120,9 @@ const ApplicationController = {
     const settings = await Settings.get();
     if (req.file.size > settings.maxUploadMb * 1024 * 1024) throw badRequest(`Files can be up to ${settings.maxUploadMb} MB.`, { payslip: [`Files can be up to ${settings.maxUploadMb} MB.`] }, 'FILE_TOO_LARGE');
     const staff = await Staff.findById(app.applicantStaffId).lean();
-    const out = await payslipReader.read(req.file.buffer, { staff, rules: payslipReader.rulesFrom(settings) });
+    // D-101: each product's payslip deduction label is read as its own line.
+    const labels = readerLabels(await productLabels());
+    const out = await payslipReader.read(req.file.buffer, { staff, rules: { ...payslipReader.rulesFrom(settings), productLabels: labels } });
     // A payslip older than the limit is refused at upload as well as at submission (D-79).
     const tooOld = !out.problem && rules.payslipProblem({ fileId: true, payDate: out.payDate }, settings, localDay());
     if (tooOld) out.problem = { code: 'PAYSLIP_TOO_OLD', message: tooOld };

@@ -62,6 +62,14 @@ async function textLines(buffer) {
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // A label is a whole word: "LFB" must not match the staff number "LFB0412".
 const labelRe = (labels) => new RegExp(`(?:^|[^A-Za-z0-9])(${labels.map(escapeRe).sort((a, b) => b.length - a.length).join('|')})(?![A-Za-z0-9])`, 'i');
+// Staff loan labels (D-101): words may be joined by any spacing or punctuation ("Staff Loan - Car"
+// finds "STAFF LOAN CAR"), and the longest label is tried first, so "Staff Loan" never cuts
+// "Staff Loan - Car" short.
+const words = (label) => String(label).split(/[^A-Za-z0-9]+/).filter(Boolean);
+const loanLabelRe = (labels) => {
+  const alts = [...new Set(labels)].filter((l) => words(l).length).sort((a, b) => words(b).join('').length - words(a).join('').length || b.length - a.length);
+  return new RegExp(`(?:^|[^A-Za-z0-9])(${alts.map((l) => words(l).map(escapeRe).join('[^A-Za-z0-9]*')).join('|')})(?![A-Za-z0-9])`, 'i');
+};
 // An amount is printed as money: with thousands separators (1,850,000) or cents
 // (500.00), standing alone. A year (2026), an account number (20000000000) or a code
 // such as LFB0412 is not an amount.
@@ -96,12 +104,13 @@ function parseDate(text) {
 }
 
 /**
- * Finds the figures in the lines. LFB deductions are the sum of every amount that
- * follows an LFB label (a payslip can carry several staff loans).
+ * Finds the figures in the lines. Every staff loan label (the settings' and each product's,
+ * D-101) starts a separate line of lfbLines, kept with its label as printed; LFB deductions
+ * are their sum (a payslip can carry several staff loans).
  */
 function parse(lines, rules = DEFAULT_RULES) {
   const basicRe = labelRe(rules.basicLabels);
-  const lfbRe = labelRe(rules.lfbLabels);
+  const lfbRe = loanLabelRe([...rules.lfbLabels, ...(rules.productLabels || [])]);
   const dateRe = labelRe(rules.dateLabels);
   let basic = null;
   let payDate = null;

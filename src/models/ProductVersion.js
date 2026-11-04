@@ -37,6 +37,9 @@ const versionSchema = new Schema(
     minServiceMonths: { type: Number, required: true },
     maxConcurrent: { type: Number, required: true },
     topUpAllowed: { type: Boolean, default: false },
+    // How this product's staff loan deduction is labelled on the payslip (D-101), for example
+    // "Staff Loan - Car". Matched without regard to case, spacing or punctuation.
+    payslipLabel: { type: String, trim: true, default: '' },
     contractStaffAllowed: { type: Boolean, default: false },
     eligibleCategories: { type: [{ type: String, enum: CATEGORIES }], default: CATEGORIES },
     repaymentMethods: { type: [{ type: String, enum: REPAYMENT_METHODS }], default: REPAYMENT_METHODS },

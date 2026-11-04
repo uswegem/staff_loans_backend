@@ -40,7 +40,8 @@ const applicationSchema = new Schema(
     },
     topUp: {
       on: { type: Boolean, default: false },
-      applicationId: { type: Schema.Types.ObjectId, ref: 'Application' }, // the SLAS loan topped up (D-87)
+      applicationId: { type: Schema.Types.ObjectId, ref: 'Application' }, // the SLAS loan topped up, when there is one (D-87, D-101)
+      payslipLine: { label: String, amount: Number }, // the payslip deduction topped up (D-101)
       loanRef: String,
       instalment: { type: Number, min: 0 },
       outstanding: { type: Number, min: 0 }, // confirmed by OPS from core banking (BR-09)

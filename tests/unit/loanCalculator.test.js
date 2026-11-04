@@ -12,7 +12,7 @@ describe('payslip and limit (D-78, D-87)', () => {
 
   it('matches the worked example (no other loans in Staff Loans)', () => {
     expect(q.payslip).toEqual({ basic: 1850000, pension: 185000, taxable: 1665000, tax: 327500, totalDeductions: 512500, net: 1337500 });
-    expect(q.combined).toMatchObject({ basis: 'net', cap: 668750, others: 0, addBack: 0, available: 668750, newInstalment: 136900, remaining: 531850 });
+    expect(q.combined).toMatchObject({ basis: 'payslip', cap: 668750, payslipDeductions: 0, slasNotOnPayslip: 0, available: 668750, newInstalment: 136900, remaining: 531850 });
     expect(q.maxInstalment).toBe(668750);
     expect(q.instalment).toBe(136900);
     expect(q.totalInterest).toBe(428351);
@@ -28,47 +28,52 @@ describe('payslip and limit (D-78, D-87)', () => {
   });
 });
 
-describe('combined 50% cap across all loans (D-87)', () => {
-  it('an existing loan using 30% of salary leaves exactly 20%: 20% fits, one shilling more does not', () => {
-    const existing = { others: 300000 };
-    expect(calc.combinedCap(1000000, 5000, existing, 200000)).toMatchObject({ cap: 500000, others: 300000, available: 200000, remaining: 0 });
-    expect(calc.combinedCap(1000000, 5000, existing, 200001).remaining).toBe(-1);
+describe('Room: the combined limit less payslip deductions and SLAS loans not yet on it (D-87, D-101)', () => {
+  // Net Pay 9,691,734 gives a combined limit of 4,845,867, the brief's figure.
+  const NET = 9691734;
+
+  it.each([
+    ['a new loan: every deduction counts', { lines: [{ amount: 3639827 }] }, 3639827, 1206040],
+    ['a top-up with all 3,639,827 on the product topped up', { lines: [{ amount: 3639827 }], topUpLine: 0 }, 0, 4845867],
+    ['a top-up with 500,000 on the product topped up and 3,139,827 on others', { lines: [{ amount: 500000 }, { amount: 3139827 }], topUpLine: 0 }, 3139827, 1706040],
+  ])('%s', (_, lines, subtracted, expected) => {
+    const inputs = calc.roomInputs(lines);
+    expect(inputs.payslipDeductions).toBe(subtracted);
+    expect(calc.combinedCap(NET, 5000, inputs)).toMatchObject({ cap: 4845867, payslipDeductions: subtracted, slasNotOnPayslip: 0, available: expected });
   });
 
-  it('counts the other loans in the quote: the limit and the maximum amount shrink', () => {
+  it('never goes below 0; an instalment above Room fails', () => {
+    const inputs = calc.roomInputs({ lines: [{ amount: 4000000 }], slas: [{ applicationId: 'a', instalment: 900000 }] });
+    expect(calc.combinedCap(NET, 5000, inputs, 1)).toMatchObject({ available: 0, remaining: -1 });
+    const q = calc.quote({ amount: 1000000, tenor: 12, pay: neema, existing: calc.roomInputs({ lines: [{ amount: 700000 }] }), pricing: PRICING, maxTenor: 60 });
+    expect(q).toMatchObject({ maxInstalment: 0, maxAmount: 0, pass: false });
+  });
+
+  it('counts SLAS loans not yet on the payslip, but not the one topped up nor a replaced line', () => {
+    const slas = [{ applicationId: 'old', instalment: 120000 }, { applicationId: 'other', instalment: 80000 }];
+    expect(calc.roomInputs({ slas })).toMatchObject({ slasNotOnPayslip: 200000, topUp: false });
+    expect(calc.roomInputs({ slas, topUpLoanId: 'old' }).slasNotOnPayslip).toBe(80000);
+    expect(calc.roomInputs({ lines: [{ amount: 100000, replaced: 'SL-2026-00001' }, { amount: 50000 }] }).payslipDeductions).toBe(50000);
+  });
+
+  it('shrinks the maximum instalment and amount: what fits passes, one step more does not', () => {
     const alone = calc.quote({ amount: 0, tenor: 0, pay: neema, pricing: PRICING, maxTenor: 60, maxAmountCap: 300000000 });
-    const withLoan = calc.quote({ amount: 0, tenor: 0, pay: neema, existing: { others: 401250 }, pricing: PRICING, maxTenor: 60, maxAmountCap: 300000000 });
+    const existing = calc.roomInputs({ lines: [{ amount: 401250 }] });
+    const withLoan = calc.quote({ amount: 0, tenor: 0, pay: neema, existing, pricing: PRICING, maxTenor: 60, maxAmountCap: 300000000 });
     expect(withLoan.maxInstalment).toBe(668750 - 401250);
     expect(withLoan.maxAmount).toBeLessThan(alone.maxAmount);
-    const fits = calc.quote({ amount: withLoan.maxAmount, tenor: 60, pay: neema, existing: { others: 401250 }, pricing: PRICING });
-    expect(fits.pass).toBe(true);
-    const over = calc.quote({ amount: withLoan.maxAmount + 100000, tenor: 60, pay: neema, existing: { others: 401250 }, pricing: PRICING });
-    expect(over.pass).toBe(false);
+    expect(calc.quote({ amount: withLoan.maxAmount, tenor: 60, pay: neema, existing, pricing: PRICING }).pass).toBe(true);
+    expect(calc.quote({ amount: withLoan.maxAmount + 100000, tenor: 60, pay: neema, existing, pricing: PRICING }).pass).toBe(false);
   });
 
-  it('a top-up at the cap: the old instalment is added back and the new one replaces it, never on top', () => {
-    // The loan being topped up already takes the whole cap.
-    const atCap = calc.quote({ amount: 1000000, tenor: 12, pay: neema, existing: { others: 668750 }, pricing: PRICING });
-    expect(atCap.pass).toBe(false);
-    const topUp = calc.quote({ amount: 1000000, tenor: 12, topUp: true, pay: neema, existing: { others: 0, addBack: 668750 }, pricing: PRICING });
-    expect(topUp.combined).toMatchObject({ existingTotal: 668750, addBack: 668750, others: 0, available: 668750 });
+  it('a top-up at the limit: the line topped up is left out and the new instalment replaces it', () => {
+    const atLimit = calc.quote({ amount: 1000000, tenor: 12, pay: neema, existing: calc.roomInputs({ lines: [{ amount: 668750 }] }), pricing: PRICING });
+    expect(atLimit.pass).toBe(false);
+    const topUp = calc.quote({ amount: 1000000, tenor: 12, topUp: true, pay: neema, existing: calc.roomInputs({ lines: [{ amount: 668750 }], topUpLine: 0 }), pricing: PRICING });
+    expect(topUp.combined).toMatchObject({ payslipDeductions: 0, available: 668750, topUp: true });
     expect(topUp.pass).toBe(true);
-    expect(topUp.combined.remaining).toBe(668750 - topUp.instalment); // replaces it: not 668,750 + the new instalment
+    expect(topUp.combined.remaining).toBe(668750 - topUp.instalment);
     expect(topUp.processingFee).toBe(5000); // 0.5% on a top-up
-  });
-
-  it('is the same whether the old deduction is added back to take-home pay or removed from the combined total', () => {
-    const net = 1337500;
-    const cap = 668750;
-    const otherLoans = 150000;
-    const toppedUp = 200000;
-    // Take-home pay already has every loan deducted; add the topped-up loan back, then apply 50%.
-    const takeHome = net - otherLoans - toppedUp;
-    const viaTakeHome = Math.floor((takeHome + toppedUp + otherLoans) * 0.5) - otherLoans;
-    // Basic-derived net: remove the topped-up loan from the combined total instead.
-    const viaTotal = calc.combinedCap(net, 5000, { others: otherLoans, addBack: toppedUp }).available;
-    expect(viaTotal).toBe(cap - otherLoans);
-    expect(viaTakeHome).toBe(viaTotal);
   });
 });
 

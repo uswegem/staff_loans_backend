@@ -69,6 +69,23 @@ describe('payslip reader', () => {
     expect(reader.parse(['Employee: Neema Mushi  Staff No: LFB0412', 'STAFF LOAN  150,000.00', 'Basic  1,850,000.00'], { ...reader.DEFAULT_RULES, lfbLabels: ['LFB', 'Staff Loan'] })).toMatchObject({ basic: 1850000, lfbDeductions: 150000 });
   });
 
+  it('reads each product label as its own line, the longer label first (D-101)', () => {
+    const rules = { ...reader.DEFAULT_RULES, productLabels: ['Staff Loan - Car', 'Staff Loan - Personal'] };
+    const out = reader.parse(['Basic  1,850,000.00', 'Payslip for October 2026', 'STAFF LOAN CAR  300,000.00', 'Staff Loan - Personal  150,000.00   Staff Loan  70,000.00'], rules);
+    expect(out.lfbLines).toEqual([
+      { label: 'STAFF LOAN CAR', amount: 300000 },
+      { label: 'Staff Loan - Personal', amount: 150000 },
+      { label: 'Staff Loan', amount: 70000 },
+    ]);
+    expect(out.lfbDeductions).toBe(520000);
+  });
+
+  it('matches lines to products whatever the case, spacing or punctuation; unmatched lines stay unmatched (D-101)', () => {
+    const { matchLines } = require('../../src/services/payslip/deductionLines');
+    const products = [{ productId: 'p', name: 'Personal Loan', label: 'Staff Loan - Personal' }, { productId: 'g', name: 'General', label: 'Staff Loan' }];
+    expect(matchLines([{ label: 'STAFF  LOAN PERSONAL', amount: 1 }, { label: 'staff loan', amount: 2 }, { label: 'Car Loan', amount: 3 }], products).map((l) => l.product)).toEqual(['Personal Loan', 'General', null]);
+  });
+
   it('labels come from settings, so a new layout needs no code change', () => {
     const lines = ['Mshahara wa Msingi 2,400,000', 'Tarehe ya Malipo 30/09/2026', 'Mkopo LFB 120,000'];
     const out = reader.parse(lines, { basicLabels: ['Mshahara wa Msingi'], lfbLabels: ['Mkopo LFB'], dateLabels: ['Tarehe ya Malipo'] });

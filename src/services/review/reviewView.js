@@ -137,6 +137,8 @@ async function fullView(req, app, actor) {
     probation: app.probation?.onProbation ? { onProbation: true, reason: app.probation.reason, verifiedAt: app.probation.verifiedAt } : { onProbation: false },
     ruleFlags: app.ruleFlags,
     calcAtSubmission: snapshot,
+    // D-101: the payslip lines with their matched product, and SLAS loans not yet on the payslip, as now.
+    deductions: { lines: result.deductions.lines, topUpLine: result.deductions.topUpLine, slas: result.deductions.slas.map((l) => ({ ref: l.ref, instalment: l.instalment, status: l.status, firstDue: l.firstDue, product: ctx.products.find((p) => p.productId === l.productId)?.name || null })) },
     checks: [...result.eligibility.filter((m) => !/open .* application/.test(m) && !/You applied for/.test(m)), ...result.checks],
     crb: app.crb?.outcome ? { outcome: app.crb.outcome, reportDate: app.crb.reportDate ? localDay(app.crb.reportDate) : null, fileId: app.crb.fileId ? String(app.crb.fileId) : null } : null,
     appraisalNote: app.appraisalNote || null,

@@ -64,7 +64,8 @@ router.patch(
       productFields: Joi.object().pattern(/^[a-z][a-zA-Z0-9]{0,30}$/, Joi.alternatives(Joi.string().trim().max(500).allow(''), Joi.number(), Joi.boolean())).max(20),
       repaymentMethod: Joi.string().valid('payroll').messages({ 'any.only': 'Salary deduction is the only repayment method.' }), // D-84
       // D-87: a top-up names one of the applicant's SLAS loans; its instalment comes from SLAS.
-      topUp: Joi.object({ on: Joi.boolean().required(), applicationId: objectId.allow(null) }),
+      // D-101: a top-up names the payslip line topped up (when the payslip shows several), not a SLAS loan.
+      topUp: Joi.object({ on: Joi.boolean().required(), applicationId: objectId.allow(null), payslipLine: Joi.object({ label: Joi.string().trim().max(120).required(), amount: money.required() }).allow(null) }),
       probationReason: Joi.string().trim().max(1000).allow(''),
     }).min(1),
   }),

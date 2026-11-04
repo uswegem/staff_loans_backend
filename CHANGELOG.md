@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 – Room from the payslip (4 Nov 2026)
+
+- Room = combined limit (50% of Net Pay, unchanged) − staff loan deductions on the payslip − Staff Loans loans not yet on the payslip, never below 0. A top-up leaves out the payslip line topped up and its linked Staff Loans loan. The same calculation (`calc.roomInputs`, `calc.combinedCap`, `rules.deductions`) runs in the live calculator, at submission, at every approval and before disbursement; `capCheck` uses the application's payslip (D-101).
+- A Staff Loans loan counts when the payslip cannot show it yet: pending disbursement, or first instalment after the pay date. A loan the payslip already shows is not counted twice, nor the line a Staff Loans top-up replaced since the pay date (D-101).
+- Products have a `payslipLabel` (maker-checker, shown in the comparison; required when top-ups are allowed). The payslip reader reads each product's label as its own line, longest label first; lines match products whatever the case, spacing or punctuation. A line matching no product still counts and is flagged for reviewers (D-101).
+- Top-ups: no Staff Loans loan is needed. The payslip must show a deduction for the product; with several, the applicant chooses one (`topUp.payslipLine`). A running Staff Loans loan of the product stays linked and is settled at disbursement; a different instalment is flagged for Payroll. The disbursement still requires confirming the old balance is settled (D-101).
+- `GET /applications/:id` returns `deductions` (lines with matched products, the line topped up, Staff Loans loans not yet on the payslip) in place of `existingLoans`; the full review returns `deductions`. The Credit Analyst's limited view is unchanged (D-101).
+
 ## 0.13.0 – Credit bureau outcomes, no salary records, eight-column staff upload (4 Nov 2026)
 
 - Credit bureau outcomes are Low Risk, Average Risk, High Risk and No Record Found (`src/constants/crb.js`). Applications decided earlier keep Clear, Adverse: minor, Adverse: serious or No record found as recorded; nothing is migrated (D-99).

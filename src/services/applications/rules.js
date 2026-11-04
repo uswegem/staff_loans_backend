@@ -9,6 +9,7 @@ const { cooling, coolingMessage, recordProblems } = require('../staff/eligibilit
 const { probationInfo } = require('../staff/staffService');
 const { cutoffFor, cutoffRule, cutoffProblem } = require('../staff/retirement');
 const { OPEN } = require('../../constants/statuses');
+const { matchLines, normLabel } = require('../payslip/deductionLines');
 const { localDay } = require('../../utils/dates');
 
 const tzs = (n) => `TZS ${Math.round(n).toLocaleString('en-US')}`;
@@ -40,17 +41,57 @@ function payInputs(payslip) {
   return { basic: payslip?.basic || 0 };
 }
 
+/** First instalment of a SLAS loan: from its schedule, or the due day after final approval. */
+const firstDueOf = (a) => a.schedule?.[0]?.due || calc.firstDueDate(day(a.finalApprovedAt || a.updatedAt));
+
 /**
- * The staff member's other running SLAS loans for the combined cap (D-87): every product,
- * approved loans not yet disbursed included. The loan named for a top-up is taken out
- * of the total (its recorded instalment is "added back"); the new instalment replaces it.
- * Returns { others, addBack, loans, topUpLoan }.
+ * What Room is worked out from (D-101): the payslip's staff loan lines matched to products,
+ * the line being topped up, and the running SLAS loans the payslip cannot show yet (approved
+ * but not paid out, or first instalment after the pay date). A SLAS loan the payslip already
+ * shows is not counted twice; neither is a line a SLAS top-up has replaced since the pay date.
+ * { apps, appId, today, products, productId, payslip, topUp }; products: productLabels(...).
+ * Returns { lines, ownLines, topUpLine, topUpLoan, topUpCandidate, loans, slas, unmatched, inputs }.
  */
-function existingLoans(apps, appId, today, topUp) {
-  const loans = runningLoans(apps, appId, today).map((a) => ({ applicationId: String(a._id), ref: a.ref, productId: String(a.productId), status: a.status, instalment: a.approved?.instalment || 0 }));
-  const topUpLoan = topUp?.on && topUp.applicationId ? loans.find((l) => l.applicationId === String(topUp.applicationId)) || null : null;
-  const others = loans.filter((l) => l !== topUpLoan).reduce((s, l) => s + l.instalment, 0);
-  return { others, addBack: topUpLoan?.instalment || 0, loans, topUpLoan };
+function deductions({ apps, appId, today, products = [], productId, payslip, topUp }) {
+  const payDate = payslip?.payDate || null;
+  const loans = runningLoans(apps, appId, today).map((a) => ({ applicationId: String(a._id), ref: a.ref, productId: String(a.productId), status: a.status, instalment: a.approved?.instalment || 0, firstDue: firstDueOf(a), topUp: a.topUp }));
+  const slas = loans
+    .filter((l) => !payDate || l.status === 'pending_disbursement' || l.firstDue > payDate)
+    .map(({ topUp: t, ...l }) => ({ ...l, replaces: t?.on ? t : null }));
+  const lines = matchLines(payslip?.lfbLines, products);
+  // A SLAS top-up not yet on the payslip replaces a line still printed there: count only the new instalment.
+  slas.forEach((l) => {
+    if (!l.replaces) return;
+    const amount = l.replaces.payslipLine?.amount ?? apps.find((a) => String(a._id) === String(l.replaces.applicationId))?.approved?.instalment;
+    const i = lines.findIndex((x) => !x.replaced && x.productId === l.productId && x.amount === amount && (!l.replaces.payslipLine?.label || normLabel(x.label) === normLabel(l.replaces.payslipLine.label)));
+    if (i >= 0) lines[i].replaced = l.ref;
+  });
+  const ownLines = lines.map((l, i) => (!l.replaced && productId && l.productId === String(productId) ? i : -1)).filter((i) => i >= 0);
+  let topUpLine = -1;
+  if (topUp?.on) {
+    const chosen = topUp.payslipLine;
+    if (ownLines.length === 1) [topUpLine] = ownLines;
+    else if (chosen) topUpLine = ownLines.find((i) => lines[i].amount === chosen.amount && normLabel(lines[i].label) === normLabel(chosen.label)) ?? -1;
+  }
+  // A running SLAS loan of this product stays linked to a top-up, so it is settled at
+  // disbursement; the candidate is worked out even before top-up is chosen, for the live calculator.
+  const mine = loans.filter((l) => l.productId === String(productId));
+  const lineFor = topUpLine >= 0 ? topUpLine : ownLines.length === 1 ? ownLines[0] : -1;
+  const candidate = mine.find((l) => topUp?.applicationId && l.applicationId === String(topUp.applicationId)) || mine.find((l) => lineFor >= 0 && l.instalment === lines[lineFor].amount) || mine[0] || null;
+  const topUpLoan = topUp?.on ? candidate : null;
+  const inputs = calc.roomInputs({ lines, topUpLine: topUp?.on ? topUpLine : -1, slas, topUpLoanId: topUpLoan?.applicationId });
+  const clean = (l) => ({ applicationId: l.applicationId, ref: l.ref, productId: l.productId, status: l.status, instalment: l.instalment, firstDue: l.firstDue });
+  return {
+    lines,
+    ownLines,
+    topUpLine,
+    topUpLoan: topUpLoan && clean(topUpLoan),
+    topUpCandidate: candidate && clean(candidate),
+    loans: loans.map(clean),
+    slas: slas.map(clean),
+    unmatched: lines.filter((l) => !l.productId && !l.replaced),
+    inputs,
+  };
 }
 
 /** Days from one calendar day to another (both 'YYYY-MM-DD'). */
@@ -135,7 +176,7 @@ function eligibility(ctx) {
 const blank = (x) => x === undefined || x === null || String(x).trim() === '';
 
 /** Missing or malformed form fields: { field: message }. */
-function fieldErrors(input, version, { onProbation }, ctxTopUp) {
+function fieldErrors(input, version, { onProbation }, ded) {
   const e = {};
   if (!input.amount) e.amount = 'Enter the amount you want to borrow.';
   if (!input.tenor) e.tenor = 'Enter the tenor in months.';
@@ -153,10 +194,13 @@ function fieldErrors(input, version, { onProbation }, ctxTopUp) {
     if (f.type === 'select' && !f.options.includes(val)) e[key] = `Choose one of the options for ${f.label.toLowerCase()}.`;
   }
   if (input.topUp?.on) {
+    // D-101: a top-up is of a deduction on the payslip, recorded in Staff Loans or not.
     if (!version.topUpAllowed) e['topUp.on'] = `${version.name} cannot be topped up.`;
-    // D-87: a top-up names one of the applicant's running SLAS loans of this product, never a typed figure.
-    else if (!input.topUp.applicationId) e['topUp.applicationId'] = 'Choose the loan being topped up.';
-    else if (!ctxTopUp?.topUpLoan || ctxTopUp.topUpLoan.productId !== String(input.productId)) e['topUp.applicationId'] = 'Choose one of your running loans of this product recorded in Staff Loans.';
+    else if (input.payslip?.fileId && ded) {
+      if (!String(version.payslipLabel || '').trim()) e['topUp.on'] = `${version.name} has no payslip deduction label yet, so a top-up cannot be matched to your payslip. Ask the Head of Credit to set it.`;
+      else if (!ded.ownLines.length) e['topUp.on'] = `Your payslip shows no ${version.name} deduction (${version.payslipLabel}), so there is no loan to top up. Untick top-up to apply for a new loan, or attach a payslip that shows it.`;
+      else if (ded.topUpLine < 0) e['topUp.payslipLine'] = `Your payslip shows ${ded.ownLines.length} ${version.name} deductions. Choose the one being topped up.`;
+    }
   }
   if (onProbation && blank(input.probationReason)) e.probationReason = 'Say why you are applying during probation. People and Culture will verify it.';
   return e;
@@ -179,7 +223,7 @@ function loanChecks(input, version, staff, q, settings = {}) {
   if (lastDue && staff.contractEndDate && lastDue > day(staff.contractEndDate)) out.push('The loan must be repaid before your contract ends. Shorten the tenor.');
   if (input.payslip && amount && tenor && !q.pass) {
     const c = q.combined;
-    out.push(`The instalment of ${tzs(q.instalment)} is above what your combined limit leaves: ${tzs(c.available)} a month (${q.rates.affordabilityBps / 100}% of Net Pay is ${tzs(c.cap)}; your other loans in Staff Loans take ${tzs(c.others)}). Borrow up to ${tzs(q.maxAmountAtTenor)} over ${tenor} months, or up to ${tzs(q.maxAmount)} over ${q.maxTenor} months.`);
+    out.push(`The instalment of ${tzs(q.instalment)} is above your Room of ${tzs(c.available)} a month: ${q.rates.affordabilityBps / 100}% of Net Pay is ${tzs(c.cap)}, less ${tzs(c.payslipDeductions)} of staff loan deductions on your payslip and ${tzs(c.slasNotOnPayslip)} of Staff Loans loans not yet on it. Borrow up to ${tzs(q.maxAmountAtTenor)} over ${tenor} months, or up to ${tzs(q.maxAmount)} over ${q.maxTenor} months.`);
   }
   return out;
 }
@@ -192,30 +236,32 @@ function loanChecks(input, version, staff, q, settings = {}) {
 function evaluate(ctx, input) {
   const elig = eligibility({ ...ctx, topUp: input.topUp });
   const pay = payInputs(input.payslip);
-  const existing = existingLoans(ctx.apps, ctx.appId, ctx.today, input.topUp);
+  const ded = deductions({ apps: ctx.apps, appId: ctx.appId, today: ctx.today, products: ctx.products, productId: ctx.product._id, payslip: input.payslip, topUp: input.topUp });
   const dueDay = ctx.settings.firstDueDay || 25;
   const q = calc.quote({
     amount: input.amount || 0,
     tenor: input.tenor || 0,
     topUp: !!input.topUp?.on,
     pay,
-    existing: { others: existing.others, addBack: existing.addBack },
+    existing: ded.inputs,
     pricing: ctx.pricing,
     startDay: ctx.today,
     dueDay,
     maxTenor: longestTenor(ctx.version, ctx.staff, ctx.today, dueDay, ctx.settings),
     maxAmountCap: ctx.version.maxAmount,
   });
-  const fields = fieldErrors({ ...input, productId: ctx.product._id }, ctx.version, elig, existing);
+  const fields = fieldErrors({ ...input, productId: ctx.product._id }, ctx.version, elig, ded);
   const slip = payslipProblem(input.payslip, ctx.settings, ctx.today);
   if (slip) fields.payslip = slip;
   const checks = loanChecks(input, ctx.version, ctx.staff, q, ctx.settings);
   const flags = elig.onProbation ? ['Applied during probation: verify the reason (NS-01).'] : [];
   // No salary record to compare the payslip with (D-100): HR confirm Basic Pay from the payslip.
-  // D-87: the topped-up loan's SLAS instalment should be one of the STAFF LOAN deductions on the payslip.
-  if (existing.topUpLoan && input.payslip?.lfbLines && !input.payslip.lfbLines.some((l) => l.amount === existing.topUpLoan.instalment)) {
-    const shown = input.payslip.lfbLines.map((l) => tzs(l.amount)).join(', ') || 'none';
-    flags.push(`Top-up of ${existing.topUpLoan.ref}: its instalment in Staff Loans is ${tzs(existing.topUpLoan.instalment)}, but the payslip shows staff loan deductions of ${shown}. Confirm the deduction with Payroll.`);
+  // D-101: a staff loan line that matches no product still counts against Room; reviewers are told.
+  ded.unmatched.forEach((l) => flags.push(`The payslip shows a staff loan deduction that matches no product: ${l.label}, ${tzs(l.amount)}. It is counted against Room; confirm it with Payroll.`));
+  // A linked SLAS loan's instalment should be the payslip line topped up.
+  if (ded.topUpLoan && ded.topUpLine >= 0 && ded.lines[ded.topUpLine].amount !== ded.topUpLoan.instalment) {
+    const line = ded.lines[ded.topUpLine];
+    flags.push(`Top-up of ${ded.topUpLoan.ref}: its instalment in Staff Loans is ${tzs(ded.topUpLoan.instalment)}, but the payslip line ${line.label} shows ${tzs(line.amount)}. Confirm the deduction with Payroll.`);
   }
   return {
     eligibility: elig.messages,
@@ -225,11 +271,11 @@ function evaluate(ctx, input) {
     onProbation: elig.onProbation,
     probation: elig.probation,
     pay,
-    existing,
+    deductions: ded,
     quote: q,
     cutoff: cutoffFor(ctx.staff, ctx.settings),
     canSubmit: !elig.messages.length && !Object.keys(fields).length && !checks.length,
   };
 }
 
-module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, existingLoans, payslipProblem, longestTenor, cutoffFor, cutoffProblem, cutoffCheck, runningLoans, monthsBetweenDays };
+module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, deductions, payslipProblem, longestTenor, cutoffFor, cutoffProblem, cutoffCheck, runningLoans, monthsBetweenDays };

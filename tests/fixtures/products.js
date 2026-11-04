@@ -27,6 +27,7 @@ const PRODUCTS = [
   {
     code: 'SA',
     name: 'Salary Advance',
+    payslipLabel: 'Salary Advance Recovery', // D-101
     description: 'A short advance against your salary.',
     minTenor: 1,
     maxTenor: 3,
@@ -36,6 +37,7 @@ const PRODUCTS = [
   {
     code: 'PL',
     name: 'Personal Loan',
+    payslipLabel: 'Staff Loan - Personal', // D-101
     description: 'For personal needs and emergencies.',
     minTenor: 6,
     maxTenor: 60,
@@ -45,6 +47,7 @@ const PRODUCTS = [
   {
     code: 'VL',
     name: 'Vehicle Loan',
+    payslipLabel: 'Staff Loan - Vehicle', // D-101
     description: 'To buy a new or used vehicle.',
     minTenor: 12,
     maxTenor: 84,
@@ -59,6 +62,7 @@ const PRODUCTS = [
   {
     code: 'HE',
     name: 'Housing / Education Loan',
+    payslipLabel: 'Staff Loan - Housing', // D-101
     description: 'To buy, build or renovate a home, or pay tuition.',
     minTenor: 6,
     maxTenor: 120,

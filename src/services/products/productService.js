@@ -16,6 +16,7 @@ const { notFound } = require('../../utils/errors');
 const PRODUCT_DEFAULTS = {
   description: '',
   topUpAllowed: false,
+  payslipLabel: '',
   contractStaffAllowed: false,
   repaymentMethods: ['payroll'],
   fields: [],

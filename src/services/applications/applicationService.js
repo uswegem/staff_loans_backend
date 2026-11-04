@@ -19,6 +19,7 @@ const calendar = require('../calendar/calendarService');
 const workingTime = require('../calendar/workingTime');
 const products = require('../products/productService');
 const rules = require('./rules');
+const { productLabels } = require('../payslip/deductionLines');
 const agreementService = require('../agreement/agreementService');
 const { agreementPdf } = require('../agreement/pdfService');
 const fileStore = require('../files/fileStore');
@@ -58,7 +59,9 @@ async function context(req, productId, { app, versions, applicant } = {}) {
     if (!version) throw new AppError(400, 'PRODUCT_UNAVAILABLE', 'This product is not available for new applications.');
     if (!pricing) throw new AppError(500, 'NO_PRICING', 'No pricing is in force. Contact the System Administrator.');
   }
-  return { staff, profile, settings, product, version, pricing, apps, appId: app?._id, today: localDay() };
+  // D-101: every product's payslip deduction label, this product's from the version in use.
+  const labels = await productLabels(version || null);
+  return { staff, profile, settings, product, version, pricing, apps, products: labels, appId: app?._id, today: localDay() };
 }
 
 function inputOf(app) {
@@ -100,9 +103,7 @@ async function view(req, app) {
   const v = await versionsFor(app);
   const ctx = await context(req, app.productId, { app, versions: v });
   const result = rules.evaluate(ctx, inputOf(app));
-  const liveProducts = await ProductVersion.find({ productId: { $in: result.existing.loans.map((l) => l.productId) } }).sort({ createdAt: -1 }).select('productId name').lean();
-  const names = new Map();
-  liveProducts.forEach((p) => { if (!names.has(String(p.productId))) names.set(String(p.productId), p.name); });
+  const names = new Map(ctx.products.map((p) => [p.productId, p.name]));
   const [decisions, agreements, docs] = await Promise.all([
     Decision.find({ applicationId: app._id }).sort({ at: 1 }).lean(),
     Agreement.find({ applicationId: app._id }).sort({ createdAt: -1 }).select('-text -schedule').lean(),
@@ -140,8 +141,16 @@ async function view(req, app) {
     disbursement: app.disbursement?.date ? { date: localDay(app.disbursement.date), transactionRef: app.disbursement.transactionRef || null } : null,
     payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [], readAt: app.payslip.readAt } : null,
     payslipMaxAgeDays: ctx.settings.payslipMaxAgeDays || 45,
-    // D-87: the combined cap. Running SLAS loans count against it; one of this product may be topped up.
-    existingLoans: result.existing.loans.map((l) => ({ ...l, product: names.get(l.productId) || null, canTopUp: v.version.topUpAllowed && l.productId === String(app.productId) && l.status === 'disbursed' })),
+    // D-101: what Room is worked out from: the payslip's staff loan lines with their product, this
+    // product's lines (one is topped up), and the SLAS loans the payslip cannot show yet.
+    deductions: {
+      lines: result.deductions.lines,
+      ownLines: result.deductions.ownLines,
+      topUpLine: result.deductions.topUpLine,
+      topUpLoan: result.deductions.topUpLoan && { ...result.deductions.topUpLoan, product: names.get(result.deductions.topUpLoan.productId) || null },
+      topUpCandidate: result.deductions.topUpCandidate && { ...result.deductions.topUpCandidate, product: names.get(result.deductions.topUpCandidate.productId) || null },
+      slas: result.deductions.slas.map((l) => ({ ...l, product: names.get(l.productId) || null })),
+    },
     // D-82: the cutoff from the verified date of birth and the longest tenor it allows.
     retirement: { dateOfBirth: ctx.staff.dateOfBirth?.value || null, cutoff: result.cutoff, maxTenor: result.quote.maxTenor, age: ctx.settings.retirementAge ?? 60, bufferDays: ctx.settings.retirementBufferDays ?? 60 },
     documents: docs.map(DOC_VIEW),
@@ -166,6 +175,7 @@ function pick(v) {
     minTenor: v.minTenor,
     maxTenor: v.maxTenor,
     topUpAllowed: v.topUpAllowed,
+    payslipLabel: v.payslipLabel || '',
     fields: v.fields,
   };
 }
@@ -188,9 +198,9 @@ async function notifyProfileIncomplete(userId, profile) {
 
 async function createDraft(req, productId) {
   const ctx = await context(req, productId);
-  // A staff member at the product's limit may still start a top-up of a running SLAS
-  // loan of that product; the draft must then name the loan before it can be submitted.
-  const canTopUp = ctx.version.topUpAllowed && rules.runningLoans(ctx.apps, null, ctx.today).some((a) => String(a.productId) === String(ctx.product._id));
+  // A staff member at the product's limit may still start a top-up (D-101: of a deduction on
+  // the payslip, in Staff Loans or not); the draft must then be a top-up to be submitted.
+  const canTopUp = ctx.version.topUpAllowed;
   const elig = rules.eligibility(canTopUp ? { ...ctx, topUp: { on: true } } : ctx);
   if (!ctx.profile.complete) await notifyProfileIncomplete(req.auth.user._id, ctx.profile);
   if (elig.messages.length) throw badRequest(elig.messages[0], { eligibility: elig.messages }, 'NOT_ELIGIBLE');
@@ -225,9 +235,10 @@ async function update(req, app, body) {
   });
   app.repayment = { method: 'payroll' }; // salary deduction only (D-84)
   if (body.topUp !== undefined) {
-    // D-87: the loan topped up must be the applicant's own SLAS loan; the rules check it is running.
-    const old = body.topUp.on && body.topUp.applicationId ? await Application.findOne({ _id: body.topUp.applicationId, applicantUserId: app.applicantUserId }).select('ref').lean() : null;
-    app.topUp = body.topUp.on ? { on: true, applicationId: old?._id || null, loanRef: old?.ref || null } : { on: false };
+    // D-101: a top-up is of a payslip deduction; the line chosen when the payslip shows several.
+    // A running SLAS loan of the product is linked by the rules and saved at submission.
+    const line = body.topUp.payslipLine?.label ? { label: body.topUp.payslipLine.label, amount: body.topUp.payslipLine.amount } : undefined;
+    app.topUp = body.topUp.on ? { on: true, payslipLine: line } : { on: false };
   }
   if (body.probationReason !== undefined) app.set('probation.reason', body.probationReason);
   app.markModified('productFields');
@@ -365,6 +376,16 @@ async function signAndSubmit(req, app, body) {
         payslip: { fileId: fresh.payslip.fileId, payDate: fresh.payslip.payDate, basic: fresh.payslip.basic, lfbDeductions: fresh.payslip.lfbDeductions, lfbLines: fresh.payslip.lfbLines },
       },
       ruleFlags: result.flags,
+      // D-101: the payslip line topped up and the SLAS loan it settles, if there is one.
+      topUp: fresh.topUp?.on
+        ? {
+            on: true,
+            payslipLine: result.deductions.topUpLine >= 0 ? { label: result.deductions.lines[result.deductions.topUpLine].label, amount: result.deductions.lines[result.deductions.topUpLine].amount } : undefined,
+            applicationId: result.deductions.topUpLoan?.applicationId || undefined,
+            loanRef: result.deductions.topUpLoan?.ref || undefined,
+            instalment: result.deductions.topUpLoan?.instalment ?? (result.deductions.topUpLine >= 0 ? result.deductions.lines[result.deductions.topUpLine].amount : undefined),
+          }
+        : { on: false },
       recommended: undefined,
       approved: undefined,
       hrChecks: undefined,

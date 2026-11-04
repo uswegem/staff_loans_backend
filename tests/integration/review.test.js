@@ -195,7 +195,7 @@ describe('combined cap re-checked at every approval (D-87)', () => {
     await runningLoan('LFB0412', products.VL._id, 600000, 'pending_disbursement');
     const res = await decide(await signIn('LFB0002'), id, { action: 'approve', comment: 'Approved.' });
     expect(res.body.code).toBe('AFFORDABILITY_EXCEEDED');
-    expect(res.body.message).toBe("This application cannot be approved now. The instalment of TZS 136,900 no longer fits the combined limit: 50% of Net Pay is TZS 668,750, and the applicant's other loans in Staff Loans now take TZS 600,000, leaving TZS 68,750. Return or reject it.");
+    expect(res.body.message).toBe('This application cannot be approved now. The instalment of TZS 136,900 no longer fits Room: 50% of Net Pay is TZS 668,750, less TZS 0 of staff loan deductions on the payslip and TZS 600,000 of Staff Loans loans not yet on it, leaving TZS 68,750. Return or reject it.');
     expect((await Application.findById(id)).status).toBe('pending_ceo');
   });
 
