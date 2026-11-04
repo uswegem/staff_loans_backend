@@ -117,6 +117,18 @@ describe('product configuration readiness and controlled activation', () => {
     });
     expect(submitted.status).toBe(200);
 
+    // Credit Analysts retain a limited review: attachments are visible but payslip
+    // and agreement files remain forbidden by the document-specific access exception.
+    const credit = await signIn('LFB0233');
+    const creditView = await api(credit.token).get(`/review/${id}`);
+    expect(creditView.status).toBe(200);
+    expect(creditView.body.data.limited).toBe(true);
+    expect(creditView.body.data.documents).toHaveLength(2);
+    expect(creditView.body.data.documentChecklist).toHaveLength(2);
+    expect((await api(credit.token).get(`/files/${front.body.data.id}?preview=1`)).status).toBe(200);
+    const payslip = await StoredFile.findOne({ applicationId: id, kind: 'payslip' });
+    expect((await api(credit.token).get(`/files/${payslip._id}`)).status).toBe(404);
+
     const inline = await api(staff.token).get(`/files/${front.body.data.id}?preview=1`);
     expect(inline.status).toBe(200);
     expect(inline.headers['content-disposition']).toMatch(/^inline;/);
