@@ -67,6 +67,8 @@ function validateProduct(v) {
     if (d.active !== false && d.mandatory && d.minFiles < 1) add(errors, `requiredDocuments.${i}.minFiles`, 'Mandatory documents require at least one file.');
     if (!d.allowedTypes?.length || d.allowedTypes.some((t) => !['pdf', 'jpg', 'jpeg', 'png'].includes(t))) add(errors, `requiredDocuments.${i}.allowedTypes`, 'Choose supported file types.');
   });
+  const minTotal = (v.requiredDocuments || []).filter((d) => d.active !== false && d.mandatory).reduce((sum, d) => sum + (d.minFiles || 0), 0);
+  if (minTotal > 20) add(errors, 'requiredDocuments', 'Total mandatory files cannot exceed the application limit of 20.');
   return errors;
 }
 
