@@ -9,9 +9,6 @@ on:
       - 'scripts/**'
       - 'package*.json'
       - '.github/workflows/backend-quality.yml'
-  push:
-    branches:
-      - 'feature/**'
 
 jobs:
   backend:
