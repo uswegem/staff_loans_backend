@@ -70,10 +70,13 @@ function panelFor(app, actor) {
 
 /** Limited details (FR-55). Allow-list only. */
 async function limitedView(auth, app, actor) {
-  const [staff, mine] = await Promise.all([
+  const [staff, mine, docs, version] = await Promise.all([
     Staff.findById(app.applicantStaffId).select('firstName lastName personal.mobile personal.nida').lean(),
     Decision.find({ applicationId: app._id, actorId: auth.user._id }).sort({ at: 1 }).lean(),
+    StoredFile.find({ _id: { $in: app.documentIds }, applicationId: app._id, kind: 'document', removedAt: null }).lean(),
+    ProductVersion.findById(app.productVersionId).select('requiredDocuments').lean(),
   ]);
+  const uploaders = await namesOf(docs.map((d) => d.uploadedBy).filter(Boolean));
   return {
     id: String(app._id),
     ref: app.ref,
@@ -84,8 +87,11 @@ async function limitedView(auth, app, actor) {
     stageEnteredAt: app.stageEnteredAt,
     due: await due(app),
     submittedAt: app.submittedAt,
-    // D-86: identity only. No route (it shows the category), product, terms, pay or documents.
+    // D-86: keep all financial/product details hidden. The explicit supporting-
+    // document exception is restricted to an authorized credit-stage review.
     applicant: { firstName: staff?.firstName || '', lastName: staff?.lastName || '', mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
+    documents: docs.map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: uploaders.get(String(d.uploadedBy))?.name || null })),
+    documentChecklist: (version?.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.documentCode === d.code && f.scan?.status === 'clean').length })),
     crb: app.crb?.outcome ? { outcome: app.crb.outcome, reportDate: app.crb.reportDate ? localDay(app.crb.reportDate) : null } : null,
     myDecisions: mine.map((d) => ({ action: d.action, stage: d.stage, comment: d.comment, at: d.at })),
     panel: panelFor(app, actor),
