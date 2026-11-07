@@ -46,7 +46,7 @@ async function currentCode(staffNo, secret) {
  * Returns { token, cookies, body, res }.
  */
 async function signIn(staffNo, password = PASSWORD) {
-  let res = await request(app()).post('/api/v1/auth/login').send({ staffNo, password });
+  let res = await request(app()).post('/api/v1/auth/login').send({ userName: staffNo.toLowerCase(), password });
   if (res.status !== 200) throw new Error(`login ${staffNo} failed: ${res.status} ${JSON.stringify(res.body)}`);
   if (res.body.data.enrolRequired) {
     const start = await request(app()).post('/api/v1/auth/mfa/enrol/start').send({ mfaToken: res.body.data.mfaToken });
