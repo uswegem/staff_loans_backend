@@ -14,6 +14,7 @@ const { STAFF_NO } = require('../constants/staffNo');
 const userSchema = new mongoose.Schema(
   {
     staffNo: { type: String, required: true, unique: true, uppercase: true, trim: true, match: STAFF_NO },
+    userName: { type: String, trim: true, lowercase: true, match: /^[a-z][a-z0-9._-]{2,63}$/ },
     staffId: { type: mongoose.Schema.Types.ObjectId, ref: 'Staff', required: true, unique: true },
     authProvider: { type: String, enum: ['local'], default: 'local' },
     passwordHash: { type: String, required: true },
@@ -42,6 +43,8 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+userSchema.index({ userName: 1 }, { unique: true, partialFilterExpression: { userName: { $type: 'string' } } });
 
 userSchema.methods.toJSON = function toJSON() {
   const o = this.toObject();
