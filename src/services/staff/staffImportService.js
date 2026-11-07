@@ -230,8 +230,10 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userN
   if (problems.length) return { outcome: 'error', problems, changes: [], staffNo, name };
 
   const sentForCheck = dob ? `date of birth ${dob} sent for verification` : null;
+  const incomplete = [!rec.title && 'title', !dateJoined && 'date joined', !(nida || ex.personal?.nida) && 'NIDA', !(verified || pending || dob) && 'date of birth'].filter(Boolean);
+  const incompleteNote = incomplete.length ? `Incomplete HR profile: ${incomplete.join(', ')}` : null;
   if (isNew) {
-    return { outcome: 'new', problems, changes: [[`${rec.title}; ${rec.category}; joined ${dateJoined}`, sentForCheck].filter(Boolean).join('; ')], staffNo, name, record: rec, nida, dob };
+    return { outcome: 'new', problems, changes: [[`${rec.title || 'Title pending'}; ${rec.category}; joined ${dateJoined || 'pending'}`, sentForCheck, incompleteNote].filter(Boolean).join('; ')], staffNo, name, record: rec, nida, dob };
   }
 
   const changes = [];
@@ -242,6 +244,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userN
   if (dateJoined !== dayOf(ex.dateJoined)) changes.push('date joined');
   if (nida && nida !== ex.personal?.nida) changes.push('NIDA');
   if (sentForCheck) changes.push(sentForCheck);
+  if (incompleteNote) changes.push(incompleteNote);
   return { outcome: changes.length ? 'update' : 'unchanged', problems, changes, staffNo, name, record: rec, nida: nida && nida !== ex.personal?.nida ? nida : null, dob };
 }
 
