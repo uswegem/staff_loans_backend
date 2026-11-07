@@ -121,7 +121,7 @@ describe('staff records (FR-01)', () => {
     const res = await api(grace.token).post(`/staff/${id}/status`, { status: 'exited', exitDate: '2026-10-29', reason: 'Resigned' });
     expect(res.body.data.status).toBe('exited');
     expect((await api(neema.token).get('/auth/me')).status).toBe(401);
-    expect((await request(app()).post('/api/v1/auth/login').send({ staffNo: 'LFB0412', password: PASSWORD })).status).toBe(403);
+    expect((await request(app()).post('/api/v1/auth/login').send({ userName: 'lfb0412', password: PASSWORD })).status).toBe(403);
     // The record stays visible to People and Culture.
     expect((await api(grace.token).get(`/staff/${id}`)).body.data.status).toBe('exited');
   });
