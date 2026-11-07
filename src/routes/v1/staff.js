@@ -114,6 +114,7 @@ router.patch(
 // ---------- staff records (People and Culture) ----------
 
 const hrBody = {
+  userName: Joi.string().trim().lowercase().pattern(/^[a-z][a-z0-9._-]{2,63}$/),
   firstName: Joi.string().trim().min(1).max(60),
   gender: Joi.string().valid('Male', 'Female', ''),
   lastName: Joi.string().trim().min(1).max(60),
