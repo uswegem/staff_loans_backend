@@ -51,7 +51,7 @@ const label = (k) => COLUMNS.find((c) => c[0] === k)[1];
 function templateWorkbook() {
   const wb = XLSX.utils.book_new();
   // Built by column so the example always lines up with the headings. Fictional person.
-  const sample = { firstName: 'Baraka', lastName: 'Mwakyusa', nida: '19900514-12345-00001-23', title: 'Teller', staffNo: 'AT901', dob: '14/05/1990', dateJoined: '03/11/2026', category: 'Non-management' };
+  const sample = { userName: 'baraka.mwakyusa', gender: 'Male', department: 'Branch Network', email: 'baraka@example.test', firstName: 'Baraka', lastName: 'Mwakyusa', nida: '19900514-12345-00001-23', title: 'Teller', staffNo: 'AT901', dob: '14/05/1990', dateJoined: '03/11/2026', category: 'Non-management' };
   const ws = XLSX.utils.aoa_to_sheet([HEADERS, COLUMNS.map(([k]) => sample[k] ?? '')]);
   ws['!cols'] = HEADERS.map((h) => ({ wch: Math.max(16, h.length + 4) }));
   XLSX.utils.book_append_sheet(wb, ws, 'Staff records');
@@ -62,7 +62,7 @@ function templateWorkbook() {
     ['How it works', 'One row per staff member, matched by Staff Number/Code. New staff numbers are added with an incomplete profile, which the staff member completes. For staff already on file a blank cell keeps what is on file, and details that are not in this template are not changed. Rows are checked first and nothing changes until you confirm. Delete the example row before uploading.'],
     ['Date of Birth', "Sent to People and Culture's date of birth verification queue. It is used for loans only after another verifier approves it; you cannot verify a date you uploaded."],
     ['Title', 'Stored on the staff record. Uploading does not give anyone a role: a System Administrator assigns roles in Users and roles.'],
-    ['Sign-in', 'Uploading a staff record does not create a sign-in. A System Administrator adds it in Users and roles.'],
+    ['Sign-in', 'Uploading a staff record does not create a sign-in. A System Administrator adds it in Users and roles. Username is unique and is used for login, while staff number remains the payroll identifier.'],
     ['Dates', 'Use day/month/year (15/01/2024), year-month-day (2024-01-15) or an Excel date.'],
     ['Not in this file', 'Salary: affordability comes from the payslip attached to each loan application. Probation end date: worked out as Date Joined plus the probation period in the settings. Retirement date: worked out from the verified date of birth.'],
   ]);
