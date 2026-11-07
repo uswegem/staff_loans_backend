@@ -11,6 +11,7 @@
 const { api, seedAll, attachPayslip, sign, decide, signIn, runningLoan, CRB, HR_OK } = require('../flows');
 const Application = require('../../src/models/Application');
 const { capCheck } = require('../../src/services/applications/capCheck');
+const { runningLoans } = require('../../src/services/applications/rules');
 const { localDay } = require('../../src/utils/dates');
 
 jest.setTimeout(120000);
@@ -76,6 +77,8 @@ describe('SLAS loans not yet on the payslip (D-101)', () => {
   it('counts a loan pending disbursement and one whose first instalment is after the pay date', async () => {
     await runningLoan('LFB0412', products.VL._id, 60000, 'pending_disbursement');
     await runningLoan('LFB0412', products.VL._id, 40000, 'disbursed', { firstDue: localDay(new Date(Date.now() + 20 * 86400000)) });
+    const active = await Application.find({ status: { $in: ['pending_disbursement', 'disbursed'] } }).lean();
+    expect(runningLoans(active, null, localDay(new Date())).map((a) => a.approved.instalment).sort((a, b) => a - b)).toEqual([40000, 60000]);
     const { view } = await draft({ lines: [PL_LINE(100000)], payDate: daysAgo(5) });
     expect(view.quote.combined).toMatchObject({ payslipDeductions: 100000, slasNotOnPayslip: 100000, available: LIMIT - 200000 });
     expect(view.deductions.slas.map((l) => l.instalment).sort()).toEqual([40000, 60000]);
