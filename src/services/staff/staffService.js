@@ -17,7 +17,7 @@ const LFB_BANK = 'Letshego Faidika Bank';
 // Fields People and Culture maintain (FR-01). Personal, bank, next-of-kin and pay
 // declarations belong to the staff member's profile. The probation end date is worked out
 // (D-100): earlier stored values are kept but no longer written or used.
-const HR_FIELDS = ['firstName', 'lastName', 'gender', 'title', 'department', 'station', 'stationHead', 'lineManagerId', 'category', 'employmentType', 'dateJoined', 'contractEndDate', 'email', 'workPhone', 'lfbAccountNo', 'incomeClass'];
+const HR_FIELDS = ['userName', 'firstName', 'lastName', 'gender', 'title', 'department', 'station', 'stationHead', 'lineManagerId', 'category', 'employmentType', 'dateJoined', 'contractEndDate', 'email', 'workPhone', 'lfbAccountNo', 'incomeClass'];
 
 const fullName = (s) => [s.firstName, s.lastName].filter(Boolean).join(' ');
 
@@ -83,6 +83,10 @@ async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, 
     }
   }
   await staff.save({ session });
+  // Preserve Staff/User login consistency when HR corrects a username.
+  if (staff.userName && staff.userName !== before?.userName) {
+    await User.updateOne({ staffId: staff._id }, { $set: { userName: staff.userName } }, { session });
+  }
   if (staff.status !== 'active' && (!before || before.status === 'active')) await endSignIns(staff._id, staff.status, session);
 
   await audit.record(

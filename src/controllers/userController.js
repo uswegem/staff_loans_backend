@@ -37,6 +37,7 @@ async function present(user) {
   return {
     id: String(user._id),
     staffNo: user.staffNo,
+    userName: user.userName,
     fullName: fullName(staff),
     title: staff?.title,
     department: staff?.department,
@@ -93,7 +94,8 @@ const UserController = {
     const staffRole = await Role.findOne({ code: 'staff' });
 
     const user = await withTransaction(async (session) => {
-      const u = new User({ staffNo: staff.staffNo, staffId: staff._id, mustChangePassword: true, createdBy: req.auth.user._id });
+      if (!staff.userName) throw badRequest('Staff username is missing. People and Culture must complete it before account creation.', { userName: ['Username required.'] });
+      const u = new User({ staffNo: staff.staffNo, staffId: staff._id, userName: staff.userName, mustChangePassword: true, createdBy: req.auth.user._id });
       await credentials.forUser(u).setPassword(u, req.body.temporaryPassword, { skipHistory: true });
       await u.save({ session });
       await RoleAssignment.create([{ userId: u._id, roleId: staffRole._id, assignedBy: req.auth.user._id }], { session });

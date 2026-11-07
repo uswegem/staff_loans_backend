@@ -105,12 +105,12 @@ async function loadStaffRows(staffRows, { password, roleByCode, source, updateEx
       loaded.updated += 1;
     } else {
       // Date of birth left empty: the staff member enters it and People and Culture verify it (D-82).
-      staff = await Staff.create({ staffNo: r.staffNo, ...fields, gender: r.gender, bank: { bank: 'Letshego Faidika Bank', accountName: `${r.firstName} ${r.lastName}` } });
+      staff = await Staff.create({ staffNo: r.staffNo, userName: r.staffNo.toLowerCase(), ...fields, gender: r.gender, bank: { bank: 'Letshego Faidika Bank', accountName: `${r.firstName} ${r.lastName}` } });
       loaded.created += 1;
     }
     let user = await User.findOne({ staffNo: r.staffNo });
     if (!user) {
-      user = await User.create({ staffNo: r.staffNo, staffId: staff._id, mustChangePassword: true, ...hash });
+      user = await User.create({ staffNo: r.staffNo, userName: r.staffNo.toLowerCase(), staffId: staff._id, mustChangePassword: true, ...hash });
       await AuditLog.create({ action: 'user.create', description: `User created for ${r.staffNo} (${r.firstName} ${r.lastName}) by ${source}; temporary password, change forced at first sign-in`, entity: 'User', entityId: String(user._id), after: { staffNo: r.staffNo, roles: ['staff', ...(ROLES_BY_STAFF_NO[r.staffNo] || [])] } });
       loaded.usersCreated += 1;
     }

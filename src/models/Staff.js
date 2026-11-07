@@ -54,6 +54,7 @@ const loanHistorySchema = new Schema(
 const staffSchema = new Schema(
   {
     staffNo: { type: String, required: true, unique: true, uppercase: true, trim: true, match: STAFF_NO }, // employee code (C-07)
+    userName: { type: String, trim: true, lowercase: true, match: /^[a-z][a-z0-9._-]{2,63}$/ },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true }, // the surname (D-85)
     title: String,
@@ -110,6 +111,8 @@ const staffSchema = new Schema(
   },
   { timestamps: true }
 );
+
+staffSchema.index({ userName: 1 }, { unique: true, partialFilterExpression: { userName: { $type: 'string' } } });
 
 staffSchema.virtual('fullName').get(function fullName() {
   return [this.firstName, this.lastName].filter(Boolean).join(' ');

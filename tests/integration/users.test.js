@@ -10,7 +10,7 @@ const AuditLog = require('../../src/models/AuditLog');
 
 let admin;
 const idOf = async (staffNo) => String((await User.findOne({ staffNo }))._id);
-const login = (staffNo, password = PASSWORD) => request(app()).post('/api/v1/auth/login').send({ staffNo, password });
+const login = (staffNo, password = PASSWORD) => request(app()).post('/api/v1/auth/login').send({ userName: staffNo.toLowerCase(), password });
 
 beforeEach(async () => {
   await seed();
@@ -36,7 +36,7 @@ describe('users list and detail', () => {
 
 describe('creating a user from a staff record', () => {
   beforeEach(async () => {
-    await Staff.create({ staffNo: 'LFB0700', firstName: 'Baraka', lastName: 'Temba', category: 'Non-management', employmentType: 'Permanent', dateJoined: new Date('2025-01-06') });
+    await Staff.create({ staffNo: 'LFB0700', userName: 'lfb0700', firstName: 'Baraka', lastName: 'Temba', category: 'Non-management', employmentType: 'Permanent', dateJoined: new Date('2025-01-06') });
   });
 
   it('creates the account with a temporary password and the Staff role', async () => {

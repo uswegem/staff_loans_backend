@@ -121,7 +121,7 @@ describe('staff records (FR-01)', () => {
     const res = await api(grace.token).post(`/staff/${id}/status`, { status: 'exited', exitDate: '2026-10-29', reason: 'Resigned' });
     expect(res.body.data.status).toBe('exited');
     expect((await api(neema.token).get('/auth/me')).status).toBe(401);
-    expect((await request(app()).post('/api/v1/auth/login').send({ staffNo: 'LFB0412', password: PASSWORD })).status).toBe(403);
+    expect((await request(app()).post('/api/v1/auth/login').send({ userName: 'lfb0412', password: PASSWORD })).status).toBe(403);
     // The record stays visible to People and Culture.
     expect((await api(grace.token).get(`/staff/${id}`)).body.data.status).toBe('exited');
   });
@@ -147,7 +147,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
   const row = (o) => HEADERS.map((h) => o[h] ?? '');
   const upload = (buffer, name = 'Staff_records_Nov_2026.xlsx') => request(app()).post('/api/v1/staff/import').set(authed(grace.token)).attach('file', buffer, name);
   const commit = (id) => api(grace.token).post(`/staff/import/${id}/commit`);
-  const BARAKA = { 'Staff Number/Code': 'LFB0612', 'First name': 'Baraka', Surname: 'Mwakyusa', NIDA: '19900514123450000123', Title: 'Teller', 'Date of Birth': '14/05/1990', 'Date Joined': '03/09/2026', Category: 'Non-management' };
+  const BARAKA = { Username: 'baraka.mwakyusa', 'Staff Number/Code': 'LFB0612', 'First name': 'Baraka', Surname: 'Mwakyusa', NIDA: '19900514123450000123', Title: 'Teller', 'Date of Birth': '14/05/1990', 'Date Joined': '03/09/2026', Category: 'Non-management' };
 
   const sample = () =>
     sheet([
@@ -156,10 +156,10 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
       row(BARAKA),
       row({ 'Staff Number/Code': 'LFB0188', Title: 'Branch Manager', Category: 'Non-management' }),
       row({ 'Staff Number/Code': '06-LFB2', 'First name': 'Zawadi', Surname: 'Said', NIDA: '123', Title: 'Loan Officer', 'Date of Birth': '01/01/1995', 'Date Joined': '01/12/2025', Category: 'Officer' }),
-      row({ 'Staff Number/Code': 'LFB0613', 'First name': 'Imani', Surname: 'Komba', Title: 'Head of Finance', 'Date Joined': '17/08/2026', Category: 'Management' }),
+      row({ 'Staff Number/Code': 'LFB0613', Username: 'imani.komba', 'First name': 'Imani', Surname: 'Komba', Title: 'Head of Finance', 'Date Joined': '17/08/2026', Category: 'Management' }),
     ]);
 
-  it('downloads the template with the eight columns and an Instructions sheet', async () => {
+  it('downloads the template with the extended columns and an Instructions sheet', async () => {
     const res = await api(grace.token).get('/staff/import/template').buffer(true).parse((r, cb) => {
       const chunks = [];
       r.on('data', (c) => chunks.push(c));
@@ -168,13 +168,13 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(res.headers['content-type']).toMatch(/spreadsheetml/);
     const wb = XLSX.read(res.body, { type: 'buffer' });
     expect(wb.SheetNames).toContain('Instructions');
-    expect(XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 })[0]).toEqual(['First name', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
+    expect(XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 })[0]).toEqual(HEADERS);
   });
 
   it('checks every row and shows new, updated, unchanged and error rows', async () => {
     const res = await upload(sample());
     expect(res.status).toBe(201);
-    expect(res.body.data.summary).toEqual({ new: 1, update: 1, unchanged: 1, error: 2 });
+    expect(res.body.data.summary).toEqual({ new: 2, update: 1, unchanged: 1, error: 1 });
     const byNo = Object.fromEntries(res.body.data.rows.map((r) => [r.staffNo, r]));
     expect(byNo.LFB0412).toMatchObject({ outcome: 'update', changes: ['title'] });
     expect(byNo.LFB0612.changes.join()).toMatch(/date of birth 1990-05-14 sent for verification/);
@@ -186,7 +186,8 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
         'NIDA: Enter the 20-digit NIDA number, for example 19800630-13140-00004-20.',
       ])
     );
-    expect(byNo.LFB0613.problems).toEqual(['NIDA is required', 'Date of Birth is required']);
+    expect(byNo.LFB0613.outcome).toBe('new');
+    expect(byNo.LFB0613.changes.join(' ')).toMatch(/Incomplete HR profile/);
     // Nothing has changed yet.
     expect(await Staff.exists({ staffNo: 'LFB0612' })).toBeNull();
   });
@@ -196,8 +197,8 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     const res = await upload(
       sheet([
         row({ ...BARAKA, 'Date of Birth': '31/02/1990' }),
-        row({ ...BARAKA, 'Staff Number/Code': 'LFB0614', 'Date of Birth': '01/01/2020', NIDA: '19800630131400000420' }),
-        row({ ...BARAKA, 'Staff Number/Code': 'LFB0615', NIDA: neemaNida }),
+        row({ ...BARAKA, 'Staff Number/Code': 'LFB0614', Username: 'baraka.mwakyusa14', 'Date of Birth': '01/01/2020', NIDA: '19800630131400000420' }),
+        row({ ...BARAKA, 'Staff Number/Code': 'LFB0615', Username: 'baraka.mwakyusa15', NIDA: neemaNida }),
         row({ 'Staff Number/Code': 'LFB0412', 'Date of Birth': '12/07/1989' }), // the verified date: no change
         row({ 'Staff Number/Code': 'LFB0188', 'Date of Birth': '01/02/1975' }),
       ])
@@ -219,11 +220,14 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     });
     const rows = XLSX.utils.sheet_to_json(XLSX.read(res.body, { type: 'buffer' }).Sheets['Staff records'], { header: 1, defval: '' });
     expect(rows[0]).toEqual([...HEADERS, 'Errors', 'Row in your file']);
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(2);
     const at = (h) => HEADERS.indexOf(h);
     expect(rows[1][at('Staff Number/Code')]).toBe('06-LFB2');
     // Fix Imani's row and upload the error file again.
-    const fixed = rows.slice(1).filter((r) => r[at('Staff Number/Code')] === 'LFB0613').map((r) => r.slice(0, HEADERS.length));
+    const fixed = [rows.slice(1).find((r) => r[at('Staff Number/Code')] === '06-LFB2').slice(0, HEADERS.length)];
+    fixed[0][at('Staff Number/Code')] = 'LFB0616';
+    fixed[0][at('Category')] = 'Non-management';
+    fixed[0][at('Username')] = 'zawadi.said';
     fixed[0][at('NIDA')] = '19850301-22222-00003-23';
     fixed[0][at('Date of Birth')] = '01/03/1985';
     const again = await upload(sheet(fixed), 'errors_fixed.xlsx');
@@ -236,7 +240,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     const up = await upload(sample());
     const res = await commit(up.body.data.id);
     expect(res.status).toBe(200);
-    expect(res.body.data.result).toEqual({ created: 1, updated: 1, skipped: 3, datesOfBirth: 1 });
+    expect(res.body.data.result).toEqual({ created: 2, updated: 1, skipped: 2, datesOfBirth: 1 });
 
     const baraka = await Staff.findOne({ staffNo: 'LFB0612' }).lean();
     expect(baraka).toMatchObject({ firstName: 'Baraka', lastName: 'Mwakyusa', title: 'Teller', category: 'Non-management', personal: { nida: '19900514-12345-00001-23' } });
@@ -259,7 +263,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(await Salary.countDocuments({})).toBe(1);
 
     expect(await AuditLog.countDocuments({ action: 'staff.import_commit' })).toBe(1);
-    expect(await AuditLog.countDocuments({ action: { $in: ['staff.create', 'staff.update'] } })).toBe(2);
+    expect(await AuditLog.countDocuments({ action: { $in: ['staff.create', 'staff.update'] } })).toBe(3);
     expect(await AuditLog.countDocuments({ action: 'dob.submit' })).toBe(1);
     // A committed upload cannot be applied twice.
     expect((await commit(up.body.data.id)).status).toBe(409);

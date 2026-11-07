@@ -53,17 +53,17 @@ describe('import file', () => {
     return XLSX.write(wb, { type: 'buffer', bookType: type });
   };
 
-  it('the template has exactly the eight columns, their instructions and an example (D-100)', () => {
-    expect(HEADERS).toEqual(['First name', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
+  it('the template has the extended columns, their instructions and an example (D-100)', () => {
+    expect(HEADERS).toEqual(['First name', 'Username', 'Gender', 'Department', 'Email', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
     const wb = XLSX.read(templateWorkbook(), { type: 'buffer' });
     expect(wb.SheetNames).toEqual(['Staff records', 'Instructions', 'Lists']);
     const [head, example] = XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 });
     expect(head).toEqual(HEADERS);
-    expect(example).toEqual(['Baraka', 'Mwakyusa', '19900514-12345-00001-23', 'Teller', 'AT901', '14/05/1990', '03/11/2026', 'Non-management']);
+    expect(example).toEqual(['Baraka', 'baraka.mwakyusa', 'Male', 'Branch Network', 'baraka@example.test', 'Mwakyusa', '19900514-12345-00001-23', 'Teller', 'AT901', '14/05/1990', '03/11/2026', 'Non-management']);
     const ins = XLSX.utils.sheet_to_json(wb.Sheets.Instructions, { header: 1 });
-    expect(ins.slice(1, 9)).toEqual(COLUMNS.map((c) => [c[1], c[2]]));
-    expect(ins[3]).toEqual(['NIDA', 'Required. Used by Credit for CRB checks. Format 19800630-13140-00004-20.']);
-    expect(ins[5]).toEqual(['Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.']);
+    expect(ins.slice(1, 1 + COLUMNS.length)).toEqual(COLUMNS.map((c) => [c[1], c[2]]));
+    expect(ins[7]).toEqual(['NIDA', COLUMNS[6][2]]);
+    expect(ins[9]).toEqual(['Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.']);
   });
 
   it('maps headings loosely, ignores columns that are not in the template and skips blank rows', () => {
@@ -81,7 +81,7 @@ describe('import file', () => {
   });
 
   it('refuses a file without a staff number column', () => {
-    expect(() => parseFile(book([['Name'], ['Baraka']]))).toThrow('Staff Number/Code');
+    expect(() => parseFile(book([['First name'], ['Baraka']]))).toThrow('Staff Number/Code');
   });
 });
 

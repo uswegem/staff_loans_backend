@@ -28,7 +28,7 @@ const RT_COOKIE = 'slas_rt';
 const CSRF_COOKIE = 'XSRF-TOKEN';
 const RT_PATH = '/api/v1/auth';
 
-const INVALID = 'The staff number or password is not right.';
+const INVALID = 'The username or password is not right.';
 const LOCKED = 'Your account is locked after too many failed attempts. Contact the IT Service Desk to unlock it.';
 const INACTIVE = 'Your account is not active. Contact the IT Service Desk.';
 
@@ -53,6 +53,7 @@ async function profileFor(user) {
     user: {
       id: String(user._id),
       staffNo: user.staffNo,
+      userName: user.userName,
       fullName: staff ? [staff.firstName, staff.lastName].filter(Boolean).join(' ') : user.staffNo,
       title: staff?.title,
       department: staff?.department,
@@ -130,11 +131,10 @@ async function userFromMfaToken(req, token, purpose) {
 
 const AuthController = {
   async login(req, res) {
-    const staffNo = req.body.staffNo.toUpperCase();
-    const user = await User.findOne({ staffNo });
+    const userName = req.body.userName.trim().toLowerCase();
+    const user = await User.findOne({ userName });
     if (!user) {
-      // Staff numbers are printed on payslips and are not secret; the reply still matches a wrong password.
-      await audit.security('unknown_staff_no', { req, description: `Sign-in attempt for unknown staff number ${staffNo}` });
+      await audit.security('unknown_username', { req, description: 'Sign-in attempt for an unknown username' });
       throw unauthorized(INVALID, 'INVALID_CREDENTIALS');
     }
     await assertCanSignIn(req, user);
