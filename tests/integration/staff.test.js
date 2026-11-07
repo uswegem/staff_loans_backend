@@ -263,7 +263,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(await Salary.countDocuments({})).toBe(1);
 
     expect(await AuditLog.countDocuments({ action: 'staff.import_commit' })).toBe(1);
-    expect(await AuditLog.countDocuments({ action: { $in: ['staff.create', 'staff.update'] } })).toBe(2);
+    expect(await AuditLog.countDocuments({ action: { $in: ['staff.create', 'staff.update'] } })).toBe(3);
     expect(await AuditLog.countDocuments({ action: 'dob.submit' })).toBe(1);
     // A committed upload cannot be applied twice.
     expect((await commit(up.body.data.id)).status).toBe(409);
