@@ -156,10 +156,10 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
       row(BARAKA),
       row({ 'Staff Number/Code': 'LFB0188', Title: 'Branch Manager', Category: 'Non-management' }),
       row({ 'Staff Number/Code': '06-LFB2', 'First name': 'Zawadi', Surname: 'Said', NIDA: '123', Title: 'Loan Officer', 'Date of Birth': '01/01/1995', 'Date Joined': '01/12/2025', Category: 'Officer' }),
-      row({ 'Staff Number/Code': 'LFB0613', Username: 'imani.komba', 'First name': 'Imani', Surname: 'Komba', Title: 'Head of Finance', 'Date Joined': '17/08/2026', Category: 'Management' }),
+      row({ 'Staff Number/Code': 'LFB0613', 'First name': 'Imani', Surname: 'Komba', Title: 'Head of Finance', 'Date Joined': '17/08/2026', Category: 'Management' }),
     ]);
 
-  it('downloads the template with the eight columns and an Instructions sheet', async () => {
+  it('downloads the template with the extended columns and an Instructions sheet', async () => {
     const res = await api(grace.token).get('/staff/import/template').buffer(true).parse((r, cb) => {
       const chunks = [];
       r.on('data', (c) => chunks.push(c));
@@ -196,8 +196,8 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     const res = await upload(
       sheet([
         row({ ...BARAKA, 'Date of Birth': '31/02/1990' }),
-        row({ ...BARAKA, 'Staff Number/Code': 'LFB0614', 'Date of Birth': '01/01/2020', NIDA: '19800630131400000420' }),
-        row({ ...BARAKA, 'Staff Number/Code': 'LFB0615', NIDA: neemaNida }),
+        row({ ...BARAKA, 'Staff Number/Code': 'LFB0614', Username: 'baraka.mwakyusa14', 'Date of Birth': '01/01/2020', NIDA: '19800630131400000420' }),
+        row({ ...BARAKA, 'Staff Number/Code': 'LFB0615', Username: 'baraka.mwakyusa15', NIDA: neemaNida }),
         row({ 'Staff Number/Code': 'LFB0412', 'Date of Birth': '12/07/1989' }), // the verified date: no change
         row({ 'Staff Number/Code': 'LFB0188', 'Date of Birth': '01/02/1975' }),
       ])
@@ -224,6 +224,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(rows[1][at('Staff Number/Code')]).toBe('06-LFB2');
     // Fix Imani's row and upload the error file again.
     const fixed = rows.slice(1).filter((r) => r[at('Staff Number/Code')] === 'LFB0613').map((r) => r.slice(0, HEADERS.length));
+    fixed[0][at('Username')] = 'imani.komba';
     fixed[0][at('NIDA')] = '19850301-22222-00003-23';
     fixed[0][at('Date of Birth')] = '01/03/1985';
     const again = await upload(sheet(fixed), 'errors_fixed.xlsx');
