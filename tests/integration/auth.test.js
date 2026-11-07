@@ -137,12 +137,12 @@ describe('MFA for privileged users (FR-49)', () => {
   });
 
   it.each(['LFB0233', 'LFB0051', 'LFB0002', 'LFB0318', 'LFB0274', 'LFB0010', 'LFB0129', 'LFB0067', 'LFB0451'])('requires MFA for %s', async (staffNo) => {
-    const res = await login({ staffNo, password: PASSWORD });
+    const res = await login({ userName: staffNo.toLowerCase(), password: PASSWORD });
     expect(res.body.data.enrolRequired || res.body.data.mfaRequired).toBe(true);
   });
 
   it.each(['LFB0412', 'LFB0377'])('does not require MFA for %s', async (staffNo) => {
-    const res = await login({ staffNo, password: PASSWORD });
+    const res = await login({ userName: staffNo.toLowerCase(), password: PASSWORD });
     expect(res.body.data.accessToken).toBeTruthy();
   });
 
