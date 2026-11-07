@@ -85,7 +85,6 @@ describe('SLAS loans not yet on the payslip (D-101)', () => {
     expect(view.deductions.slas.map((l) => ({ instalment: l.instalment, status: l.status, firstDue: l.firstDue })).sort((a, b) => a.instalment - b.instalment)).toEqual([{ instalment: 40000, status: 'disbursed', firstDue: expect.any(String) }, { instalment: 60000, status: 'pending_disbursement', firstDue: expect.any(String) }]);
     expect(view.deductions.slas.map((l) => l.instalment).sort((a, b) => a - b)).toEqual([40000, 60000]);
     expect(view.quote.combined).toMatchObject({ payslipDeductions: 100000, slasNotOnPayslip: 100000, available: LIMIT - 200000 });
-    expect(view.deductions.slas.map((l) => l.instalment).sort()).toEqual([40000, 60000]);
   });
 
   it('does not count twice a disbursed loan the payslip already shows', async () => {
