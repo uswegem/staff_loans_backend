@@ -83,6 +83,10 @@ async function saveStaff(req, existing, staffNo, fields, extra = {}, { session, 
     }
   }
   await staff.save({ session });
+  // Preserve Staff/User login consistency when HR corrects a username.
+  if (staff.userName && staff.userName !== before?.userName) {
+    await User.updateOne({ staffId: staff._id }, { $set: { userName: staff.userName } }, { session });
+  }
   if (staff.status !== 'active' && (!before || before.status === 'active')) await endSignIns(staff._id, staff.status, session);
 
   await audit.record(
