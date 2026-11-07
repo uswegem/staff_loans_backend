@@ -54,7 +54,7 @@ describe('import file', () => {
   };
 
   it('the template has exactly the eight columns, their instructions and an example (D-100)', () => {
-    expect(HEADERS).toEqual(['First name', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
+    expect(HEADERS).toEqual(['First name', 'Username', 'Gender', 'Department', 'Email', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
     const wb = XLSX.read(templateWorkbook(), { type: 'buffer' });
     expect(wb.SheetNames).toEqual(['Staff records', 'Instructions', 'Lists']);
     const [head, example] = XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 });
