@@ -49,6 +49,7 @@ async function seedFoundation({ password, mustChangePassword = false } = {}) {
 
   // Bulk upserts keep the seed fast enough to run before every integration test.
   await Staff.bulkWrite(PEOPLE.map((p) => ({ updateOne: { filter: { staffNo: p.staffNo }, update: { $setOnInsert: toStaffDoc(p) }, upsert: true } })));
+  await Staff.bulkWrite(PEOPLE.map((p) => ({ updateOne: { filter: { staffNo: p.staffNo }, update: { $set: { userName: p.staffNo.toLowerCase() } } } })));
   const staffByNo = new Map((await Staff.find({ staffNo: { $in: PEOPLE.map((p) => p.staffNo) } }).select('_id staffNo').lean()).map((s) => [s.staffNo, s._id]));
 
   // No salary records (D-100): each person's pay is on the payslip they attach when applying.
@@ -56,7 +57,7 @@ async function seedFoundation({ password, mustChangePassword = false } = {}) {
   const existing = new Set(await User.distinct('staffNo', { staffNo: { $in: PEOPLE.map((p) => p.staffNo) } }));
   const fresh = PEOPLE.filter((p) => !existing.has(p.staffNo));
   if (fresh.length) {
-    const created = await User.insertMany(fresh.map((p) => ({ staffNo: p.staffNo, staffId: staffByNo.get(p.staffNo), passwordHash: hash, passwordChangedAt: new Date(), mustChangePassword })));
+    const created = await User.insertMany(fresh.map((p) => ({ staffNo: p.staffNo, userName: p.staffNo.toLowerCase(), staffId: staffByNo.get(p.staffNo), passwordHash: hash, passwordChangedAt: new Date(), mustChangePassword })));
     const idByNo = new Map(created.map((u) => [u.staffNo, u._id]));
     await RoleAssignment.insertMany(fresh.flatMap((p) => p.roles.map((code) => ({ userId: idByNo.get(p.staffNo), roleId: roles[code]._id }))));
   }
