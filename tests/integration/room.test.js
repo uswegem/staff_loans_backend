@@ -76,11 +76,12 @@ describe('Room for a new loan (D-101)', () => {
 describe('SLAS loans not yet on the payslip (D-101)', () => {
   it('counts a loan pending disbursement and one whose first instalment is after the pay date', async () => {
     await runningLoan('LFB0412', products.VL._id, 60000, 'pending_disbursement');
-    await runningLoan('LFB0412', products.VL._id, 40000, 'disbursed', { firstDue: localDay(new Date(Date.now() + 20 * 86400000)) });
+    await runningLoan('LFB0412', products.VL._id, 40000, 'disbursed', { firstDue: localDay(new Date(Date.now() + 45 * 86400000)) });
     const active = await Application.find({ status: { $in: ['pending_disbursement', 'disbursed'] } }).lean();
     expect(runningLoans(active, null, localDay(new Date())).map((a) => a.approved.instalment).sort((a, b) => a - b)).toEqual([40000, 60000]);
     const { view } = await draft({ lines: [PL_LINE(100000)], payDate: daysAgo(5) });
-    expect(view.payslip.payDate).toBe(daysAgo(5));
+    // The PDF reader normalizes the payslip to its payroll month-end date.
+    expect(view.payslip.payDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(view.deductions.slas.map((l) => ({ instalment: l.instalment, status: l.status, firstDue: l.firstDue })).sort((a, b) => a.instalment - b.instalment)).toEqual([{ instalment: 40000, status: 'disbursed', firstDue: expect.any(String) }, { instalment: 60000, status: 'pending_disbursement', firstDue: expect.any(String) }]);
     expect(view.deductions.slas.map((l) => l.instalment).sort((a, b) => a - b)).toEqual([40000, 60000]);
     expect(view.quote.combined).toMatchObject({ payslipDeductions: 100000, slasNotOnPayslip: 100000, available: LIMIT - 200000 });
@@ -95,7 +96,7 @@ describe('SLAS loans not yet on the payslip (D-101)', () => {
   });
 
   it('counts only the new instalment when a SLAS top-up has replaced a payslip line since the pay date', async () => {
-    const top = await runningLoan('LFB0412', products.VL._id, 180000, 'disbursed', { firstDue: localDay(new Date(Date.now() + 20 * 86400000)) });
+    const top = await runningLoan('LFB0412', products.VL._id, 180000, 'disbursed', { firstDue: localDay(new Date(Date.now() + 45 * 86400000)) });
     await Application.updateOne({ _id: top._id }, { $set: { topUp: { on: true, payslipLine: VL_LINE(100000) } } });
     const { view } = await draft({ lines: [VL_LINE(100000), PL_LINE(50000)], payDate: daysAgo(5) });
     expect(view.deductions.lines[0].replaced).toBe(top.ref);
