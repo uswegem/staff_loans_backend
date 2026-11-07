@@ -147,7 +147,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
   const row = (o) => HEADERS.map((h) => o[h] ?? '');
   const upload = (buffer, name = 'Staff_records_Nov_2026.xlsx') => request(app()).post('/api/v1/staff/import').set(authed(grace.token)).attach('file', buffer, name);
   const commit = (id) => api(grace.token).post(`/staff/import/${id}/commit`);
-  const BARAKA = { 'Staff Number/Code': 'LFB0612', 'First name': 'Baraka', Surname: 'Mwakyusa', NIDA: '19900514123450000123', Title: 'Teller', 'Date of Birth': '14/05/1990', 'Date Joined': '03/09/2026', Category: 'Non-management' };
+  const BARAKA = { Username: 'baraka.mwakyusa', 'Staff Number/Code': 'LFB0612', 'First name': 'Baraka', Surname: 'Mwakyusa', NIDA: '19900514123450000123', Title: 'Teller', 'Date of Birth': '14/05/1990', 'Date Joined': '03/09/2026', Category: 'Non-management' };
 
   const sample = () =>
     sheet([
@@ -156,7 +156,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
       row(BARAKA),
       row({ 'Staff Number/Code': 'LFB0188', Title: 'Branch Manager', Category: 'Non-management' }),
       row({ 'Staff Number/Code': '06-LFB2', 'First name': 'Zawadi', Surname: 'Said', NIDA: '123', Title: 'Loan Officer', 'Date of Birth': '01/01/1995', 'Date Joined': '01/12/2025', Category: 'Officer' }),
-      row({ 'Staff Number/Code': 'LFB0613', 'First name': 'Imani', Surname: 'Komba', Title: 'Head of Finance', 'Date Joined': '17/08/2026', Category: 'Management' }),
+      row({ 'Staff Number/Code': 'LFB0613', Username: 'imani.komba', 'First name': 'Imani', Surname: 'Komba', Title: 'Head of Finance', 'Date Joined': '17/08/2026', Category: 'Management' }),
     ]);
 
   it('downloads the template with the eight columns and an Instructions sheet', async () => {
@@ -168,7 +168,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(res.headers['content-type']).toMatch(/spreadsheetml/);
     const wb = XLSX.read(res.body, { type: 'buffer' });
     expect(wb.SheetNames).toContain('Instructions');
-    expect(XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 })[0]).toEqual(['First name', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
+    expect(XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 })[0]).toEqual(HEADERS);
   });
 
   it('checks every row and shows new, updated, unchanged and error rows', async () => {
