@@ -26,6 +26,10 @@ const MAX_ROWS = 5000;
 // new staff; for staff already on file a blank cell keeps what is on file.
 const COLUMNS = Object.freeze([
   ['firstName', 'First name', 'Required.'],
+  ['userName', 'Username', 'Required for new staff; unique login identifier.'],
+  ['gender', 'Gender', 'Optional: Male or Female.'],
+  ['department', 'Department', 'Optional.'],
+  ['email', 'Email', 'Optional.'],
   ['lastName', 'Surname', 'Required.'],
   ['nida', 'NIDA', 'Required. Used by Credit for CRB checks. Format 19800630-13140-00004-20.'],
   ['title', 'Title', 'Required. Used for assigning roles and permissions.'],
@@ -38,7 +42,7 @@ const COLUMNS = Object.freeze([
 const HEADERS = COLUMNS.map((c) => c[1]);
 const norm = (h) => String(h).toLowerCase().replace(/[^a-z]/g, '');
 // Headings from earlier templates still find their column; any other column is ignored.
-const ALIASES = { staffnumber: 'staffNo', staffno: 'staffNo', staffcode: 'staffNo', employeecode: 'staffNo', lastname: 'lastName', jobtitle: 'title', nidanumber: 'nida', dateofbirth: 'dob', dob: 'dob' };
+const ALIASES = { username: 'userName', firstname: 'firstName', staffnumber: 'staffNo', staffnumbercode: 'staffNo',  staffnumber: 'staffNo', staffno: 'staffNo', staffcode: 'staffNo', employeecode: 'staffNo', lastname: 'lastName', jobtitle: 'title', nidanumber: 'nida', dateofbirth: 'dob', dob: 'dob' };
 const HEADER_MAP = { ...ALIASES, ...Object.fromEntries(COLUMNS.map(([k, h]) => [norm(h), k])) };
 const label = (k) => COLUMNS.find((c) => c[0] === k)[1];
 
@@ -93,9 +97,11 @@ function parseFile(buffer) {
   if (!ws) throw new ImportFileError('The file has no sheets.');
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
   if (!aoa.length) throw new ImportFileError('The sheet is empty.');
-  const keys = aoa[0].map((h) => HEADER_MAP[norm(h)] || null);
+  const headerIndex = aoa.findIndex((row) => row.some((h) => ['staffNo', 'firstName', 'userName'].includes(HEADER_MAP[norm(h)])));
+  if (headerIndex < 0) throw new ImportFileError('No recognizable staff header row found.');
+  const keys = aoa[headerIndex].map((h) => HEADER_MAP[norm(h)] || null);
   if (!keys.includes('staffNo')) throw new ImportFileError('There is no "Staff Number/Code" column. Use the Excel template.');
-  const body = aoa.slice(1);
+  const body = aoa.slice(headerIndex + 1);
   if (body.length > MAX_ROWS) throw new ImportFileError(`The file has more than ${MAX_ROWS.toLocaleString('en-US')} rows. Split it into smaller files.`);
   return body
     .map((cells, i) => {
@@ -103,7 +109,7 @@ function parseFile(buffer) {
       keys.forEach((k, j) => {
         if (k) raw[k] = typeof cells[j] === 'string' ? cells[j].trim() : cells[j];
       });
-      return { rowNo: i + 2, raw };
+      return { rowNo: i + headerIndex + 2, raw };
     })
     .filter((r) => Object.values(r.raw).some((v) => String(v ?? '').trim() !== ''));
 }
@@ -159,7 +165,7 @@ const asDate = (day) => (day ? localMidnight(day) : null);
  * HR fields to store, nida the NIDA number to store (or null to keep) and dob a date of
  * birth to send for verification (or null).
  */
-function checkRow(raw, { existing, seenStaffNos, seenNidas, nidaOwners, settings, today }) {
+function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userNameOwners, nidaOwners, settings, today }) {
   const problems = [];
   const staffNo = (text(raw.staffNo) || '').toUpperCase();
   if (!staffNo) problems.push('Staff Number/Code is missing');
@@ -169,8 +175,16 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, nidaOwners, settings
   const ex = existing || {};
   const isNew = !existing;
   const pick = (k, current) => (blank(raw[k]) ? current : text(raw[k]));
-  const rec = { firstName: pick('firstName', ex.firstName), lastName: pick('lastName', ex.lastName), title: pick('title', ex.title) };
-  ['firstName', 'lastName', 'title'].forEach((k) => {
+  const rec = { firstName: pick('firstName', ex.firstName), lastName: pick('lastName', ex.lastName), title: pick('title', ex.title), department: pick('department', ex.department), email: pick('email', ex.email), gender: pick('gender', ex.gender) };
+  const userName = (text(raw.userName) || ex.userName || '').toLowerCase();
+  if (!userName) problems.push('Username is required');
+  else if (!/^[a-z][a-z0-9._-]{2,63}$/.test(userName)) problems.push('Username must contain 3–64 letters, numbers, dots, underscores or hyphens, starting with a letter');
+  else if (seenUserNames.has(userName)) problems.push(`Username repeats row ${seenUserNames.get(userName)}`);
+  else if (userNameOwners.has(userName) && userNameOwners.get(userName) !== staffNo) problems.push('Username already belongs to another staff member');
+  rec.userName = userName;
+  if (rec.gender && !['Male', 'Female'].includes(rec.gender)) problems.push('Gender must be Male or Female');
+  if (rec.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rec.email)) problems.push('Email is not valid');
+  ['firstName', 'lastName'].forEach((k) => {
     if (!rec[k]) problems.push(`${label(k)} is required`);
   });
 
@@ -182,7 +196,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, nidaOwners, settings
   const joined = cellDate(raw.dateJoined);
   if (joined === 'bad') problems.push('Date Joined is not a date');
   const dateJoined = joined && joined !== 'bad' ? joined : dayOf(ex.dateJoined);
-  if (!dateJoined && joined !== 'bad') problems.push('Date Joined is required');
+
   if (dateJoined && dateJoined > today) problems.push('Date Joined cannot be in the future');
   rec.dateJoined = asDate(dateJoined);
 
@@ -190,7 +204,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, nidaOwners, settings
   const nidaCell = cellNida(raw.nida);
   if (nidaCell === 'bad') problems.push(`NIDA: ${NIDA_MESSAGE}`);
   const nida = nidaCell && nidaCell !== 'bad' ? nidaCell : null;
-  if (!nida && nidaCell !== 'bad' && !ex.personal?.nida) problems.push('NIDA is required');
+
   if (nida) {
     const owner = nidaOwners.get(nida);
     if (owner && owner !== staffNo) problems.push(`NIDA ${nida} is already on file for ${owner}`);
@@ -210,7 +224,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, nidaOwners, settings
       if (pending) problems.push(`A different date of birth (${pending}) is already waiting for verification. Decide or withdraw it first, or leave Date of Birth blank`);
       else dob = dobCell;
     }
-  } else if (!verified && !pending) problems.push('Date of Birth is required');
+  }
 
   const name = [rec.firstName, rec.lastName].filter(Boolean).join(' ');
   if (problems.length) return { outcome: 'error', problems, changes: [], staffNo, name };
@@ -221,7 +235,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, nidaOwners, settings
   }
 
   const changes = [];
-  [['firstName', 'first name'], ['lastName', 'surname'], ['title', 'title']].forEach(([k, l]) => {
+  [['firstName', 'first name'], ['lastName', 'surname'], ['title', 'title'], ['userName', 'username'], ['gender', 'gender'], ['department', 'department'], ['email', 'email']].forEach(([k, l]) => {
     if ((rec[k] || null) !== (ex[k] || null)) changes.push(l);
   });
   if (rec.category !== ex.category) changes.push(`category to ${rec.category}`);
@@ -235,12 +249,14 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, nidaOwners, settings
 async function context(rows, session) {
   const nos = [...new Set(rows.map((r) => (text(r.raw.staffNo) || '').toUpperCase()).filter(Boolean))];
   const nidas = [...new Set(rows.map((r) => cellNida(r.raw.nida)).filter((n) => n && n !== 'bad'))];
-  const [existing, owners, settings] = await Promise.all([
+  const userNames = [...new Set(rows.map((r) => text(r.raw.userName)?.toLowerCase()).filter(Boolean))];
+  const [existing, owners, userOwners, settings] = await Promise.all([
     Staff.find({ staffNo: { $in: nos } }).session(session || null).lean(),
     nidas.length ? Staff.find({ 'personal.nida': { $in: nidas } }).select('staffNo personal.nida').session(session || null).lean() : [],
+    userNames.length ? Staff.find({ userName: { $in: userNames } }).select('staffNo userName').session(session || null).lean() : [],
     Settings.get(),
   ]);
-  return { byNo: new Map(existing.map((s) => [s.staffNo, s])), nidaOwners: new Map(owners.map((s) => [s.personal.nida, s.staffNo])), settings };
+  return { byNo: new Map(existing.map((s) => [s.staffNo, s])), nidaOwners: new Map(owners.map((s) => [s.personal.nida, s.staffNo])), userNameOwners: new Map(userOwners.map((s) => [s.userName, s.staffNo])), settings };
 }
 
 /** Checks every row; returns rows with outcome, problems, changes and the plan to apply. */
@@ -248,12 +264,15 @@ async function checkRows(rows, session) {
   const ctx = await context(rows, session);
   const seen = new Map();
   const seenNidas = new Map();
+  const seenUserNames = new Map();
   const today = localDay();
   return rows.map((r) => {
     const sn = (text(r.raw.staffNo) || '').toUpperCase();
     const existing = ctx.byNo.get(sn) || null;
-    const res = checkRow(r.raw, { existing, seenStaffNos: seen, seenNidas, nidaOwners: ctx.nidaOwners, settings: ctx.settings, today });
+    const res = checkRow(r.raw, { existing, seenStaffNos: seen, seenNidas, seenUserNames, userNameOwners: ctx.userNameOwners, nidaOwners: ctx.nidaOwners, settings: ctx.settings, today });
     if (sn && !seen.has(sn)) seen.set(sn, r.rowNo);
+    const un = text(r.raw.userName)?.toLowerCase();
+    if (un && !seenUserNames.has(un)) seenUserNames.set(un, r.rowNo);
     const n = cellNida(r.raw.nida);
     if (n && n !== 'bad' && !seenNidas.has(n)) seenNidas.set(n, r.rowNo);
     return { rowNo: r.rowNo, raw: r.raw, existing, ...res };
