@@ -42,7 +42,7 @@ const COLUMNS = Object.freeze([
 const HEADERS = COLUMNS.map((c) => c[1]);
 const norm = (h) => String(h).toLowerCase().replace(/[^a-z]/g, '');
 // Headings from earlier templates still find their column; any other column is ignored.
-const ALIASES = { username: 'userName', firstname: 'firstName', staffnumber: 'staffNo', staffnumbercode: 'staffNo',  staffnumber: 'staffNo', staffno: 'staffNo', staffcode: 'staffNo', employeecode: 'staffNo', lastname: 'lastName', jobtitle: 'title', nidanumber: 'nida', dateofbirth: 'dob', dob: 'dob' };
+const ALIASES = { username: 'userName', firstname: 'firstName', staffnumbercode: 'staffNo',  staffnumber: 'staffNo', staffno: 'staffNo', staffcode: 'staffNo', employeecode: 'staffNo', lastname: 'lastName', jobtitle: 'title', nidanumber: 'nida', dateofbirth: 'dob', dob: 'dob' };
 const HEADER_MAP = { ...ALIASES, ...Object.fromEntries(COLUMNS.map(([k, h]) => [norm(h), k])) };
 const label = (k) => COLUMNS.find((c) => c[0] === k)[1];
 
