@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased – UAT readiness (7 Nov 2026)
+
+- MFA regression tests for UAT: username sign-in still asks privileged users for a code, an MFA token is not an access token, a role granted mid-session stays blocked (`MFA_STEP_UP`) also after a refresh, and an administrator's password reset keeps MFA.
+- `scripts/mfa-report.js` (read-only): who needs MFA, who has not enrolled, accounts without a username, and sign-ins without a code in the last days.
+- A refresh or sign-out from a browser with no session is no longer logged as a CSRF attack (`security.csrf_rejected`); refresh answers 401 `NO_REFRESH`.
+- UAT readiness review and test matrix in `docs/uat/`.
+
 ## 0.14.0 – Room from the payslip (4 Nov 2026)
 
 - Room = combined limit (50% of Net Pay, unchanged) − staff loan deductions on the payslip − Staff Loans loans not yet on the payslip, never below 0. A top-up leaves out the payslip line topped up and its linked Staff Loans loan. The same calculation (`calc.roomInputs`, `calc.combinedCap`, `rules.deductions`) runs in the live calculator, at submission, at every approval and before disbursement; `capCheck` uses the application's payslip (D-101).
