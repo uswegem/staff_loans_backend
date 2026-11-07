@@ -6,7 +6,6 @@
 
 const express = require('express');
 const Joi = require('joi');
-const { STAFF_NO, STAFF_NO_MESSAGE } = require('../../constants/staffNo');
 const rateLimit = require('express-rate-limit');
 const AuthController = require('../../controllers/authController');
 const { authenticate } = require('../../middleware/auth');
@@ -18,11 +17,7 @@ const { asyncHandler } = require('../../utils/errors');
 
 const router = express.Router();
 
-const staffNo = Joi.string().trim().uppercase().pattern(STAFF_NO).required().messages({
-  'string.pattern.base': STAFF_NO_MESSAGE,
-  'string.empty': 'Enter your staff number.',
-  'any.required': 'Enter your staff number.',
-});
+const userName = Joi.string().trim().lowercase().pattern(/^[a-z][a-z0-9._-]{2,63}$/).required();
 const code = Joi.string().pattern(/^\d{6}$/).required().messages({ 'string.pattern.base': 'Enter the 6-digit code from your authenticator app.' });
 const mfaToken = Joi.string().max(2000).required();
 
@@ -42,19 +37,19 @@ const signInLimiter = rateLimit({
  * /auth/login:
  *   post:
  *     tags: [Auth]
- *     summary: Sign in with staff number and password (FR-53)
+ *     summary: Sign in with username and password (FR-53)
  *     description: Returns a session, or an mfaToken when a one-time code (or enrolment) is needed. Failures return remainingAttempts; the 5th failure locks the account (423).
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
- *           schema: { type: object, required: [staffNo, password], properties: { staffNo: { type: string, example: LFB0412 }, password: { type: string } } }
+ *           schema: { type: object, required: [userName, password], properties: { userName: { type: string, example: jsmith }, password: { type: string } } }
  *     responses:
  *       200: { description: Session opened, or MFA step required }
- *       401: { description: Wrong staff number or password, with remainingAttempts }
+ *       401: { description: Wrong username or password, with remainingAttempts }
  *       423: { description: Account locked }
  */
-router.post('/login', signInLimiter, validate({ body: Joi.object({ staffNo, password: Joi.string().max(128).required() }) }), asyncHandler(AuthController.login));
+router.post('/login', signInLimiter, validate({ body: Joi.object({ userName, password: Joi.string().max(128).required() }) }), asyncHandler(AuthController.login));
 
 /**
  * @openapi
