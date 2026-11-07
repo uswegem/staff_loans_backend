@@ -244,7 +244,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userN
   if (dateJoined !== dayOf(ex.dateJoined)) changes.push('date joined');
   if (nida && nida !== ex.personal?.nida) changes.push('NIDA');
   if (sentForCheck) changes.push(sentForCheck);
-  if (incompleteNote) changes.push(incompleteNote);
+  if (incompleteNote && changes.length) changes.push(incompleteNote);
   return { outcome: changes.length ? 'update' : 'unchanged', problems, changes, staffNo, name, record: rec, nida: nida && nida !== ex.personal?.nida ? nida : null, dob };
 }
 
