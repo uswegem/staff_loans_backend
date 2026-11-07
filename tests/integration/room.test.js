@@ -80,6 +80,8 @@ describe('SLAS loans not yet on the payslip (D-101)', () => {
     const active = await Application.find({ status: { $in: ['pending_disbursement', 'disbursed'] } }).lean();
     expect(runningLoans(active, null, localDay(new Date())).map((a) => a.approved.instalment).sort((a, b) => a - b)).toEqual([40000, 60000]);
     const { view } = await draft({ lines: [PL_LINE(100000)], payDate: daysAgo(5) });
+    expect(view.deductions.loans.map((l) => ({ instalment: l.instalment, firstDue: l.firstDue, status: l.status })).sort((a, b) => a.instalment - b.instalment)).toEqual(expect.arrayContaining([{ instalment: 40000, firstDue: expect.any(String), status: 'disbursed' }, { instalment: 60000, firstDue: expect.any(String), status: 'pending_disbursement' }]));
+    expect(view.deductions.slas.map((l) => l.instalment).sort((a, b) => a - b)).toEqual([40000, 60000]);
     expect(view.quote.combined).toMatchObject({ payslipDeductions: 100000, slasNotOnPayslip: 100000, available: LIMIT - 200000 });
     expect(view.deductions.slas.map((l) => l.instalment).sort()).toEqual([40000, 60000]);
   });
