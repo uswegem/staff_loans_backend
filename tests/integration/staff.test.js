@@ -174,7 +174,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
   it('checks every row and shows new, updated, unchanged and error rows', async () => {
     const res = await upload(sample());
     expect(res.status).toBe(201);
-    expect(res.body.data.summary).toEqual({ new: 1, update: 1, unchanged: 1, error: 2 });
+    expect(res.body.data.summary).toEqual({ new: 2, update: 1, unchanged: 1, error: 1 });
     const byNo = Object.fromEntries(res.body.data.rows.map((r) => [r.staffNo, r]));
     expect(byNo.LFB0412).toMatchObject({ outcome: 'update', changes: ['title'] });
     expect(byNo.LFB0612.changes.join()).toMatch(/date of birth 1990-05-14 sent for verification/);
@@ -186,7 +186,8 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
         'NIDA: Enter the 20-digit NIDA number, for example 19800630-13140-00004-20.',
       ])
     );
-    expect(byNo.LFB0613.problems).toEqual(['NIDA is required', 'Date of Birth is required']);
+    expect(byNo.LFB0613.outcome).toBe('new');
+    expect(byNo.LFB0613.changes.join(' ')).toMatch(/Incomplete HR profile/);
     // Nothing has changed yet.
     expect(await Staff.exists({ staffNo: 'LFB0612' })).toBeNull();
   });
@@ -219,11 +220,15 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     });
     const rows = XLSX.utils.sheet_to_json(XLSX.read(res.body, { type: 'buffer' }).Sheets['Staff records'], { header: 1, defval: '' });
     expect(rows[0]).toEqual([...HEADERS, 'Errors', 'Row in your file']);
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(2);
     const at = (h) => HEADERS.indexOf(h);
     expect(rows[1][at('Staff Number/Code')]).toBe('06-LFB2');
     // Fix Imani's row and upload the error file again.
-    const fixed = rows.slice(1).filter((r) => r[at('Staff Number/Code')] === 'LFB0613').map((r) => r.slice(0, HEADERS.length));
+    const fixed = rows.slice(1).map((r) => r.slice(0, HEADERS.length));
+    fixed[0][at('Staff Number/Code')] = 'LFB0613';
+    fixed[0][at('First name')] = 'Imani';
+    fixed[0][at('Surname')] = 'Komba';
+    fixed[0][at('Category')] = 'Management';
     fixed[0][at('Username')] = 'imani.komba';
     fixed[0][at('NIDA')] = '19850301-22222-00003-23';
     fixed[0][at('Date of Birth')] = '01/03/1985';
@@ -237,7 +242,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     const up = await upload(sample());
     const res = await commit(up.body.data.id);
     expect(res.status).toBe(200);
-    expect(res.body.data.result).toEqual({ created: 1, updated: 1, skipped: 3, datesOfBirth: 1 });
+    expect(res.body.data.result).toEqual({ created: 2, updated: 1, skipped: 2, datesOfBirth: 1 });
 
     const baraka = await Staff.findOne({ staffNo: 'LFB0612' }).lean();
     expect(baraka).toMatchObject({ firstName: 'Baraka', lastName: 'Mwakyusa', title: 'Teller', category: 'Non-management', personal: { nida: '19900514-12345-00001-23' } });
