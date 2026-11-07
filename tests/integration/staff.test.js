@@ -156,7 +156,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
       row(BARAKA),
       row({ 'Staff Number/Code': 'LFB0188', Title: 'Branch Manager', Category: 'Non-management' }),
       row({ 'Staff Number/Code': '06-LFB2', 'First name': 'Zawadi', Surname: 'Said', NIDA: '123', Title: 'Loan Officer', 'Date of Birth': '01/01/1995', 'Date Joined': '01/12/2025', Category: 'Officer' }),
-      row({ 'Staff Number/Code': 'LFB0613', 'First name': 'Imani', Surname: 'Komba', Title: 'Head of Finance', 'Date Joined': '17/08/2026', Category: 'Management' }),
+      row({ 'Staff Number/Code': 'LFB0613', Username: 'imani.komba', 'First name': 'Imani', Surname: 'Komba', Title: 'Head of Finance', 'Date Joined': '17/08/2026', Category: 'Management' }),
     ]);
 
   it('downloads the template with the extended columns and an Instructions sheet', async () => {
@@ -224,12 +224,10 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     const at = (h) => HEADERS.indexOf(h);
     expect(rows[1][at('Staff Number/Code')]).toBe('06-LFB2');
     // Fix Imani's row and upload the error file again.
-    const fixed = rows.slice(1).map((r) => r.slice(0, HEADERS.length));
-    fixed[0][at('Staff Number/Code')] = 'LFB0613';
-    fixed[0][at('First name')] = 'Imani';
-    fixed[0][at('Surname')] = 'Komba';
-    fixed[0][at('Category')] = 'Management';
-    fixed[0][at('Username')] = 'imani.komba';
+    const fixed = [rows.slice(1).find((r) => r[at('Staff Number/Code')] === '06-LFB2').slice(0, HEADERS.length)];
+    fixed[0][at('Staff Number/Code')] = 'LFB0616';
+    fixed[0][at('Category')] = 'Non-management';
+    fixed[0][at('Username')] = 'zawadi.said';
     fixed[0][at('NIDA')] = '19850301-22222-00003-23';
     fixed[0][at('Date of Birth')] = '01/03/1985';
     const again = await upload(sheet(fixed), 'errors_fixed.xlsx');
