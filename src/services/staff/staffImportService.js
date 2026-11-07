@@ -22,8 +22,8 @@ const { problemWith } = require('./dobService');
 
 const MAX_ROWS = 5000;
 
-// [key, header, instruction shown to People and Culture]. Every column is required for
-// new staff; for staff already on file a blank cell keeps what is on file.
+// [key, header, instruction shown to People and Culture]. Only core identity,
+// username and category are required; blanks preserve existing HR data.
 const COLUMNS = Object.freeze([
   ['firstName', 'First name', 'Required.'],
   ['userName', 'Username', 'Required for new staff; unique login identifier.'],
@@ -31,11 +31,11 @@ const COLUMNS = Object.freeze([
   ['department', 'Department', 'Optional.'],
   ['email', 'Email', 'Optional.'],
   ['lastName', 'Surname', 'Required.'],
-  ['nida', 'NIDA', 'Required. Used by Credit for CRB checks. Format 19800630-13140-00004-20.'],
-  ['title', 'Title', 'Required. Used for assigning roles and permissions.'],
+  ['nida', 'NIDA', 'Optional at import; required before eligible credit checks. Used by Credit for CRB checks. Format 19800630-13140-00004-20.'],
+  ['title', 'Title', 'Optional at import; incomplete until provided. Used for assigning roles and permissions.'],
   ['staffNo', 'Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.'],
-  ['dob', 'Date of Birth', 'Required. Used to work out the retirement date for affordability.'],
-  ['dateJoined', 'Date Joined', 'Required. Used to confirm that probation has been completed.'],
+  ['dob', 'Date of Birth', 'Optional at import; verification required before loan eligibility. Used to work out the retirement date for affordability.'],
+  ['dateJoined', 'Date Joined', 'Optional at import; incomplete until provided. Used to confirm that probation has been completed.'],
   ['category', 'Category', 'Required. Management or Non-management. Decides the approval route.'],
 ]);
 
