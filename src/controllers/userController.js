@@ -37,6 +37,7 @@ async function present(user) {
   return {
     id: String(user._id),
     staffNo: user.staffNo,
+    userName: user.userName,
     fullName: fullName(staff),
     title: staff?.title,
     department: staff?.department,
