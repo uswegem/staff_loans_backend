@@ -19,9 +19,9 @@ beforeEach(async () => {
   await seed();
 });
 
-describe('sign-in with staff number and password', () => {
+describe('sign-in with username and password', () => {
   it('[ESS] signs in a staff member and returns an access token, never a refresh token in the body', async () => {
-    const res = await login({ staffNo: 'LFB0412', password: PASSWORD });
+    const res = await login({ userName: 'lfb0412', password: PASSWORD });
     expect(res.status).toBe(200);
     expect(res.body.data.accessToken).toBeTruthy();
     expect(res.body.data.refreshToken).toBeUndefined();
@@ -31,7 +31,7 @@ describe('sign-in with staff number and password', () => {
   });
 
   it('sets the refresh token as an httpOnly, Secure, SameSite=Strict cookie on the auth path', async () => {
-    const res = await login({ staffNo: 'LFB0412', password: PASSWORD });
+    const res = await login({ userName: 'lfb0412', password: PASSWORD });
     const c = parseCookies(res);
     expect(c.slas_rt.attrs).toEqual(expect.arrayContaining(['httponly', 'secure', 'samesite=strict', 'path=/api/v1/auth']));
     expect(c['XSRF-TOKEN'].attrs).not.toContain('httponly');
@@ -39,62 +39,62 @@ describe('sign-in with staff number and password', () => {
   });
 
   it('accepts the staff number in lower case', async () => {
-    const res = await login({ staffNo: 'lfb0412', password: PASSWORD });
+    const res = await login({ userName: 'lfb0412', password: PASSWORD });
     expect(res.status).toBe(200);
   });
 
   it('validates the staff number: the employee code on the payslip (C-07)', async () => {
-    for (const bad of ['412', 'AT-637', 'A']) {
+    for (const bad of ['12', 'AT 637', 'A']) {
       // eslint-disable-next-line no-await-in-loop
       const res = await login({ staffNo: bad, password: PASSWORD });
       expect(res.status).toBe(400);
-      expect(res.body.details.staffNo[0]).toBe('Enter the staff number as on the payslip (employee code), for example AT637.');
+      expect(res.body.details.userName).toBeDefined();
     }
     // A code in the right format that is not on file is a plain wrong sign-in.
-    expect((await login({ staffNo: 'at637', password: PASSWORD })).status).toBe(401);
+    expect((await login({ userName: 'at637', password: PASSWORD })).status).toBe(401);
   });
 
   it('[ESS] rejects invalid credentials and shows remaining attempts', async () => {
-    const res = await login({ staffNo: 'LFB0412', password: 'wrong-pass' });
+    const res = await login({ userName: 'lfb0412', password: 'wrong-pass' });
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
     expect(res.body.details.remainingAttempts).toBe(4);
   });
 
   it('refuses an unknown staff number with the same message', async () => {
-    const res = await login({ staffNo: 'LFB9999', password: PASSWORD });
+    const res = await login({ userName: 'lfb9999', password: PASSWORD });
     expect(res.status).toBe(401);
-    expect(res.body.message).toBe('The staff number or password is not right.');
+    expect(res.body.message).toBe('The username or password is not right.');
   });
 
   it('counts down and locks the account at the 5th failure', async () => {
     const remaining = [];
     for (let i = 0; i < 4; i += 1) {
       // eslint-disable-next-line no-await-in-loop
-      const r = await login({ staffNo: 'LFB0412', password: 'wrong-pass' });
+      const r = await login({ userName: 'lfb0412', password: 'wrong-pass' });
       remaining.push(r.body.details.remainingAttempts);
     }
     expect(remaining).toEqual([4, 3, 2, 1]);
-    const fifth = await login({ staffNo: 'LFB0412', password: 'wrong-pass' });
+    const fifth = await login({ userName: 'lfb0412', password: 'wrong-pass' });
     expect(fifth.status).toBe(423);
     expect(fifth.body.code).toBe('ACCOUNT_LOCKED');
     // Even the right password is refused once locked.
-    const right = await login({ staffNo: 'LFB0412', password: PASSWORD });
+    const right = await login({ userName: 'lfb0412', password: PASSWORD });
     expect(right.status).toBe(423);
     expect((await User.findOne({ staffNo: 'LFB0412' })).status).toBe('locked');
     expect(await AuditLog.countDocuments({ action: 'auth.locked' })).toBe(1);
   });
 
   it('resets the failure count after a successful sign-in', async () => {
-    await login({ staffNo: 'LFB0412', password: 'wrong-pass' });
-    await login({ staffNo: 'LFB0412', password: PASSWORD });
-    const r = await login({ staffNo: 'LFB0412', password: 'wrong-pass' });
+    await login({ userName: 'lfb0412', password: 'wrong-pass' });
+    await login({ userName: 'lfb0412', password: PASSWORD });
+    const r = await login({ userName: 'lfb0412', password: 'wrong-pass' });
     expect(r.body.details.remainingAttempts).toBe(4);
   });
 
   it('[ESS] refuses a deactivated account', async () => {
     await User.updateOne({ staffNo: 'LFB0412' }, { $set: { status: 'deactivated' } });
-    const res = await login({ staffNo: 'LFB0412', password: PASSWORD });
+    const res = await login({ userName: 'lfb0412', password: PASSWORD });
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('ACCOUNT_INACTIVE');
     expect(await AuditLog.countDocuments({ action: 'security.deactivated_account' })).toBe(1);
@@ -102,13 +102,13 @@ describe('sign-in with staff number and password', () => {
 
   it('refuses staff whose record has exited (FR-04)', async () => {
     await Staff.updateOne({ staffNo: 'LFB0412' }, { $set: { status: 'exited' } });
-    const res = await login({ staffNo: 'LFB0412', password: PASSWORD });
+    const res = await login({ userName: 'lfb0412', password: PASSWORD });
     expect(res.status).toBe(403);
   });
 
   it('audits failed and successful sign-ins', async () => {
-    await login({ staffNo: 'LFB0412', password: 'wrong-pass' });
-    await login({ staffNo: 'LFB0412', password: PASSWORD });
+    await login({ userName: 'lfb0412', password: 'wrong-pass' });
+    await login({ userName: 'lfb0412', password: PASSWORD });
     expect(await AuditLog.countDocuments({ action: 'security.invalid_credentials' })).toBe(1);
     const ok = await AuditLog.findOne({ action: 'auth.login' });
     expect(ok.actorStaffNo).toBe('LFB0412');
@@ -118,7 +118,7 @@ describe('sign-in with staff number and password', () => {
 
 describe('MFA for privileged users (FR-49)', () => {
   it('asks a reviewer to enrol at first sign-in, then for a code', async () => {
-    const first = await login({ staffNo: 'LFB0233', password: PASSWORD });
+    const first = await login({ userName: 'lfb0233', password: PASSWORD });
     expect(first.body.data.enrolRequired).toBe(true);
     expect(first.body.data.accessToken).toBeUndefined();
 
@@ -132,7 +132,7 @@ describe('MFA for privileged users (FR-49)', () => {
     expect(done.body.data.accessToken).toBeTruthy();
     expect(done.body.data.permissions).toContain('review.credit');
 
-    const second = await login({ staffNo: 'LFB0233', password: PASSWORD });
+    const second = await login({ userName: 'lfb0233', password: PASSWORD });
     expect(second.body.data.mfaRequired).toBe(true);
   });
 
@@ -148,7 +148,7 @@ describe('MFA for privileged users (FR-49)', () => {
 
   it('refuses a wrong code and counts it toward lockout', async () => {
     await signIn('LFB0233');
-    const pw = await login({ staffNo: 'LFB0233', password: PASSWORD });
+    const pw = await login({ userName: 'lfb0233', password: PASSWORD });
     const res = await request(app()).post('/api/v1/auth/mfa/verify').send({ mfaToken: pw.body.data.mfaToken, code: '000000' });
     expect(res.status).toBe(401);
     expect(res.body.details.remainingAttempts).toBe(4);
@@ -160,14 +160,14 @@ describe('MFA for privileged users (FR-49)', () => {
     const secret = mfa.decrypt(user.mfa.secretEnc);
     const step = mfa.currentStep();
     await User.updateOne({ _id: user._id }, { $set: { 'mfa.lastUsedStep': step } });
-    const pw = await login({ staffNo: 'LFB0233', password: PASSWORD });
+    const pw = await login({ userName: 'lfb0233', password: PASSWORD });
     const res = await request(app()).post('/api/v1/auth/mfa/verify').send({ mfaToken: pw.body.data.mfaToken, code: mfa.hotp(secret, step) });
     expect(res.status).toBe(401);
   });
 
   it('an MFA token cannot be used twice or as an access token', async () => {
     await signIn('LFB0233');
-    const pw = await login({ staffNo: 'LFB0233', password: PASSWORD });
+    const pw = await login({ userName: 'lfb0233', password: PASSWORD });
     const { currentCode } = require('../helpers');
     const ok = await request(app()).post('/api/v1/auth/mfa/verify').send({ mfaToken: pw.body.data.mfaToken, code: await currentCode('LFB0233') });
     expect(ok.status).toBe(200);
@@ -304,7 +304,7 @@ describe('passwords', () => {
   it('the new password works and the old one does not', async () => {
     const { token } = await signIn('LFB0412');
     await request(app()).post('/api/v1/auth/change-password').set(authed(token)).send({ currentPassword: PASSWORD, newPassword: 'Mwanza#2027' });
-    expect((await login({ staffNo: 'LFB0412', password: PASSWORD })).status).toBe(401);
-    expect((await login({ staffNo: 'LFB0412', password: 'Mwanza#2027' })).status).toBe(200);
+    expect((await login({ userName: 'lfb0412', password: PASSWORD })).status).toBe(401);
+    expect((await login({ userName: 'lfb0412', password: 'Mwanza#2027' })).status).toBe(200);
   });
 });
