@@ -35,7 +35,7 @@ test('basic staff workbook with second-row underscored headers imports without c
   const person = await Staff.findOne({ staffNo: 'AT902' });
   expect(person.userName).toBe('asha.mashauri');
   expect(person.department).toBe('Operations');
-  expect(person.dateJoined).toBeUndefined();
+  expect(person.dateJoined).toBeNull();
   expect(await User.findOne({ staffId: person._id })).toBeNull();
 });
 
