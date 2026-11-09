@@ -33,7 +33,11 @@ async function stageActors(app, { now = new Date(), session } = {}) {
   const stage = STAGES[app.currentStage];
   if (!stage || !PENDING_STAGE.includes(app.status)) return [];
   const applicant = String(app.applicantUserId);
-  const holders = (await rbac.holdersOf(stage.permission, { now, session })).filter((id) => id !== applicant);
+  // Segregation of duties: someone holding several review roles approves one stage of an
+  // application only. Whoever approved another stage of it, in any cycle, cannot act here.
+  const earlier = await Decision.find({ applicationId: app._id, action: 'approve', stage: { $ne: app.currentStage } }).select('actorId').session(session || null).lean();
+  const excluded = new Set([applicant, ...earlier.map((d) => String(d.actorId))]);
+  const holders = (await rbac.holdersOf(stage.permission, { now, session })).filter((id) => !excluded.has(id));
   const activeHolders = await activeUsers(holders, session);
   const delegations = await Delegation.find({ delegatorId: { $in: [...activeHolders] }, permissions: stage.permission, ...Delegation.activeFilter(now) })
     .session(session || null)
@@ -44,7 +48,7 @@ async function stageActors(app, { now = new Date(), session } = {}) {
     const d = delegations.find((x) => String(x.delegatorId) === h);
     if (d) {
       const to = String(d.delegateId);
-      if (to !== applicant && delegates.has(to)) out.push({ userId: to, onBehalfOf: h });
+      if (!excluded.has(to) && delegates.has(to)) out.push({ userId: to, onBehalfOf: h });
     } else out.push({ userId: h, onBehalfOf: null });
   }
   return out;
