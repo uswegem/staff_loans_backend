@@ -201,7 +201,11 @@ const UserController = {
       const added = wanted.filter((w) => !existing.has(w.roleId)).map((w) => ({ userId: user._id, roleId: w.roleId, endsOn: w.endsOn || null, assignedBy: req.auth.user._id, assignedAt: now }));
       if (added.length) await RoleAssignment.create(added, { session, ordered: true });
       const after = wanted.map((w) => ({ code: roles.find((r) => String(r._id) === w.roleId).code, endsOn: w.endsOn || null }));
-      await audit.record({ req, action: 'user.roles_change', description: `Roles changed for ${user.staffNo}`, entity: 'User', entityId: String(user._id), before: before.map((b) => ({ code: b.code, endsOn: b.endsOn })), after }, { session });
+      const nameOf = (id) => roles.find((r) => String(r._id) === String(id))?.name;
+      const removedNames = before.filter((b) => !wanted.some((w) => w.roleId === String(b.roleId))).map((b) => b.name);
+      const addedNames = added.map((x) => nameOf(x.roleId));
+      const changes = [addedNames.length && `added ${addedNames.join(', ')}`, removedNames.length && `removed ${removedNames.join(', ')}`].filter(Boolean).join('; ');
+      await audit.record({ req, action: 'user.roles_change', description: `Roles changed for ${user.staffNo}${changes ? `: ${changes}` : ''}`, entity: 'User', entityId: String(user._id), before: before.map((b) => ({ code: b.code, endsOn: b.endsOn })), after }, { session });
     });
     res.json({ success: true, data: await present(user) });
   },
