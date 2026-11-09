@@ -509,6 +509,17 @@ describe('resubmit and withdraw (FR-11)', () => {
     expect((await api(neema.token).post('/applications', { productId: PL() })).status).toBe(201);
   });
 
+  it('my applications list says which are open and withdrawable, by product, for Apply', async () => {
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    const row = async () => (await api(neema.token).get('/applications')).body.data.find((a) => a.id === id);
+    expect(await row()).toMatchObject({ productId: PL(), status: 'draft', open: true, withdrawable: true });
+    await signAndSubmit(neema, id);
+    expect(await row()).toMatchObject({ open: true, withdrawable: true });
+    await api(neema.token).post(`/applications/${id}/withdraw`, {});
+    expect(await row()).toMatchObject({ status: 'withdrawn', open: false, withdrawable: false });
+  });
+
   it('cancelling a draft that was never submitted succeeds and the application stays readable', async () => {
     const neema = await signIn('LFB0412');
     const { id } = await draft(neema, PL(), NEEMA_TERMS);

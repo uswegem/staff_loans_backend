@@ -11,7 +11,7 @@ const ProductVersion = require('../models/ProductVersion');
 const svc = require('../services/applications/applicationService');
 const fileStore = require('../services/files/fileStore');
 const audit = require('../services/audit/auditService');
-const { STATUS, EDITABLE } = require('../constants/statuses');
+const { STATUS, EDITABLE, OPEN, WITHDRAWABLE } = require('../constants/statuses');
 const rules = require('../services/applications/rules');
 const { localDay } = require('../utils/dates');
 const { withTransaction } = require('../config/db');
@@ -50,8 +50,12 @@ const ApplicationController = {
         product: names.get(String(a.productVersionId)),
         amount: a.approved?.amount || a.amount || null,
         tenor: a.approved?.tenor || a.tenor || null,
+        productId: String(a.productId),
         status: a.status,
         statusLabel: STATUS[a.status],
+        // Lets Apply offer to finish or withdraw an open application of the same product.
+        open: OPEN.includes(a.status),
+        withdrawable: WITHDRAWABLE.includes(a.status),
         currentStage: a.currentStage,
         route: a.route,
         stages: a.stages,
