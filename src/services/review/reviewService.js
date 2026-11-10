@@ -124,6 +124,9 @@ async function decide(req, app, body) {
   const actor = await workflow.canAct(req.auth.user._id, app);
   if (!actor) {
     if (String(app.applicantUserId) === String(req.auth.user._id)) throw forbidden('You cannot review your own application.', 'SELF_REVIEW');
+    if (await Decision.exists({ applicationId: app._id, action: 'approve', actorId: req.auth.user._id, stage: { $ne: app.currentStage } })) {
+      throw forbidden('You approved an earlier stage of this application, so another person must decide this stage.', 'SEPARATE_STAGES');
+    }
     throw forbidden('This application is not waiting for you.', 'NOT_YOUR_STAGE');
   }
   const stage = app.currentStage;
