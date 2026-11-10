@@ -31,7 +31,7 @@ async function canSee(req, applicationId, { allowLimitedDocuments = false } = {}
   if (!app) return null;
   if (String(app.applicantUserId) === String(req.auth.user._id)) return { app, as: 'applicant' };
   const access = await workflow.reviewAccess(req.auth, app);
-  if (access && !access.limited) return { app, as: 'reviewer' };
+  if (access && !access.limited) return { app, as: access.payHidden ? 'reviewer-without-pay' : 'reviewer' };
   if (access?.limited && allowLimitedDocuments && app.currentStage === 'credit') return { app, as: 'limited-document-reviewer' };
   if (req.auth.permissions.has('disb.confirm') && ['pending_disbursement', 'disbursed'].includes(app.status)) return { app, as: 'ops' };
   return null;
@@ -167,7 +167,7 @@ const ApplicationController = {
     // The applicant sees their own documents and agreement PDFs; the bureau report is
     // for reviewers only (and the Credit Analyst who attached it).
     const seen = file && !own && !uploader ? (await canSee(req, file.applicationId, { allowLimitedDocuments: file.kind === 'document' }))?.as : null;
-    const allowed = file && !file.removedAt && (own || uploader || seen === 'reviewer' || (seen === 'limited-document-reviewer' && file.kind === 'document') || (seen === 'ops' && file.kind !== 'crb_report'));
+    const allowed = file && !file.removedAt && (own || uploader || seen === 'reviewer' || (seen === 'reviewer-without-pay' && file.kind !== 'payslip') || (seen === 'limited-document-reviewer' && file.kind === 'document') || (seen === 'ops' && file.kind !== 'crb_report'));
     if (!allowed) throw notFound('File not found.');
     const inline = req.query.preview === '1' && ['document', 'payslip'].includes(file.kind);
     await audit.record({ req, action: inline ? 'file.preview' : 'file.download', description: `${file.originalName} ${inline ? 'previewed' : 'downloaded'}`, entity: 'StoredFile', entityId: String(file._id) });

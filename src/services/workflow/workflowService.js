@@ -94,7 +94,9 @@ async function reviewAccess(auth, app, { perms } = {}) {
   const actedBefore = actor ? true : !!(await Decision.exists({ applicationId: app._id, actorId: auth.user._id }));
   const seesAll = p.has('review.hr') || p.has('review.ceo') || p.has('loan.viewAll'); // loan.viewAll: read-only (D-90)
   if (!actor && !actedBefore && !seesAll) return null;
-  return { limited: isLimited(app, p), actor };
+  // D-102: payslip and salary details are for the People and Culture and CEO stages only;
+  // an Auditor (loan.viewAll) sees the application without them.
+  return { limited: isLimited(app, p), actor, payHidden: !FULL_REVIEW.some((x) => p.has(x)) };
 }
 
 /** Applications waiting for this user now (FR-13), with who they act for. */
@@ -112,4 +114,4 @@ async function queueFor(auth, now = new Date()) {
   return { items, perms };
 }
 
-module.exports = { stageActors, canAct, reviewAccess, reviewPermissions, isLimited, queueFor, delegatedTo, LIMITED_ROUTES, activeUsers };
+module.exports = { stageActors, canAct, reviewAccess, reviewPermissions, isLimited, queueFor, delegatedTo, LIMITED_ROUTES, FULL_REVIEW, activeUsers };

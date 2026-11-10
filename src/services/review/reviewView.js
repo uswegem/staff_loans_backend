@@ -68,13 +68,30 @@ function panelFor(app, actor) {
   };
 }
 
-/** Limited details (FR-55). Allow-list only. */
+/**
+ * Affordability without the pay behind it (D-102): the instalment, Room, what remains and
+ * the largest loan, from the calculation the applicant signed. No Basic or Net Pay, no
+ * payslip deduction lines. null for applications saved before Room (D-87).
+ */
+function affordabilitySummary(snap) {
+  if (!snap?.combined) return null;
+  return {
+    instalment: snap.instalment,
+    room: snap.combined.available,
+    remaining: snap.combined.remaining,
+    fits: snap.combined.remaining >= 0,
+    maxAmount: snap.maxAmount,
+    maxTenor: snap.maxTenor,
+  };
+}
+
+/** Limited details (FR-55): identity, and since D-102 the requested terms and affordability. Allow-list only. */
 async function limitedView(auth, app, actor) {
   const [staff, mine, docs, version] = await Promise.all([
     Staff.findById(app.applicantStaffId).select('firstName lastName personal.mobile personal.nida').lean(),
     Decision.find({ applicationId: app._id, actorId: auth.user._id }).sort({ at: 1 }).lean(),
     StoredFile.find({ _id: { $in: app.documentIds }, applicationId: app._id, kind: 'document', removedAt: null }).lean(),
-    ProductVersion.findById(app.productVersionId).select('requiredDocuments').lean(),
+    ProductVersion.findById(app.productVersionId).select('name requiredDocuments').lean(),
   ]);
   const uploaders = await namesOf(docs.map((d) => d.uploadedBy).filter(Boolean));
   return {
@@ -87,8 +104,14 @@ async function limitedView(auth, app, actor) {
     stageEnteredAt: app.stageEnteredAt,
     due: await due(app),
     submittedAt: app.submittedAt,
-    // D-86: keep all financial/product details hidden. The explicit supporting-
-    // document exception is restricted to an authorized credit-stage review.
+    // D-102 (replaces part of D-86): the Credit Analyst sees the product, the requested
+    // terms and affordability, but still no payslip, pay or other personal details.
+    product: { name: version?.name || null },
+    amount: app.amount,
+    tenor: app.tenor,
+    purpose: app.purpose,
+    affordability: affordabilitySummary(app.calcSnapshot),
+    // The supporting-document exception is restricted to an authorised credit-stage review.
     applicant: { firstName: staff?.firstName || '', lastName: staff?.lastName || '', mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
     documents: docs.map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: uploaders.get(String(d.uploadedBy))?.name || null })),
     documentChecklist: (version?.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.documentCode === d.code && f.scan?.status === 'clean').length })),
@@ -99,7 +122,7 @@ async function limitedView(auth, app, actor) {
 }
 
 /** Full review view (FR-14). */
-async function fullView(req, app, actor) {
+async function fullView(req, app, actor, { payHidden = false } = {}) {
   const [staff, decisions, agreements, docs, version, pricing] = await Promise.all([
     Staff.findById(app.applicantStaffId).lean(),
     Decision.find({ applicationId: app._id }).sort({ at: 1 }).lean(),
@@ -152,6 +175,8 @@ async function fullView(req, app, actor) {
     recommended: app.recommended?.amount ? { amount: app.recommended.amount, tenor: app.recommended.tenor, reason: app.recommended.reason, by: names.get(String(app.recommended.by))?.name } : null,
     hrChecks: app.hrChecks || null,
     approved: app.approved?.amount ? app.approved : null,
+    affordability: affordabilitySummary(app.calcSnapshot),
+    payHidden,
     applicant: {
       fullName: fullName(staff),
       staffNo: staff.staffNo,
@@ -197,7 +222,24 @@ async function fullView(req, app, actor) {
 async function reviewView(req, app, access) {
   const actor = access.actor;
   if (actor?.onBehalfOf) actor.onBehalfOfName = (await namesOf([actor.onBehalfOf])).get(actor.onBehalfOf)?.name;
-  return access.limited ? limitedView(req.auth, app, actor) : fullView(req, app, actor);
+  if (access.limited) return limitedView(req.auth, app, actor);
+  const view = await fullView(req, app, actor, { payHidden: !!access.payHidden });
+  return access.payHidden ? withoutPay(view) : view;
+}
+
+/**
+ * D-102: an Auditor sees the application without the payslip and salary details: no
+ * payslip or its figures, no calculation with Basic or Net Pay, no deduction lines or
+ * amounts. Affordability stays as the summary.
+ */
+function withoutPay(view) {
+  return {
+    ...view,
+    payslip: null,
+    calcAtSubmission: null,
+    deductions: null,
+    applicant: { ...view.applicant, existingLfbLoans: [] },
+  };
 }
 
 /** A queue row: the same allow-list for limited applications. */
@@ -215,7 +257,11 @@ async function queueRow(app, { limited, actor, names }) {
     applicant: { firstName: staff?.firstName || '', lastName: staff?.lastName || '' },
     onBehalfOf: actor?.onBehalfOf ? names?.get(actor.onBehalfOf)?.name || null : null,
   };
-  if (limited) return base; // D-86: identity only
+  if (limited) {
+    // D-102: name, product and requested terms; nothing else.
+    const v = await ProductVersion.findById(app.productVersionId).select('name').lean();
+    return { ...base, product: v?.name, amount: app.amount, tenor: app.tenor };
+  }
   base.route = { key: app.route, label: ROUTES[app.route]?.label };
   base.applicant.fullName = fullName(staff);
   const version = await ProductVersion.findById(app.productVersionId).select('name').lean();
