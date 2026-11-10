@@ -89,9 +89,10 @@ function decrypt(blob) {
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
 }
 
-function otpauthUri(staffNo, secretB32) {
+/** accountName is what the authenticator app shows under the issuer: the username. */
+function otpauthUri(accountName, secretB32) {
   const issuer = encodeURIComponent(config.mfaIssuer);
-  return `otpauth://totp/${issuer}:${encodeURIComponent(staffNo)}?secret=${secretB32}&issuer=${issuer}&algorithm=SHA1&digits=${DIGITS}&period=${STEP_SEC}`;
+  return `otpauth://totp/${issuer}:${encodeURIComponent(accountName)}?secret=${secretB32}&issuer=${issuer}&algorithm=SHA1&digits=${DIGITS}&period=${STEP_SEC}`;
 }
 
 /** SVG data URL: scales cleanly and avoids PNG encoding cost. */

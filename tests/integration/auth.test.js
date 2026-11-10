@@ -136,6 +136,16 @@ describe('MFA for privileged users (FR-49)', () => {
     expect(second.body.data.mfaRequired).toBe(true);
   });
 
+  it('the authenticator app lists the account by username, not staff number', async () => {
+    await User.updateOne({ staffNo: 'LFB0233' }, { $set: { userName: 'juma.kassim' } });
+    await Staff.updateOne({ staffNo: 'LFB0233' }, { $set: { userName: 'juma.kassim' } });
+    const first = await login({ userName: 'juma.kassim', password: PASSWORD });
+    const start = await request(app()).post('/api/v1/auth/mfa/enrol/start').send({ mfaToken: first.body.data.mfaToken });
+    const uri = decodeURIComponent(start.body.data.otpauthUri);
+    expect(uri).toMatch(/^otpauth:\/\/totp\/[^:]+:juma\.kassim\?/); // issuer:account
+    expect(uri).not.toMatch(/LFB0233/i);
+  });
+
   it.each(['LFB0233', 'LFB0051', 'LFB0002', 'LFB0318', 'LFB0274', 'LFB0010', 'LFB0129', 'LFB0067', 'LFB0451'])('requires MFA for %s', async (staffNo) => {
     const res = await login({ userName: staffNo.toLowerCase(), password: PASSWORD });
     expect(res.body.data.enrolRequired || res.body.data.mfaRequired).toBe(true);

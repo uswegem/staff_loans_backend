@@ -162,7 +162,8 @@ const AuthController = {
     const user = await userFromMfaToken(req, req.body.mfaToken, 'enrol');
     const secret = mfa.generateSecret();
     await User.updateOne({ _id: user._id }, { $set: { 'mfa.pendingSecretEnc': mfa.encrypt(secret) } });
-    const otpauthUri = mfa.otpauthUri(user.staffNo, secret);
+    // The app lists the account by username; the staff number only while a username is missing.
+    const otpauthUri = mfa.otpauthUri(user.userName || user.staffNo, secret);
     res.json({ success: true, data: { otpauthUri, qrDataUrl: await mfa.qrDataUrl(otpauthUri), secret } });
   },
 
