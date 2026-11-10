@@ -6,6 +6,8 @@
 // - user status and the linked staff record are re-checked on every request (FR-04)
 // - effective permissions come from the user's active SLAS roles, loaded per request (FR-51)
 // - users with a temporary password can only change it, read /auth/me or sign out
+// - only requests the user made count as activity: the client marks polling and other
+//   automatic calls with X-SLAS-Background, so an open tab cannot keep a session alive (NFR-04)
 
 const User = require('../models/User');
 const Staff = require('../models/Staff');
@@ -69,7 +71,8 @@ async function authenticate(req, res, next) {
       throw forbidden('Change your temporary password to continue.', 'PASSWORD_CHANGE_REQUIRED');
     }
 
-    if (Date.now() - session.lastActivityAt.getTime() > ACTIVITY_WRITE_EVERY_MS) {
+    const background = req.get('X-SLAS-Background') === '1';
+    if (!background && Date.now() - session.lastActivityAt.getTime() > ACTIVITY_WRITE_EVERY_MS) {
       await Session.updateOne({ _id: session._id }, { $set: { lastActivityAt: new Date() } });
     }
 

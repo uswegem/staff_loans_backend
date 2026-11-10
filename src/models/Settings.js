@@ -21,7 +21,7 @@ const settingsSchema = new mongoose.Schema(
     // Explicitly activated only after the live-product readiness report is clear.
     productConfigEnforcementEnabled: { type: Boolean, default: false },
     firstDueDay: { type: Number, default: 25, min: 1, max: 31 }, // instalments fall on this day of the month (D-48)
-    inactivityTimeoutMin: { type: Number, default: 15, min: 1 },
+    inactivityTimeoutMin: { type: Number, default: 10, min: 1 }, // NFR-04: 10 minutes (UAT requirement, 10 Nov 2026)
     lockoutThreshold: { type: Number, default: 5, min: 3, max: 10 },
     // Retirement cutoff (D-82): the last instalment must fall on or before
     // date of birth + retirementAge years - retirementBufferDays.

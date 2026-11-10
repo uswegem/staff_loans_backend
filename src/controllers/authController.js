@@ -246,7 +246,8 @@ const AuthController = {
       const issued = await RefreshToken.issue({ userId: user._id, sessionId: session._id, ttlSec: config.refreshTokenTtlSec, ip: req.ip, userAgent: req.get('User-Agent') }, txn);
       const rotated = await RefreshToken.updateOne({ _id: stored._id, revokedAt: null }, { $set: { revokedAt: new Date(), replacedByHash: issued.record.tokenHash } }, { session: txn });
       if (rotated.modifiedCount !== 1) throw unauthorized('Your session has expired. Sign in again.', 'REFRESH_INVALID');
-      await Session.updateOne({ _id: session._id }, { $set: { csrfHash: tokenService.sha256(csrf), lastActivityAt: new Date() } }, { session: txn });
+      // A token refresh is not user activity: it never extends the inactivity limit (NFR-04).
+      await Session.updateOne({ _id: session._id }, { $set: { csrfHash: tokenService.sha256(csrf) } }, { session: txn });
       await audit.record({ req, actor: user, action: 'auth.token_refresh', description: `Session refreshed for ${user.staffNo}`, entity: 'Session', entityId: String(session._id) }, { session: txn });
       return issued.rawToken;
     });
