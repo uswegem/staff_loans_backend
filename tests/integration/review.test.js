@@ -42,16 +42,12 @@ function walk(value, keys = new Set(), strings = []) {
   return { keys, strings };
 }
 
-const HIDDEN_KEYS = ['amount', 'tenor', 'purpose', 'product', 'productFields', 'salary', 'salaryAtSubmission', 'calcAtSubmission', 'quote', 'payInputs', 'checks', 'agreements', 'history', 'recommended', 'approved', 'repayment', 'topUp', 'otherLoans', 'existingLfbLoans', 'nextOfKin', 'title', 'category', 'department', 'route', 'fullName', 'payslip', 'combined', 'existingLoans'];
+// D-102: product, amount, tenor, purpose and the affordability summary are now shown; pay never is.
+const HIDDEN_KEYS = ['productFields', 'salary', 'basic', 'net', 'pension', 'tax', 'payslipDeductions', 'lfbLines', 'lfbDeductions', 'cap', 'deductions', 'salaryAtSubmission', 'calcAtSubmission', 'quote', 'payInputs', 'checks', 'agreements', 'history', 'recommended', 'approved', 'repayment', 'topUp', 'otherLoans', 'existingLfbLoans', 'nextOfKin', 'title', 'category', 'department', 'route', 'fullName', 'payslip', 'combined', 'existingLoans'];
 
-function assertLimited(body, { amount, purpose, productName }) {
-  const { keys, strings } = walk(body);
+function assertLimited(body) {
+  const { keys } = walk(body);
   HIDDEN_KEYS.forEach((k) => expect([k, keys.has(k)]).toEqual([k, false]));
-  const all = strings.join(' | ');
-  expect(all).not.toContain(String(amount));
-  expect(all).not.toContain(amount.toLocaleString('en-US'));
-  expect(all).not.toContain(purpose);
-  expect(all).not.toContain(productName);
 }
 
 describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () => {
@@ -62,14 +58,14 @@ describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () =
     const juma = await signIn('LFB0233');
     const q = await api(juma.token).get('/queue');
     expect(q.body.data.items).toHaveLength(1);
-    // D-86: the Credit Analyst sees identity only, on every route.
+    // D-86, D-102: the Credit Analyst sees identity, product and requested terms, never pay.
     expect(q.body.data.items[0]).toMatchObject({ ref: expect.stringMatching(/^SL-/), limited: true, applicant: { firstName: 'Neema', lastName: 'Mushi' }, stageLabel: 'Credit Analyst' });
-    assertLimited(q.body, { ...NEEMA, productName: 'Personal Loan' });
+    assertLimited(q.body);
     expect(q.body.data.items[0].due.targetHours).toBe(8);
 
     const view = await api(juma.token).get(`/review/${id}`);
     expect(view.body.data).toMatchObject({ limited: true, panel: { stage: 'credit', needsCrb: true, canRecommend: false, isFinal: false } });
-    assertLimited(view.body, { ...NEEMA, productName: 'Personal Loan' });
+    assertLimited(view.body);
 
     // FR-42: the bureau outcome is required to approve; comments to return or reject (FR-15).
     expect((await decide(juma, id, { action: 'approve' })).body.message).toBe('Record the credit bureau outcome before approving.');
@@ -223,14 +219,14 @@ describe('identity-only details for the Credit Analyst (FR-55, D-86)', () => {
     const row = q.body.data.items[0];
     expect(row).toMatchObject({ limited: true, applicant: { firstName: 'Daniel', lastName: 'Mrema' } });
     expect(row.route).toBeUndefined();
-    assertLimited(q.body, { ...DANIEL, productName: 'Personal Loan' });
+    assertLimited(q.body);
   });
 
   it('the review screen returns only first name, surname, NIDA number and mobile', async () => {
     const res = await api(juma.token).get(`/review/${id}`);
     expect(res.body.data).toMatchObject({ limited: true, applicant: { firstName: 'Daniel', lastName: 'Mrema', mobile: '+255754067390', nida: expect.stringMatching(/^\d{8}-\d{5}-\d{5}-\d{2}$/) }, panel: { canRecommend: false, needsCrb: true } });
     expect(Object.keys(res.body.data.applicant).sort()).toEqual(['firstName', 'lastName', 'mobile', 'nida']);
-    assertLimited(res.body, { ...DANIEL, productName: 'Personal Loan' });
+    assertLimited(res.body);
     expect((await AuditLog.findOne({ action: 'review.view' })).limited).toBe(true);
   });
 
@@ -253,7 +249,7 @@ describe('identity-only details for the Credit Analyst (FR-55, D-86)', () => {
     expect(r.body.code).toBe('RECOMMENDATION_NOT_ALLOWED');
     const ok = await decide(juma, id, { action: 'approve', crb: CRB, comment: 'Bureau clear on name, mobile and NIDA.' });
     expect(ok.body.data.outcome).toBe('moved');
-    assertLimited(ok.body, { ...DANIEL, productName: 'Personal Loan' });
+    assertLimited(ok.body);
   });
 
   it('stays limited afterwards, and other reviewers comments are hidden', async () => {
@@ -265,9 +261,9 @@ describe('identity-only details for the Credit Analyst (FR-55, D-86)', () => {
     await decide(grace, id, { action: 'return', comment: 'Confirm the Mbweni plot title.' });
     const again = await api(juma.token).get(`/review/${id}`);
     expect(again.body.data.myDecisions.map((d) => d.comment)).toEqual(['Bureau clear.']);
-    expect(JSON.stringify(again.body)).not.toContain('Mbweni');
+    expect(JSON.stringify(again.body)).not.toContain('Confirm the Mbweni plot title.'); // the purpose, shown since D-102, also names Mbweni
     const handled = await api(juma.token).get('/queue?tab=handled');
-    assertLimited(handled.body, { ...DANIEL, productName: 'Personal Loan' });
+    assertLimited(handled.body);
   });
 });
 
