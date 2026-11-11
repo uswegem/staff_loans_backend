@@ -58,11 +58,13 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
     const today = localDay();
     const tomorrow = localDay(new Date(Date.now() + DAY));
     const yesterday = localDay(new Date(Date.now() - DAY));
-    expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, comment: '  ' })).body.code).toBe('COMMENT_REQUIRED');
-    expect((await ops.post(`/disbursements/${id}/confirm`, { date: tomorrow, comment: 'Done.' })).body.message).toBe('The disbursement date cannot be in the future.');
-    expect((await ops.post(`/disbursements/${id}/confirm`, { date: yesterday, comment: 'Done.' })).body.message).toBe('The disbursement date cannot be before the final approval.');
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, transactionRef: 'FTTEST001', comment: '  ' })).body.code).toBe('COMMENT_REQUIRED');
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: tomorrow, transactionRef: 'FTTEST001', comment: 'Done.' })).body.message).toBe('The disbursement date cannot be in the future.');
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: yesterday, transactionRef: 'FTTEST001', comment: 'Done.' })).body.message).toBe('The disbursement date cannot be before the final approval.');
     expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, comment: 'Done.', transactionRef: '=HYPERLINK(1)' })).status).toBe(400);
 
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, comment: 'Done.' })).status).toBe(400);
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, transactionRef: '', comment: 'Done.' })).status).toBe(400);
     const ok = await ops.post(`/disbursements/${id}/confirm`, { date: today, transactionRef: 'FT26294AB12', comment: 'Loan disbursed to staff account.' });
     expect(ok.status).toBe(200);
     expect(ok.body.message).toMatch(/disbursed\. Journey complete\./);
@@ -95,7 +97,7 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
     const { id } = await toOps();
     await runningLoan('LFB0412', products.VL._id, 600000);
     const ops = api((await signIn('LFB0318')).token);
-    const res = await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), comment: 'Disbursed.' });
+    const res = await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), transactionRef: 'FTTEST001', comment: 'Disbursed.' });
     expect(res.body.code).toBe('AFFORDABILITY_EXCEEDED');
     expect((await Application.findById(id)).status).toBe('pending_disbursement');
   });
@@ -104,7 +106,7 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
     const { id } = await toOps();
     await Application.updateOne({ _id: id }, { $set: { topUp: { on: true, loanRef: 'SL-2026-00003', instalment: 50000, outstanding: 900000 } } });
     const ops = api((await signIn('LFB0318')).token);
-    const body = { date: localDay(), comment: 'Disbursed.' };
+    const body = { date: localDay(), transactionRef: 'FTTEST001', comment: 'Disbursed.' };
     expect((await ops.post(`/disbursements/${id}/confirm`, body)).body.code).toBe('TOPUP_NOT_SETTLED');
     expect((await ops.post(`/disbursements/${id}/confirm`, { ...body, topUpSettled: true })).status).toBe(200);
   });
@@ -117,10 +119,10 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
     await Decision.create({ applicationId: id, cycle: 1, stage: 'ceo', action: 'approve', actorId: await userId('LFB0002'), onBehalfOfId: halimaId, at: new Date() });
     const list = await ops.get('/disbursements');
     expect(list.body.data.items[0].blockedReason).toBe('You approved this loan, so another OPS officer confirms it.');
-    expect((await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), comment: 'x' })).body.code).toBe('SOD_DISBURSE');
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), transactionRef: 'FTTEST001', comment: 'x' })).body.code).toBe('SOD_DISBURSE');
 
     await Application.updateOne({ _id: id }, { $set: { applicantUserId: halimaId } });
-    const res = await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), comment: 'x' });
+    const res = await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), transactionRef: 'FTTEST001', comment: 'x' });
     expect(res.status).toBe(403);
     expect(res.body.message).toBe('This is your own loan. Another OPS officer confirms it.');
   });
@@ -146,7 +148,7 @@ describe('Outside SLA (Q3): flagged, never expired', () => {
     expect((await Application.findById(id)).outsideSla).toBe(true);
     expect((await Application.findById(id)).status).toBe('pending_disbursement');
 
-    expect((await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), comment: 'Disbursed late.' })).status).toBe(200);
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), transactionRef: 'FTTEST001', comment: 'Disbursed late.' })).status).toBe(200);
     expect((await Application.findById(id)).outsideSla).toBe(false);
   });
 });
