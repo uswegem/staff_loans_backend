@@ -1,7 +1,7 @@
 'use strict';
 
 // OPS disbursement (BRD 11; FR-20 to FR-22, FR-24, FR-26; Q3). Disbursement happens in
-// core banking; OPS confirms it here with the date, an optional transaction
+// core banking; OPS confirms it here with the date, a mandatory transaction
 // reference, a mandatory comment and the product's checklist. Confirming ends the
 // application's journey in SLAS and regenerates the schedule from that date.
 
@@ -143,7 +143,7 @@ async function detail(req, id) {
 
 /**
  * Confirms a disbursement (FR-20 to FR-22).
- * body: { date: 'YYYY-MM-DD', transactionRef?, comment, topUpSettled? }
+ * body: { date: 'YYYY-MM-DD', transactionRef, comment, topUpSettled? }
  */
 async function confirm(req, id, body) {
   const app = await load(id);
@@ -174,7 +174,8 @@ async function confirm(req, id, body) {
   if (!cut.ok) throw conflict(`This loan cannot be disbursed: ${cut.message} Refer it back to Credit.`, cut.code);
 
   const now = new Date();
-  const transactionRef = (body.transactionRef || '').trim() || null;
+  const transactionRef = (body.transactionRef || '').trim();
+  if (!transactionRef) throw badRequest('Enter the core banking transaction reference.', { transactionRef: ['Enter the core banking transaction reference.'] }, 'TRANSACTION_REF_REQUIRED');
   const disbursement = { date: localMidnight(body.date), transactionRef, comment, topUpSettled: app.topUp?.on ? true : undefined, confirmedBy: req.auth.user._id, confirmedAt: now };
 
   await withTransaction(async (session) => {
