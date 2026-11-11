@@ -17,6 +17,8 @@ process.env.COOKIE_SECURE = 'true';
 process.env.MONGODB_URI = process.env.SLAS_TEST_MONGO_URI;
 // Uploads (and the data reset's backups next to them) go in this run's folder, removed at teardown.
 process.env.UPLOAD_DIR = require('path').join(require('./testDirs').runDir(), 'uploads');
+// Deterministic test-only scanner: production always uses ClamAV and fails closed.
+require('../src/services/files/malwareScanner').register({ scan: async () => ({ status: 'clean', engine: 'test-fixture' }) });
 
 beforeAll(async () => {
   const dbName = `slas_test_${crypto.randomBytes(4).toString('hex')}`;
