@@ -97,7 +97,7 @@ async function versionsFor(app) {
   return { product, version, pricing, live: true };
 }
 
-const DOC_VIEW = (f) => ({ id: String(f._id), label: f.label, documentCode: f.documentCode || null, originalName: f.originalName, mime: f.mime, size: f.size, uploadedAt: f.createdAt });
+const DOC_VIEW = (f) => ({ id: String(f._id), label: f.label, documentCode: f.documentCode || null, originalName: f.originalName, mime: f.mime, size: f.size, scanStatus: f.scan?.status || 'unknown', uploadedAt: f.createdAt });
 
 async function view(req, app) {
   const v = await versionsFor(app);
