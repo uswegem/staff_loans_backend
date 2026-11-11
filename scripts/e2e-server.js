@@ -29,6 +29,14 @@ async function main() {
     UPLOAD_DIR: path.join(os.tmpdir(), `slas-e2e-${process.pid}`),
   });
 
+  // This executable is exclusively for disposable browser E2E fixtures. Its
+  // synthetic uploads need a deterministic scan result; production file uploads
+  // continue to require the real, fail-closed ClamAV service.
+  if (process.env.NODE_ENV !== 'e2e') throw new Error('E2E scanner fixture requires NODE_ENV=e2e');
+  require('../src/services/files/malwareScanner').register({
+    scan: async () => ({ status: 'clean', engine: 'e2e-fixture' }),
+  });
+
   const { config } = require('../src/config/env');
   const { connect } = require('../src/config/db');
   const { buildApp } = require('../src/app');
