@@ -79,7 +79,7 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
     expect(note.text).toMatch(/your loan of TZS 4,500,000 has been disbursed\. Your first instalment of TZS 136,900 is due on \d{4}-\d{2}-\d{2}\./);
 
     // Once only.
-    expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, comment: 'Again.' })).body.code).toBe('ALREADY_DISBURSED');
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, transactionRef: 'FT26294AB12', comment: 'Again.' })).body.code).toBe('ALREADY_DISBURSED');
     const done = await ops.get('/disbursements?tab=done');
     expect(done.body.data.items[0]).toMatchObject({ id, disbursement: { date: today, transactionRef: 'FT26294AB12', by: 'Halima Said' } });
 
