@@ -20,7 +20,7 @@ const day = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).messages({ 'string.patte
  * /disbursements/{id}:
  *   get: { tags: [Disbursement], summary: "Loan summary for disbursement and recovery set-up", security: [{ bearer: [] }], responses: { 200: { description: Summary } } }
  * /disbursements/{id}/confirm:
- *   post: { tags: [Disbursement], summary: "Confirm disbursement: date, optional reference, comment, checklist; regenerates the schedule (FR-20 to FR-22, FR-24)", security: [{ bearer: [] }], responses: { 200: { description: Disbursed }, 403: { description: Own or approved loan (SoD) } } }
+ *   post: { tags: [Disbursement], summary: "Confirm disbursement: date, mandatory reference, comment, checklist; regenerates the schedule (FR-20 to FR-22, FR-24)", security: [{ bearer: [] }], responses: { 200: { description: Disbursed }, 403: { description: Own or approved loan (SoD) } } }
  */
 router.get(
   '/disbursements',
@@ -42,7 +42,7 @@ router.post(
     params: Joi.object({ id: objectId.required() }),
     body: Joi.object({
       date: day.required().messages({ 'any.required': 'Enter the disbursement date.' }),
-      transactionRef: Joi.string().trim().max(40).pattern(/^[A-Za-z0-9/-]*$/).allow('').messages({ 'string.pattern.base': 'Use letters, digits, / and - only.' }),
+      transactionRef: Joi.string().trim().min(1).max(40).pattern(/^[A-Za-z0-9/-]+$/).required().messages({ 'any.required': 'Enter the core banking transaction reference.', 'string.empty': 'Enter the core banking transaction reference.' }).messages({ 'string.pattern.base': 'Use letters, digits, / and - only.' }),
       comment: Joi.string().trim().max(1000).allow(''),
       topUpSettled: Joi.boolean(),
     }),
