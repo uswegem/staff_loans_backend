@@ -111,6 +111,7 @@ async function limitedView(auth, app, actor) {
     tenor: app.tenor,
     purpose: app.purpose,
     affordability: affordabilitySummary(app.calcSnapshot),
+    // Credit-stage response is an explicit allow-list: no payslip, salary, or deduction fields.
     // The supporting-document exception is restricted to an authorised credit-stage review.
     applicant: { firstName: staff?.firstName || '', middleName: staff?.middleName || '', lastName: staff?.lastName || '', mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
     documents: docs.map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: uploaders.get(String(d.uploadedBy))?.name || null })),
@@ -244,7 +245,7 @@ function withoutPay(view) {
 
 /** A queue row: the same allow-list for limited applications. */
 async function queueRow(app, { limited, actor, names }) {
-  const staff = await Staff.findById(app.applicantStaffId).select('firstName lastName title category').lean();
+  const staff = await Staff.findById(app.applicantStaffId).select('firstName middleName lastName title category').lean();
   const base = {
     id: String(app._id),
     ref: app.ref,
