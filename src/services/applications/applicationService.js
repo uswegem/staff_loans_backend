@@ -31,7 +31,7 @@ const { localDay } = require('../../utils/dates');
 const { AppError, badRequest, conflict, notFound } = require('../../utils/errors');
 const { retirementDateFor } = require('../staff/retirement');
 
-const fullName = (s) => [s.firstName, s.lastName].filter(Boolean).join(' ');
+const fullName = (s) => [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ');
 
 /**
  * Loads what the rules need for an applicant and a product (live versions unless pinned).
@@ -97,7 +97,7 @@ async function versionsFor(app) {
   return { product, version, pricing, live: true };
 }
 
-const DOC_VIEW = (f) => ({ id: String(f._id), label: f.label, documentCode: f.documentCode || null, originalName: f.originalName, mime: f.mime, size: f.size, scanStatus: f.scan?.status || 'unknown', uploadedAt: f.createdAt });
+const DOC_VIEW = (f) => ({ id: String(f._id), label: f.label, documentCode: f.documentCode || null, originalName: f.originalName, mime: f.mime, size: f.size, uploadedAt: f.createdAt });
 
 async function view(req, app) {
   const v = await versionsFor(app);
