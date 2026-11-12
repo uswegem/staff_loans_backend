@@ -26,12 +26,12 @@ const { formatNida } = require('../staff/profileService');
 const { localDay } = require('../../utils/dates');
 const { retirementDateFor } = require('../staff/retirement');
 
-const fullName = (s) => (s ? [s.firstName, s.lastName].filter(Boolean).join(' ') : '');
+const fullName = (s) => (s ? [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') : '');
 const stageName = (k) => (k ? STAGES[k].short || STAGES[k].label : null);
 
 async function namesOf(ids) {
   const users = await User.find({ _id: { $in: ids.filter(Boolean) } }).select('staffId staffNo').lean();
-  const staff = await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName lastName title').lean();
+  const staff = await Staff.find({ _id: { $in: users.map((u) => u.staffId) } }).select('firstName middleName lastName title').lean();
   const byId = new Map(staff.map((s) => [String(s._id), s]));
   return new Map(users.map((u) => [String(u._id), { name: fullName(byId.get(String(u.staffId))), title: byId.get(String(u.staffId))?.title, staffNo: u.staffNo }]));
 }
@@ -88,7 +88,7 @@ function affordabilitySummary(snap) {
 /** Limited details (FR-55): identity, and since D-102 the requested terms and affordability. Allow-list only. */
 async function limitedView(auth, app, actor) {
   const [staff, mine, docs, version] = await Promise.all([
-    Staff.findById(app.applicantStaffId).select('firstName lastName personal.mobile personal.nida').lean(),
+    Staff.findById(app.applicantStaffId).select('firstName middleName lastName personal.mobile personal.nida').lean(),
     Decision.find({ applicationId: app._id, actorId: auth.user._id }).sort({ at: 1 }).lean(),
     StoredFile.find({ _id: { $in: app.documentIds }, applicationId: app._id, kind: 'document', removedAt: null }).lean(),
     ProductVersion.findById(app.productVersionId).select('name requiredDocuments').lean(),
@@ -112,9 +112,9 @@ async function limitedView(auth, app, actor) {
     purpose: app.purpose,
     affordability: affordabilitySummary(app.calcSnapshot),
     // The supporting-document exception is restricted to an authorised credit-stage review.
-    applicant: { firstName: staff?.firstName || '', lastName: staff?.lastName || '', mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
+    applicant: { firstName: staff?.firstName || '', middleName: staff?.middleName || '', lastName: staff?.lastName || '', mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
     documents: docs.map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: uploaders.get(String(d.uploadedBy))?.name || null })),
-    documentChecklist: (version?.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.documentCode === d.code && f.scan?.status === 'clean').length })),
+    documentChecklist: (version?.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => String(f.documentCode || '').trim().toLowerCase() === String(d.code || '').trim().toLowerCase()).length })),
     crb: app.crb?.outcome ? { outcome: app.crb.outcome, reportDate: app.crb.reportDate ? localDay(app.crb.reportDate) : null } : null,
     myDecisions: mine.map((d) => ({ action: d.action, stage: d.stage, comment: d.comment, at: d.at })),
     panel: panelFor(app, actor),
@@ -198,7 +198,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
       runningLoans: running.map((r) => ({ ref: r.ref, amount: r.approved?.amount, status: r.status })),
     },
     documents: docs.filter((d) => d.kind === 'document').map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: names.get(String(d.uploadedBy))?.name || null })),
-    documentChecklist: (version.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.kind === 'document' && f.documentCode === d.code && f.scan?.status === 'clean').length })),
+    documentChecklist: (version.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.kind === 'document' && String(f.documentCode || '').trim().toLowerCase() === String(d.code || '').trim().toLowerCase()).length })),
     // D-79: what affordability used, and the payslip it was read from.
     payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [] } : null,
     crbReport: docs.find((d) => d.kind === 'crb_report') ? appSvc.DOC_VIEW(docs.find((d) => d.kind === 'crb_report')) : null,
