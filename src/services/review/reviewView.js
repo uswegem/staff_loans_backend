@@ -2,11 +2,10 @@
 
 // What a reviewer sees (FR-14) and the limited-details projection (FR-55).
 //
-// The limited view is built from an allow-list, never by deleting fields from the full
-// view, so nothing new can leak into it by accident: name, mobile number and NIDA
-// number, the route and status, and the Credit Analyst's own bureau result and
-// decisions. Product, amount, tenor, purpose, salary, affordability, documents, the
-// agreement and other reviewers' comments are never included.
+// The Credit Analyst's limited view is built from an explicit allow-list to
+// prevent salary and payslip data leaking through future full-view additions.
+// Product, requested terms, affordability summary and authorised supporting
+// documents are included; raw pay figures and payslip files are excluded.
 
 const { CRB_OUTCOMES } = require('../../constants/crb');
 const Decision = require('../../models/Decision');
@@ -27,6 +26,7 @@ const { localDay } = require('../../utils/dates');
 const { retirementDateFor } = require('../staff/retirement');
 
 const fullName = (s) => (s ? [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') : '');
+const MASKED = '********';
 const stageName = (k) => (k ? STAGES[k].short || STAGES[k].label : null);
 
 async function namesOf(ids) {
@@ -111,6 +111,7 @@ async function limitedView(auth, app, actor) {
     tenor: app.tenor,
     purpose: app.purpose,
     affordability: affordabilitySummary(app.calcSnapshot),
+    salaryMask: { basic: MASKED, gross: MASKED, net: MASKED, deductions: MASKED },
     // Credit-stage response is an explicit allow-list: no payslip, salary, or deduction fields.
     // The supporting-document exception is restricted to an authorised credit-stage review.
     applicant: { firstName: staff?.firstName || '', middleName: staff?.middleName || '', lastName: staff?.lastName || '', mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
@@ -239,6 +240,8 @@ function withoutPay(view) {
     payslip: null,
     calcAtSubmission: null,
     deductions: null,
+    // Explicit presentation mask; raw values are never included in the response.
+    salaryMask: { basic: MASKED, gross: MASKED, net: MASKED, deductions: MASKED },
     applicant: { ...view.applicant, existingLfbLoans: [] },
   };
 }
