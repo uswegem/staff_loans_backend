@@ -258,7 +258,7 @@ async function queueRow(app, { limited, actor, names }) {
     currentStage: app.currentStage,
     stageLabel: stageName(app.currentStage),
     due: await due(app),
-    applicant: { firstName: staff?.firstName || '', lastName: staff?.lastName || '' },
+    applicant: { firstName: staff?.firstName || '', middleName: staff?.middleName || '', lastName: staff?.lastName || '' },
     onBehalfOf: actor?.onBehalfOf ? names?.get(actor.onBehalfOf)?.name || null : null,
   };
   if (limited) {
