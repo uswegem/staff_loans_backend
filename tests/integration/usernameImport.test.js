@@ -53,3 +53,22 @@ test('duplicate staff numbers are rejected in the preview', async () => {
   expect(res.body.data.summary.error).toBe(1);
   expect(res.body.data.rows[1].problems.join(' ')).toMatch(/repeats row/);
 });
+
+
+test('middle name is retained during staff workbook import', async () => {
+  const hr = await signIn('LFB0051');
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['First name', 'Middle name', 'Surname', 'Staff Number/Code', 'Username', 'Category'],
+    ['Asha', 'Neema', 'Mashauri', 'AT903', 'asha.neema', 'Non-management'],
+  ]), 'Staff records');
+  const file = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const preview = await request(app()).post('/api/v1/staff/import').set(authed(hr.token)).attach('file', file, 'middle-name.xlsx');
+  expect(preview.status).toBe(201);
+  expect(preview.body.data.summary.new).toBe(1);
+  const committed = await request(app()).post(`/api/v1/staff/import/${preview.body.data.id}/commit`).set(authed(hr.token));
+  expect(committed.status).toBe(200);
+  const person = await Staff.findOne({ staffNo: 'AT903' });
+  expect(person.middleName).toBe('Neema');
+  expect(person.fullName).toBe('Asha Neema Mashauri');
+});
