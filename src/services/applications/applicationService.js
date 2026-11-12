@@ -294,13 +294,6 @@ async function signAndSubmit(req, app, body) {
     throw conflict('The agreement changed since you opened it. Read it again before you sign.', 'AGREEMENT_CHANGED', { textSha256: doc.textSha256 });
   }
 
-  const AuthController = require('../../controllers/authController');
-  const check = await AuthController.verifyPassword(req.auth.user, body.password, req);
-  if (!check.ok) {
-    if (check.remainingAttempts === 0) throw new AppError(423, 'ACCOUNT_LOCKED', 'Your account is locked after too many failed attempts. Contact the IT Service Desk to unlock it.');
-    throw new AppError(401, 'PASSWORD_WRONG', 'Your password is not right.', { password: ['Your password is not right.'], remainingAttempts: check.remainingAttempts });
-  }
-
   const now = new Date();
   const resubmission = app.status === 'returned';
   const route = app.route ? { key: app.route, stages: app.stages } : routeFor(req.auth.permissions, ctx.staff);
