@@ -14,7 +14,6 @@ const Staff = require('../models/Staff');
 const Session = require('../models/Session');
 const RefreshToken = require('../models/RefreshToken');
 const Settings = require('../models/Settings');
-const Delegation = require('../models/Delegation');
 const credentials = require('../services/auth/credentialProvider');
 const tokenService = require('../services/auth/tokenService');
 const mfa = require('../services/auth/mfaService');
