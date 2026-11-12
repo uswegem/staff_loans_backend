@@ -147,8 +147,6 @@ const AuthController = {
     }
 
     const eff = await rbac.effectiveFor(user._id);
-    // A delegate covering someone's reviews holds review permissions too (FR-19, FR-49).
-    const delegate = await Delegation.exists({ delegateId: user._id, ...Delegation.activeFilter() });
     if (eff.mfaRequired) {
       const purpose = user.mfa?.enabled ? 'verify' : 'enrol';
       const { token, jti } = tokenService.signMfa(user, purpose);
