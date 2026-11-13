@@ -27,6 +27,23 @@ describe('NIDA number (decision 7, D-93)', () => {
   });
 });
 
+describe('LFB Staff Master workbook compatibility', () => {
+  it('reads the Staff Master sheet and maps identity columns while ignoring bank and next-of-kin fields', () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Unrelated'], ['ignore']]), 'Cover');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['SN', 'Staff Number', 'Full Name', 'First Name', 'Middle Name', 'Last Name', 'Gender', 'Department', 'Job Title', 'Category', 'Email', 'Username', 'Date of Birth', 'NIDA Number', 'Bank Account Number', 'Next of Kin First Name'],
+      [1, 'AT118', 'Adriano Patson Mwazembe', 'Adriano', 'Patson', 'Mwazembe', 'Male', 'Operations', 'Operations Manager', 'Non-management', 'adrianop@example.test', 'adrianop', '30/10/1987', '19871023-11101-00005-24', '123456789', 'Private'],
+    ]), 'Staff Master');
+    const rows = parseFile(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].raw).toMatchObject({ staffNo: 'AT118', userName: 'adrianop', firstName: 'Adriano', middleName: 'Patson', lastName: 'Mwazembe', title: 'Operations Manager', category: 'Non-management' });
+    expect(rows[0].raw).not.toHaveProperty('lfbAccountNo');
+    expect(rows[0].raw).not.toHaveProperty('nextOfKin');
+    expect(rows[0].raw).not.toHaveProperty('dateJoined');
+  });
+});
+
 describe('import cells', () => {
   it('reads dates in every accepted form', () => {
     expect(cellDate('15/01/2024')).toBe('2024-01-15');
