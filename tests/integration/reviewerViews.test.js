@@ -25,6 +25,7 @@ function keysOf(value, keys = new Set()) {
   if (Array.isArray(value)) value.forEach((v) => keysOf(v, keys));
   else if (value && typeof value === 'object') {
     Object.entries(value).forEach(([k, v]) => {
+      if (k === 'salaryMask') return; // Mask labels are intentionally present, not raw salary fields.
       keys.add(k);
       keysOf(v, keys);
     });
@@ -70,6 +71,7 @@ describe('Credit Analyst', () => {
     const id = await applyAndSign(neema, products.PL._id, NEEMA);
     const juma = await signIn('LFB0233');
     const keys = keysOf((await api(juma.token).get(`/review/${id}`)).body);
+    expect((await api(juma.token).get(`/review/${id}`)).body.data.salaryMask).toEqual({ basic: '********', gross: '********', net: '********', deductions: '********' });
     for (const k of [...PAY_KEYS, 'payslip', 'calcAtSubmission', 'deductions', 'staffNo', 'title', 'department', 'nextOfKin', 'history', 'agreements']) expect([k, keys.has(k)]).toEqual([k, false]);
     const stored = await Application.findById(id).lean();
     const slip = await request(app()).get(`/api/v1/files/${stored.payslip.fileId}`).set(authed(juma.token));
@@ -96,6 +98,7 @@ describe('Auditor (read-only)', () => {
     expect(view).toMatchObject({ limited: false, payHidden: true, amount: NEEMA.amount, payslip: null, calcAtSubmission: null, deductions: null });
     expect(view.affordability.room).toEqual(expect.any(Number));
     expect(view.applicant.existingLfbLoans).toEqual([]);
+    expect(view.salaryMask).toEqual({ basic: '********', gross: '********', net: '********', deductions: '********' });
     expect(view.panel).toBeNull(); // read-only
     const keys = keysOf(view);
     PAY_KEYS.forEach((k) => expect([k, keys.has(k)]).toEqual([k, false]));

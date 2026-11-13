@@ -21,6 +21,40 @@ beforeEach(async () => {
   products = await seedProducts(users);
 });
 
+describe('Date Joined self-service (BR-DJ)', () => {
+  it('blocks missing Date Joined, allows staff to save it without HR approval, and audits the change', async () => {
+    const neema = await signIn('LFB0412');
+    await Staff.updateOne({ staffNo: 'LFB0412' }, { $unset: { dateJoined: '' } });
+    const before = await api(neema.token).get('/me/profile');
+    expect(before.body.data.employment.dateJoined).toBeNull();
+    expect(before.body.data.applyBlockers.join(' ')).toMatch(/joining date/i);
+    const saved = await api(neema.token).patch('/me/profile/date-joined', { dateJoined: '2019-03-04' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.employment.dateJoined).toBe('2019-03-04');
+    expect(saved.body.data.applyBlockers.join(' ')).not.toMatch(/joining date/i);
+    expect(await AuditLog.countDocuments({ action: 'profile.date_joined' })).toBe(1);
+  });
+
+  it('rejects invalid and future dates without changing the staff record', async () => {
+    const neema = await signIn('LFB0412');
+    for (const dateJoined of ['2026-02-30', '2099-01-01', 'not-a-date']) {
+      // eslint-disable-next-line no-await-in-loop
+      expect((await api(neema.token).patch('/me/profile/date-joined', { dateJoined })).status).toBe(400);
+    }
+    expect((await Staff.findOne({ staffNo: 'LFB0412' })).dateJoined).toBeTruthy();
+  });
+
+  it('ignores client-supplied staff identifiers and cannot update another employee', async () => {
+    const neema = await signIn('LFB0412');
+    const other = await Staff.findOne({ staffNo: 'LFB0233' });
+    const previous = other.dateJoined?.getTime();
+    const res = await api(neema.token).patch('/me/profile/date-joined', { dateJoined: '2020-02-01', staffId: String(other._id) });
+    expect(res.status).toBe(200); // Unknown staffId is stripped; only the authenticated staff record is updated.
+    expect((await Staff.findById(other._id)).dateJoined?.getTime()).toBe(previous);
+    expect((await Staff.findOne({ staffNo: 'LFB0412' })).dateJoined).toBeTruthy();
+  });
+});
+
 describe('my profile', () => {
   it('shows employment read-only and the approval route, and no salary (D-100)', async () => {
     const neema = await signIn('LFB0412');
@@ -117,13 +151,13 @@ describe('what still stops a complete profile from applying (D-97)', () => {
     expect(me.completeness.complete).toBe(true);
     expect(me.applyBlockers).toEqual([
       'Your date of birth (1989-07-12) is waiting for People and Culture to verify it. You can apply once it is verified.',
-      'People and Culture must record your date joined before you can apply.',
+      'Your employment joining date is missing. Update Date Joined in your profile before applying for a loan.',
     ]);
     const elig = (await api(neema.token).get('/me/eligibility')).body.data;
     expect(elig.blockers).toEqual(me.applyBlockers);
     elig.products.forEach((p) => {
       expect(p.canApply).toBe(false);
-      expect(p.reasons).toEqual(expect.arrayContaining(['People and Culture must record your date joined before you can apply.']));
+      expect(p.reasons).toEqual(expect.arrayContaining(['Your employment joining date is missing. Update Date Joined in your profile before applying for a loan.']));
     });
   });
 

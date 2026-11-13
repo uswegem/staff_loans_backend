@@ -46,7 +46,7 @@ describe('MFA requirement (FR-49)', () => {
   it.each([
     [['loan.apply', 'loan.viewOwn'], false],
     [['loan.apply', 'reports.view', 'audit.view'], false],
-    [['review.credit'], true],
+    [['review.credit'], false],
     [['disb.confirm'], true],
     [['admin.users'], true],
     [['products.approveCredit'], true],

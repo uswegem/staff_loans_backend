@@ -24,7 +24,7 @@ function values(input, templateVersion) {
     agreementNumber: input.agreementNumber || 'itatolewa wakati wa kusaini',
     templateVersion,
     ref: input.ref,
-    fullName: [staff.firstName, staff.lastName].filter(Boolean).join(' '),
+    fullName: [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' '),
     staffNo: staff.staffNo,
     // P.O. Box is no longer collected (D-93): only an earlier answer appears here.
     poBox: staff.personal?.poBox || '—',

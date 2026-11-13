@@ -43,8 +43,8 @@ const permById = (id) => PERMISSIONS.find((p) => p.id === id);
 /** Permissions the Staff role always keeps (FR-46). */
 const LOCKED_PERMISSIONS = Object.freeze(PERMISSIONS.filter((p) => p.locked).map((p) => p.id));
 
-/** FR-49: MFA for anyone holding a review, disbursement or administration permission. */
-const MFA_KINDS = Object.freeze(['approve', 'disburse', 'admin', 'check']);
+/** FR-49: MFA for disbursement, administration and checker permissions; review-only actions are exempt. */
+const MFA_KINDS = Object.freeze(['disburse', 'admin', 'check']);
 
 const REVIEW_PERMISSIONS = Object.freeze(['review.credit', 'review.pcm', 'review.hr', 'review.ceo']);
 

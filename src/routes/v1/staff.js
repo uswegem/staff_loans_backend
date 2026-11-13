@@ -51,6 +51,8 @@ const staffNo = Joi.string().trim().uppercase().pattern(STAFF_NO).messages({ 'st
  *   get: { tags: [Profile], summary: "Per product: can I apply, why not, and days until I can apply again or top up (NS-02, NS-03)", security: [{ bearer: [] }], responses: { 200: { description: Eligibility } } }
  * /me/profile/personal:
  *   patch: { tags: [Profile], summary: "Save personal details; NIDA with or without dashes", security: [{ bearer: [] }], responses: { 200: { description: Profile } } }
+ * /me/profile/date-joined:
+ *   patch: { tags: [Profile], summary: "Staff self-service Date Joined; no HR approval", security: [{ bearer: [] }], responses: { 200: { description: Updated profile } } }
  * /me/profile/bank:
  *   patch: { tags: [Profile], summary: "Save bank details", security: [{ bearer: [] }], responses: { 200: { description: Profile } } }
  * /me/profile/kin:
@@ -76,6 +78,11 @@ router.patch(
     }).min(1),
   }),
   asyncHandler(ProfileController.personal)
+);
+router.patch(
+  '/me/profile/date-joined',
+  validate({ body: Joi.object({ dateJoined: day.required() }).required() }),
+  asyncHandler(ProfileController.dateJoined)
 );
 router.patch(
   '/me/profile/bank',

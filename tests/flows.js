@@ -63,7 +63,7 @@ async function sign(person, id) {
   const a = api(person.token);
   const preview = await a.get(`/applications/${id}/agreement/preview`);
   if (preview.status !== 200) throw new Error(`preview: ${JSON.stringify(preview.body)}`);
-  const res = await a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, password: PASSWORD, textSha256: preview.body.data.textSha256 });
+  const res = await a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, textSha256: preview.body.data.textSha256 });
   if (res.status !== 200) throw new Error(`sign: ${JSON.stringify(res.body)}`);
   return res;
 }
