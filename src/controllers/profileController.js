@@ -114,7 +114,6 @@ const ProfileController = {
   },
 
   async dateJoined(req, res) {
-    const staff = await ownStaff(req);
     const value = req.body.dateJoined;
     const parsed = localMidnight(value);
     if (!parsed || Number.isNaN(parsed.getTime()) || localDay(parsed) !== value || parsed > localMidnight(localDay(new Date()))) {
