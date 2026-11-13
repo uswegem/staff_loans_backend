@@ -49,8 +49,9 @@ describe('Date Joined self-service (BR-DJ)', () => {
     const other = await Staff.findOne({ staffNo: 'LFB0233' });
     const previous = other.dateJoined?.getTime();
     const res = await api(neema.token).patch('/me/profile/date-joined', { dateJoined: '2020-02-01', staffId: String(other._id) });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200); // Unknown staffId is stripped; only the authenticated staff record is updated.
     expect((await Staff.findById(other._id)).dateJoined?.getTime()).toBe(previous);
+    expect((await Staff.findOne({ staffNo: 'LFB0412' })).dateJoined).toBeTruthy();
   });
 });
 
@@ -150,13 +151,13 @@ describe('what still stops a complete profile from applying (D-97)', () => {
     expect(me.completeness.complete).toBe(true);
     expect(me.applyBlockers).toEqual([
       'Your date of birth (1989-07-12) is waiting for People and Culture to verify it. You can apply once it is verified.',
-      'People and Culture must record your date joined before you can apply.',
+      'Your employment joining date is missing. Update Date Joined in your profile before applying for a loan.',
     ]);
     const elig = (await api(neema.token).get('/me/eligibility')).body.data;
     expect(elig.blockers).toEqual(me.applyBlockers);
     elig.products.forEach((p) => {
       expect(p.canApply).toBe(false);
-      expect(p.reasons).toEqual(expect.arrayContaining(['People and Culture must record your date joined before you can apply.']));
+      expect(p.reasons).toEqual(expect.arrayContaining(['Your employment joining date is missing. Update Date Joined in your profile before applying for a loan.']));
     });
   });
 
