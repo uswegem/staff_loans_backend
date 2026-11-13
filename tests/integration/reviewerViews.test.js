@@ -25,6 +25,7 @@ function keysOf(value, keys = new Set()) {
   if (Array.isArray(value)) value.forEach((v) => keysOf(v, keys));
   else if (value && typeof value === 'object') {
     Object.entries(value).forEach(([k, v]) => {
+      if (k === 'salaryMask') return; // Mask labels are intentionally present, not raw salary fields.
       keys.add(k);
       keysOf(v, keys);
     });
