@@ -21,6 +21,39 @@ beforeEach(async () => {
   products = await seedProducts(users);
 });
 
+describe('Date Joined self-service (BR-DJ)', () => {
+  it('blocks missing Date Joined, allows staff to save it without HR approval, and audits the change', async () => {
+    const neema = await signIn('LFB0412');
+    await Staff.updateOne({ staffNo: 'LFB0412' }, { $unset: { dateJoined: '' } });
+    const before = await api(neema.token).get('/me/profile');
+    expect(before.body.data.employment.dateJoined).toBeNull();
+    expect(before.body.data.applyBlockers.join(' ')).toMatch(/joining date/i);
+    const saved = await api(neema.token).patch('/me/profile/date-joined', { dateJoined: '2019-03-04' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.employment.dateJoined).toBe('2019-03-04');
+    expect(saved.body.data.applyBlockers.join(' ')).not.toMatch(/joining date/i);
+    expect(await AuditLog.countDocuments({ action: 'profile.date_joined' })).toBe(1);
+  });
+
+  it('rejects invalid and future dates without changing the staff record', async () => {
+    const neema = await signIn('LFB0412');
+    for (const dateJoined of ['2026-02-30', '2099-01-01', 'not-a-date']) {
+      // eslint-disable-next-line no-await-in-loop
+      expect((await api(neema.token).patch('/me/profile/date-joined', { dateJoined })).status).toBe(400);
+    }
+    expect((await Staff.findOne({ staffNo: 'LFB0412' })).dateJoined).toBeTruthy();
+  });
+
+  it('ignores client-supplied staff identifiers and cannot update another employee', async () => {
+    const neema = await signIn('LFB0412');
+    const other = await Staff.findOne({ staffNo: 'LFB0233' });
+    const previous = other.dateJoined?.getTime();
+    const res = await api(neema.token).patch('/me/profile/date-joined', { dateJoined: '2020-02-01', staffId: String(other._id) });
+    expect(res.status).toBe(400);
+    expect((await Staff.findById(other._id)).dateJoined?.getTime()).toBe(previous);
+  });
+});
+
 describe('my profile', () => {
   it('shows employment read-only and the approval route, and no salary (D-100)', async () => {
     const neema = await signIn('LFB0412');
