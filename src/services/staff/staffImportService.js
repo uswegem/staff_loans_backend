@@ -6,7 +6,7 @@
 // confirm. Staff are matched by staff number. Blank cells keep the existing value for
 // staff already on file, and fields that are not in the template are never touched.
 //
-// D-100: the template has eight columns. No salary (affordability comes from the payslip
+// D-100: the template has core identity and employment columns. No salary (affordability comes from the payslip
 // attached to each application), no probation end date (worked out from the date joined)
 // and no retirement date (worked out from the verified date of birth). A date of birth
 // goes to People and Culture's verification queue (D-82): the uploader cannot verify it.
@@ -36,7 +36,7 @@ const COLUMNS = Object.freeze([
   ['title', 'Title', 'Optional at import; incomplete until provided. Used for assigning roles and permissions.'],
   ['staffNo', 'Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.'],
   ['dob', 'Date of Birth', 'Optional at import; verification required before loan eligibility. Used to work out the retirement date for affordability.'],
-  ['dateJoined', 'Date Joined', 'Optional at import; incomplete until provided. Used to confirm that probation has been completed.'],
+  ['dateJoined', 'Date Joined', 'Optional at import; staff must enter it in their profile before applying. No HR verification required. Used for probation eligibility.'],
   ['category', 'Category', 'Required. Management or Non-management. Decides the approval route.'],
 ]);
 
@@ -94,7 +94,7 @@ function parseFile(buffer) {
   } catch {
     throw new ImportFileError('This file could not be read. Save it as .xlsx, .xls or .csv from the template.');
   }
-  const ws = wb.Sheets['Staff records'] || wb.Sheets[wb.SheetNames[0]];
+  const ws = wb.Sheets['Staff records'] || wb.Sheets['Staff Master'] || wb.Sheets[wb.SheetNames[0]];
   if (!ws) throw new ImportFileError('The file has no sheets.');
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
   if (!aoa.length) throw new ImportFileError('The sheet is empty.');
