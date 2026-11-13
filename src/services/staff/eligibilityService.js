@@ -53,14 +53,14 @@ function coolingMessage(name, c) {
 }
 
 /**
- * What People and Culture must record before this person can apply for any product: the
- * date joined (D-91), which the staff upload supplies (D-100). Affordability comes from the
+ * Staff must supply Date Joined before applying; it can be saved on their own profile
+ * without HR verification. Affordability comes from the
  * payslip attached to each application, so no salary record is needed (D-100). The same
  * check blocks starting, submitting and approving an application (rules.eligibility).
  */
 function recordProblems(staff) {
   const out = [];
-  if (!staff.dateJoined) out.push('People and Culture must record your date joined before you can apply.');
+  if (!staff.dateJoined) out.push('Your employment joining date is missing. Update Date Joined in your profile before applying for a loan.');
   return out;
 }
 
