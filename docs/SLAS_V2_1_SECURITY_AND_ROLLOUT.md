@@ -7,7 +7,7 @@ This feature branch changes upload storage, required-document validation, staff 
 New uploads are no longer scanned by ClamAV. PDF/JPG/PNG magic-byte allowlisting, random non-web-root storage and authorization on downloads remain, but **none is malware detection**. Before production approval, Security should accept the residual risk, validate offline document-handling procedures, and consider isolated viewing and endpoint protection. Historical `StoredFile.scan` values are retained for backward compatibility and are not interpreted as proof of safety for new uploads.
 
 ## MFA policy
-Approval-only actions are exempt from MFA; disbursement, administrative and checker permissions still require MFA. Authorization, segregation of duties and audit logging remain mandatory. Security must approve this reduced assurance before deployment.
+D-103: `MFA_ENABLED=false` switches MFA off for every user (no enrolment, no one-time code, no step-up for privileged permissions or review decisions). Risk accepted this on 13 Nov 2026 because the system is not exposed to the internet; revisit if that changes. The default is `true`, which keeps FR-49 as before (review, disbursement, administration and checker permissions, and delegates). Authorization, segregation of duties and audit logging remain mandatory either way, and existing enrolments are kept.
 
 ## Staff import
 The staff template includes an optional middle name; missing HR fields remain incomplete. No user accounts are provisioned by staff import. Source workbooks without staff numbers and usernames cannot be committed as authoritative staff records. Never infer staff number, username or management category from a name.

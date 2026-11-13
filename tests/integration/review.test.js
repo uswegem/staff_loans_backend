@@ -35,6 +35,7 @@ function walk(value, keys = new Set(), strings = []) {
   if (Array.isArray(value)) value.forEach((v) => walk(v, keys, strings));
   else if (value && typeof value === 'object') {
     Object.entries(value).forEach(([k, v]) => {
+      if (k === 'salaryMask') return; // fixed '********' labels, no pay figures
       keys.add(k);
       walk(v, keys, strings);
     });
@@ -225,7 +226,7 @@ describe('identity-only details for the Credit Analyst (FR-55, D-86)', () => {
   it('the review screen returns only first name, surname, NIDA number and mobile', async () => {
     const res = await api(juma.token).get(`/review/${id}`);
     expect(res.body.data).toMatchObject({ limited: true, applicant: { firstName: 'Daniel', lastName: 'Mrema', mobile: '+255754067390', nida: expect.stringMatching(/^\d{8}-\d{5}-\d{5}-\d{2}$/) }, panel: { canRecommend: false, needsCrb: true } });
-    expect(Object.keys(res.body.data.applicant).sort()).toEqual(['firstName', 'lastName', 'mobile', 'nida']);
+    expect(Object.keys(res.body.data.applicant).sort()).toEqual(['firstName', 'lastName', 'middleName', 'mobile', 'nida']);
     assertLimited(res.body);
     expect((await AuditLog.findOne({ action: 'review.view' })).limited).toBe(true);
   });

@@ -29,6 +29,7 @@ const { STAGES } = require('../workflow/routes');
 const { fullName, stageName } = require('../review/reviewView');
 const { STATUS, PENDING_STAGE } = require('../../constants/statuses');
 const { permById, requiresMfa } = require('../../constants/permissions');
+const env = require('../../config/env');
 const { localDay, localMidnight, OFFSET_MIN } = require('../../utils/dates');
 const { forbidden, notFound } = require('../../utils/errors');
 
@@ -282,7 +283,7 @@ async function access() {
       if (!u || !r) return null;
       const s = staff.get(String(u.staffId)) || {};
       const status = x.revokedAt ? `Removed ${day(x.revokedAt)}` : !isActive(x) ? 'Ended' : !r.active ? 'Role inactive' : u.status !== 'active' ? `User ${u.status}` : 'Active';
-      return [u.staffNo, fullName(s), s.title || '', r.name, status, x.endsOn ? day(x.endsOn) : '', day(x.assignedAt), r.permissions.map((p) => permById(p)?.label || p).join('; '), requiresMfa([...(activePerms.get(String(u._id)) || [])]) ? 'Yes' : 'No'];
+      return [u.staffNo, fullName(s), s.title || '', r.name, status, x.endsOn ? day(x.endsOn) : '', day(x.assignedAt), r.permissions.map((p) => permById(p)?.label || p).join('; '), env.config.mfaEnabled && requiresMfa([...(activePerms.get(String(u._id)) || [])]) ? 'Yes' : 'No'];
     })
     .filter(Boolean)
     .sort((a, b) => a[0].localeCompare(b[0]) || a[3].localeCompare(b[3]));
