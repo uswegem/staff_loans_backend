@@ -33,6 +33,7 @@ async function view(req, staff) {
     staffNo: o.staffNo,
     fullName: fullName(o),
     firstName: o.firstName,
+    middleName: o.middleName || '',
     lastName: o.lastName, // the surname (D-85)
     gender: o.gender || null,
     // personal.dob is the verified date of birth only; a proposed one is in dateOfBirth.pending (D-82).
@@ -60,8 +61,7 @@ async function view(req, staff) {
     },
     route: { key: route.key, label: route.label, description: describeRoute(route), limitedCredit: route.limitedCredit },
     completeness: profile,
-    // What stops applying once the profile is complete: date of birth not verified, or no
-    // date joined from People and Culture (D-97, D-100).
+    // A missing joining date can be completed by the staff member without HR verification.
     applyBlockers: applyBlockers(o),
   };
 }
@@ -110,6 +110,18 @@ const ProfileController = {
       if (b.nida !== undefined) staff.set('personal.nida', b.nida || undefined);
       if (b.address !== undefined) staff.set('personal.address', { ...b.address });
       if (b.workPhone !== undefined) staff.workPhone = b.workPhone;
+    });
+  },
+
+  async dateJoined(req, res) {
+    const staff = await ownStaff(req);
+    const value = req.body.dateJoined;
+    const parsed = localMidnight(value);
+    if (!parsed || Number.isNaN(parsed.getTime()) || localDay(parsed) !== value || parsed > localMidnight(localDay(new Date()))) {
+      throw badRequest('Enter a valid Date Joined that is not in the future.', { dateJoined: ['Enter a valid past or current date.'] }, 'DATE_JOINED_INVALID');
+    }
+    await saveSection(req, res, { keys: ['dateJoined'], name: 'date_joined', label: 'Date Joined' }, (record) => {
+      record.dateJoined = parsed;
     });
   },
 
