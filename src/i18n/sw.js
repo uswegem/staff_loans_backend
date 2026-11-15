@@ -187,7 +187,6 @@ module.exports = [
   ['The file is too large.', 'Faili ni kubwa mno.'],
   ['The file is larger than 5 MB.', 'Faili ni kubwa kuliko MB 5.'],
   ['Only PDF, JPG and PNG files can be uploaded.', 'Faili za PDF, JPG na PNG tu ndizo zinazoweza kupakiwa.'],
-  ['This file did not pass the virus check.', 'Faili hili halikupita ukaguzi wa virusi.'],
   ['You can attach up to 20 documents.', 'Unaweza kuambatisha hadi nyaraka 20.'],
   ['Documents can be added while the application is a draft or returned to you.', 'Nyaraka zinaweza kuongezwa ombi likiwa rasimu au likirudishwa kwako.'],
   ['Documents can be removed while the application is a draft or returned to you.', 'Nyaraka zinaweza kuondolewa ombi likiwa rasimu au likirudishwa kwako.'],
