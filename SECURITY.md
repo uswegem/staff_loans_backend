@@ -27,7 +27,7 @@ A pass over the API and web app against the prompt's non-functional rules (secti
 
 - Joi on body, query and params with unknown keys stripped; JSON body limit 1 MB.
 - Regular expressions built from user input are escaped; MongoDB queries take typed values only.
-- Uploads: PDF, JPG and PNG, checked by content, not just the name; size limit from settings; stored outside the web root under random names with a SHA-256; a malware-scan hook (`services/files/malwareScanner`). **Action:** connect the hook to the bank's antivirus engine.
+- Uploads: PDF, JPG and PNG, checked by content, not just the name; size limit from settings; stored outside the web root under random names with a SHA-256; no malware scanning: ClamAV and the scanner hook were removed for the offline deployment, and the residual risk is accepted (D-104).
 - Exports: CSV and Excel cells that start with `=`, `+`, `-` or `@` are neutralised (formula injection); the PDF uses standard fonts only.
 - Errors return a code, a plain message and a correlation id; stack traces are only logged.
 

@@ -1,6 +1,6 @@
 # SLAS API: LFB Staff Loan Application System
 
-Backend for the Letshego Faidika Bank staff loan system: a REST JSON API under `/api/v1`. Requirements are in `docs\BRD_v0.8.md` in the parent workspace, and build decisions are in `docs\DECISIONS.md`.
+Backend for the Letshego Faidika Bank staff loan system: a REST JSON API under `/api/v1`. Requirements are in `docs\BRD_v0.9.md` in the parent workspace, and build decisions are in `docs\DECISIONS.md`.
 
 Stack: Node.js 22 LTS, Express 4, MongoDB (replica set) with Mongoose 8, Joi, helmet, winston, and Jest with supertest and mongodb-memory-server.
 

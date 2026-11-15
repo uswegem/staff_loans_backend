@@ -70,7 +70,8 @@ names/codes as special cases in application code.
 
 `POST /api/v1/applications/:id/documents` accepts `multipart/form-data`
 with `file`, optional `label` and `documentCode` for configured categories.
-Files must pass the existing signature-sniffing and malware-scan hooks.
+Files must pass the existing signature (content-type) check; there is no
+malware scanning (D-104).
 `StoredFile.documentCode` retains the category, with authorized downloads via
 `GET /api/v1/files/:id`. Authorized in-app PDF/image preview uses
 `GET /api/v1/files/:id?preview=1` with the same authentication and RBAC.
@@ -92,10 +93,8 @@ payslips, agreements and financial/application terms remain in force.
   only when authorized for the application.
 - Verify existing submitted applications and revised agreements remain valid.
 - Run backend tests, frontend lint/tests/build and coordinated end-to-end UAT.
-- **Production security prerequisite:** the current malware scanning hook
-  (`src/services/files/malwareScanner.js`) defaults to a scanner stub.
-  A real scanner must be configured and verified before processing real
-  customer documents in production.
+- Uploads are not scanned for malware; the scanner hook was removed and
+  the residual risk is accepted (D-104).
 - Review dependency audit advisories; do not apply forced dependency upgrades
   without a separate compatibility/security assessment.
 
