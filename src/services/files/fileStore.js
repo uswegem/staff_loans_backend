@@ -3,14 +3,13 @@
 // File storage for documents and agreement PDFs (BRD NFR-07, FR-09):
 // - only PDF, JPG and PNG, recognised by their first bytes, not the name or browser type
 // - stored under UPLOAD_DIR with a random name, never inside a web root
-// - scanned before use through a malware-scanner interface (stub for now)
+// - file signature validation is not malware scanning; offline residual risk is documented
 
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const StoredFile = require('../../models/StoredFile');
 const { config } = require('../../config/env');
-const scanner = require('./malwareScanner');
 const { badRequest } = require('../../utils/errors');
 
 const SIGNATURES = [
@@ -28,13 +27,11 @@ const safeName = (name) => String(name || 'file').replace(/[^\w.\- ()]/g, '_').s
 
 /**
  * Stores a file and creates its record. Refuses types other than PDF, JPG and PNG,
- * and files the scanner flags.
+ * using their content signatures. Antivirus scanning is not performed.
  */
 async function store(buffer, { kind, originalName, label, documentCode, applicationId, ownerUserId, uploadedBy }, { session } = {}) {
   const mime = sniff(buffer);
   if (!mime) throw badRequest('Only PDF, JPG and PNG files can be uploaded.', { file: ['Only PDF, JPG and PNG files can be uploaded.'] }, 'FILE_TYPE');
-  const scan = await scanner.scan(buffer, { originalName });
-  if (scan.status !== 'clean') throw badRequest('This file did not pass the virus check.', { file: ['This file did not pass the virus check.'] }, 'FILE_INFECTED');
 
   const now = new Date();
   const storageKey = path.posix.join(String(now.getUTCFullYear()), String(now.getUTCMonth() + 1).padStart(2, '0'), crypto.randomBytes(16).toString('hex'));
@@ -43,7 +40,7 @@ async function store(buffer, { kind, originalName, label, documentCode, applicat
   await fs.writeFile(full, buffer, { flag: 'wx' });
   const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
   const [doc] = await StoredFile.create(
-    [{ kind, applicationId, ownerUserId, uploadedBy, label, documentCode, originalName: safeName(originalName), mime, size: buffer.length, sha256, storageKey, scan: { status: scan.status, at: now, engine: scan.engine } }],
+    [{ kind, applicationId, ownerUserId, uploadedBy, label, documentCode, originalName: safeName(originalName), mime, size: buffer.length, sha256, storageKey }],
     { session }
   );
   return doc;

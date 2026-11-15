@@ -6,7 +6,7 @@
 // confirm. Staff are matched by staff number. Blank cells keep the existing value for
 // staff already on file, and fields that are not in the template are never touched.
 //
-// D-100: the template has eight columns. No salary (affordability comes from the payslip
+// D-100: the template has core identity and employment columns. No salary (affordability comes from the payslip
 // attached to each application), no probation end date (worked out from the date joined)
 // and no retirement date (worked out from the verified date of birth). A date of birth
 // goes to People and Culture's verification queue (D-82): the uploader cannot verify it.
@@ -26,6 +26,7 @@ const MAX_ROWS = 5000;
 // username and category are required; blanks preserve existing HR data.
 const COLUMNS = Object.freeze([
   ['firstName', 'First name', 'Required.'],
+  ['middleName', 'Middle name', 'Optional; leave blank when not applicable.'],
   ['userName', 'Username', 'Required for new staff; unique login identifier.'],
   ['gender', 'Gender', 'Optional: Male or Female.'],
   ['department', 'Department', 'Optional.'],
@@ -35,7 +36,7 @@ const COLUMNS = Object.freeze([
   ['title', 'Title', 'Optional at import; incomplete until provided. Used for assigning roles and permissions.'],
   ['staffNo', 'Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.'],
   ['dob', 'Date of Birth', 'Optional at import; verification required before loan eligibility. Used to work out the retirement date for affordability.'],
-  ['dateJoined', 'Date Joined', 'Optional at import; incomplete until provided. Used to confirm that probation has been completed.'],
+  ['dateJoined', 'Date Joined', 'Optional at import; staff must enter it in their profile before applying. No HR verification required. Used for probation eligibility.'],
   ['category', 'Category', 'Required. Management or Non-management. Decides the approval route.'],
 ]);
 
@@ -51,7 +52,7 @@ const label = (k) => COLUMNS.find((c) => c[0] === k)[1];
 function templateWorkbook() {
   const wb = XLSX.utils.book_new();
   // Built by column so the example always lines up with the headings. Fictional person.
-  const sample = { userName: 'baraka.mwakyusa', gender: 'Male', department: 'Branch Network', email: 'baraka@example.test', firstName: 'Baraka', lastName: 'Mwakyusa', nida: '19900514-12345-00001-23', title: 'Teller', staffNo: 'AT901', dob: '14/05/1990', dateJoined: '03/11/2026', category: 'Non-management' };
+  const sample = { userName: 'baraka.mwakyusa', gender: 'Male', department: 'Branch Network', email: 'baraka@example.test', firstName: 'Baraka', middleName: '', lastName: 'Mwakyusa', nida: '19900514-12345-00001-23', title: 'Teller', staffNo: 'AT901', dob: '14/05/1990', dateJoined: '03/11/2026', category: 'Non-management' };
   const ws = XLSX.utils.aoa_to_sheet([HEADERS, COLUMNS.map(([k]) => sample[k] ?? '')]);
   ws['!cols'] = HEADERS.map((h) => ({ wch: Math.max(16, h.length + 4) }));
   XLSX.utils.book_append_sheet(wb, ws, 'Staff records');
@@ -93,7 +94,7 @@ function parseFile(buffer) {
   } catch {
     throw new ImportFileError('This file could not be read. Save it as .xlsx, .xls or .csv from the template.');
   }
-  const ws = wb.Sheets['Staff records'] || wb.Sheets[wb.SheetNames[0]];
+  const ws = wb.Sheets['Staff records'] || wb.Sheets['Staff Master'] || wb.Sheets[wb.SheetNames[0]];
   if (!ws) throw new ImportFileError('The file has no sheets.');
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
   if (!aoa.length) throw new ImportFileError('The sheet is empty.');
@@ -175,7 +176,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userN
   const ex = existing || {};
   const isNew = !existing;
   const pick = (k, current) => (blank(raw[k]) ? current : text(raw[k]));
-  const rec = { firstName: pick('firstName', ex.firstName), lastName: pick('lastName', ex.lastName), title: pick('title', ex.title), department: pick('department', ex.department), email: pick('email', ex.email), gender: pick('gender', ex.gender) };
+  const rec = { firstName: pick('firstName', ex.firstName), middleName: pick('middleName', ex.middleName), lastName: pick('lastName', ex.lastName), title: pick('title', ex.title), department: pick('department', ex.department), email: pick('email', ex.email), gender: pick('gender', ex.gender) };
   const userName = (text(raw.userName) || ex.userName || '').toLowerCase();
   if (!userName) problems.push('Username is required');
   else if (!/^[a-z][a-z0-9._-]{2,63}$/.test(userName)) problems.push('Username must contain 3–64 letters, numbers, dots, underscores or hyphens, starting with a letter');
@@ -226,7 +227,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userN
     }
   }
 
-  const name = [rec.firstName, rec.lastName].filter(Boolean).join(' ');
+  const name = [rec.firstName, rec.middleName, rec.lastName].filter(Boolean).join(' ');
   if (problems.length) return { outcome: 'error', problems, changes: [], staffNo, name };
 
   const sentForCheck = dob ? `date of birth ${dob} sent for verification` : null;
@@ -237,7 +238,7 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userN
   }
 
   const changes = [];
-  [['firstName', 'first name'], ['lastName', 'surname'], ['title', 'title'], ['userName', 'username'], ['gender', 'gender'], ['department', 'department'], ['email', 'email']].forEach(([k, l]) => {
+  [['firstName', 'first name'], ['middleName', 'middle name'], ['lastName', 'surname'], ['title', 'title'], ['userName', 'username'], ['gender', 'gender'], ['department', 'department'], ['email', 'email']].forEach(([k, l]) => {
     if ((rec[k] || null) !== (ex[k] || null)) changes.push(l);
   });
   if (rec.category !== ex.category) changes.push(`category to ${rec.category}`);

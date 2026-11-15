@@ -8,6 +8,7 @@ const Role = require('../../models/Role');
 const RoleAssignment = require('../../models/RoleAssignment');
 const { sodConflicts, requiresMfa } = require('../../constants/permissions');
 const { localDateUtc } = require('../calendar/workingTime');
+const env = require('../../config/env');
 
 /** Assignment filter for "held today": not revoked, and endsOn absent or today or later. */
 function activeFilter(now = new Date(), utcOffsetMinutes = 180) {
@@ -30,7 +31,7 @@ async function effectiveFor(userId, opts) {
   return {
     roles: roles.map((r) => ({ id: String(r._id), code: r.code, name: r.name, endsOn: r.endsOn })),
     permissions,
-    mfaRequired: requiresMfa(permissions),
+    mfaRequired: env.config.mfaEnabled && requiresMfa(permissions),
   };
 }
 

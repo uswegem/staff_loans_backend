@@ -12,6 +12,7 @@ const delegations = require('../services/review/delegationService');
 const appSvc = require('../services/applications/applicationService');
 const audit = require('../services/audit/auditService');
 const { badRequest, forbidden, notFound } = require('../utils/errors');
+const env = require('../config/env');
 
 async function loadForReview(req) {
   const app = await Application.findById(req.params.id);
@@ -56,8 +57,8 @@ const ReviewController = {
   },
 
   async decide(req, res) {
-    // FR-49: every decision needs a session opened with MFA, including a delegate's.
-    if (!req.auth.session.mfaVerified) throw forbidden('Sign in again with your one-time code to record a decision.', 'MFA_STEP_UP');
+    // FR-49: every decision needs a session opened with MFA, including a delegate's, unless MFA is switched off (D-103).
+    if (env.config.mfaEnabled && !req.auth.session.mfaVerified) throw forbidden('Sign in again with your one-time code to record a decision.', 'MFA_STEP_UP');
     const { app } = await loadForReview(req);
     const { outcome, application } = await review.decide(req, app, req.body);
     const access = await workflow.reviewAccess(req.auth, application);

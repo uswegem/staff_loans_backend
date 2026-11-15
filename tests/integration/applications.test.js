@@ -4,7 +4,7 @@
 // NS-01, NS-02). Agreement signed before submission (prompt 4.3).
 
 const crypto = require('crypto');
-const { app, seed, signIn, authed, PASSWORD, request } = require('../helpers');
+const { app, seed, signIn, authed, request } = require('../helpers');
 const { seedProducts } = require('../fixtures/products');
 const { seedAgreementTemplate } = require('../../seed/agreementTemplate');
 const Application = require('../../src/models/Application');
@@ -49,7 +49,7 @@ async function signAndSubmit(person, id, over = {}) {
   const a = api(person.token);
   const preview = await a.get(`/applications/${id}/agreement/preview`);
   if (preview.status !== 200) throw new Error(`preview failed ${JSON.stringify(preview.body)}`);
-  return a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, password: PASSWORD, textSha256: preview.body.data.textSha256, ...over });
+  return a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, textSha256: preview.body.data.textSha256, ...over });
 }
 
 const NEEMA_TERMS = { amount: 4500000, tenor: 36, purpose: 'Home furniture and appliances' };
@@ -301,15 +301,12 @@ describe('agreement preview (FR-33, BRD 8)', () => {
 });
 
 describe('sign agreement and submit (FR-10, FR-34 to FR-37)', () => {
-  it('cannot submit without every consent, the tick, reading to the end and the password', async () => {
+  it('cannot submit without every consent, acceptance and reading to the end', async () => {
     const neema = await signIn('LFB0412');
     const { id } = await draft(neema, PL(), NEEMA_TERMS);
     expect((await signAndSubmit(neema, id, { consents: { ...CONSENTS, crb: false } })).body.code).toBe('CONSENTS_REQUIRED');
     expect((await signAndSubmit(neema, id, { accepted: false })).body.code).toBe('CONSENTS_REQUIRED');
     expect((await signAndSubmit(neema, id, { scrolledToEnd: false })).body.code).toBe('NOT_READ');
-    const wrong = await signAndSubmit(neema, id, { password: 'not-my-password' });
-    expect(wrong.status).toBe(401);
-    expect(wrong.body.details.remainingAttempts).toBe(4);
     expect((await Application.findById(id)).status).toBe('draft');
   });
 

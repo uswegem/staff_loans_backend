@@ -142,7 +142,7 @@ const ApplicationController = {
       if (app.payslip?.fileId) await StoredFile.updateOne({ _id: app.payslip.fileId }, { $set: { removedAt: new Date() } }, { session });
       const payslip = { fileId: f._id, originalName: f.originalName, payDate: out.payDate, basic: out.basic, lfbDeductions: out.lfbDeductions, lfbLines: out.lfbLines, readAt: new Date() };
       await Application.updateOne({ _id: app._id }, { $set: { payslip } }, { session });
-      await audit.record({ req, action: 'payslip.upload', description: `${app.ref}: payslip dated ${out.payDate} read (Basic Pay ${out.basic.toLocaleString('en-US')}, LFB deductions ${out.lfbDeductions.toLocaleString('en-US')})`, entity: 'Application', entityId: String(app._id), appRef: app.ref, before: app.payslip?.fileId ? { payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions } : undefined, after: { fileId: String(f._id), sha256: f.sha256, payDate: out.payDate, basic: out.basic, lfbDeductions: out.lfbDeductions } }, { session });
+      await audit.record({ req, action: 'payslip.upload', description: `${app.ref}: payslip dated ${out.payDate} read successfully`, entity: 'Application', entityId: String(app._id), appRef: app.ref, before: app.payslip?.fileId ? { payDate: app.payslip.payDate } : undefined, after: { fileId: String(f._id), sha256: f.sha256, payDate: out.payDate } }, { session });
     });
     res.status(201).json({ success: true, data: await svc.view(req, await Application.findById(app._id)) });
   },

@@ -6,6 +6,7 @@
 // MFA-verified session; denials are audited as permission_denied.
 
 const { permById, MFA_KINDS } = require('../constants/permissions');
+const env = require('../config/env');
 const audit = require('../services/audit/auditService');
 const { unauthorized, forbidden } = require('../utils/errors');
 
@@ -27,7 +28,7 @@ function check(mode, perms) {
     }
     // A privileged permission granted after sign-in still needs a session opened with MFA.
     const needsMfa = mode === 'all' ? held.some(privileged) : held.every(privileged);
-    if (needsMfa && !req.auth.session.mfaVerified) {
+    if (needsMfa && env.config.mfaEnabled && !req.auth.session.mfaVerified) {
       return next(forbidden('Sign in again with your one-time code to use this.', 'MFA_STEP_UP'));
     }
     return next();

@@ -27,6 +27,23 @@ describe('NIDA number (decision 7, D-93)', () => {
   });
 });
 
+describe('LFB Staff Master workbook compatibility', () => {
+  it('reads the Staff Master sheet and maps identity columns while ignoring bank and next-of-kin fields', () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Unrelated'], ['ignore']]), 'Cover');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['SN', 'Staff Number', 'Full Name', 'First Name', 'Middle Name', 'Last Name', 'Gender', 'Department', 'Job Title', 'Category', 'Email', 'Username', 'Date of Birth', 'NIDA Number', 'Bank Account Number', 'Next of Kin First Name'],
+      [1, 'AT118', 'Adriano Patson Mwazembe', 'Adriano', 'Patson', 'Mwazembe', 'Male', 'Operations', 'Operations Manager', 'Non-management', 'adrianop@example.test', 'adrianop', '30/10/1987', '19871023-11101-00005-24', '123456789', 'Private'],
+    ]), 'Staff Master');
+    const rows = parseFile(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].raw).toMatchObject({ staffNo: 'AT118', userName: 'adrianop', firstName: 'Adriano', middleName: 'Patson', lastName: 'Mwazembe', title: 'Operations Manager', category: 'Non-management' });
+    expect(rows[0].raw).not.toHaveProperty('lfbAccountNo');
+    expect(rows[0].raw).not.toHaveProperty('nextOfKin');
+    expect(rows[0].raw).not.toHaveProperty('dateJoined');
+  });
+});
+
 describe('import cells', () => {
   it('reads dates in every accepted form', () => {
     expect(cellDate('15/01/2024')).toBe('2024-01-15');
@@ -54,16 +71,16 @@ describe('import file', () => {
   };
 
   it('the template has the extended columns, their instructions and an example (D-100)', () => {
-    expect(HEADERS).toEqual(['First name', 'Username', 'Gender', 'Department', 'Email', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
+    expect(HEADERS).toEqual(['First name', 'Middle name', 'Username', 'Gender', 'Department', 'Email', 'Surname', 'NIDA', 'Title', 'Staff Number/Code', 'Date of Birth', 'Date Joined', 'Category']);
     const wb = XLSX.read(templateWorkbook(), { type: 'buffer' });
     expect(wb.SheetNames).toEqual(['Staff records', 'Instructions', 'Lists']);
     const [head, example] = XLSX.utils.sheet_to_json(wb.Sheets['Staff records'], { header: 1 });
     expect(head).toEqual(HEADERS);
-    expect(example).toEqual(['Baraka', 'baraka.mwakyusa', 'Male', 'Branch Network', 'baraka@example.test', 'Mwakyusa', '19900514-12345-00001-23', 'Teller', 'AT901', '14/05/1990', '03/11/2026', 'Non-management']);
+    expect(example).toEqual(['Baraka', '', 'baraka.mwakyusa', 'Male', 'Branch Network', 'baraka@example.test', 'Mwakyusa', '19900514-12345-00001-23', 'Teller', 'AT901', '14/05/1990', '03/11/2026', 'Non-management']);
     const ins = XLSX.utils.sheet_to_json(wb.Sheets.Instructions, { header: 1 });
     expect(ins.slice(1, 1 + COLUMNS.length)).toEqual(COLUMNS.map((c) => [c[1], c[2]]));
-    expect(ins[7]).toEqual(['NIDA', COLUMNS[6][2]]);
-    expect(ins[9]).toEqual(['Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.']);
+    expect(ins[8]).toEqual(['NIDA', COLUMNS[7][2]]);
+    expect(ins[10]).toEqual(['Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.']);
   });
 
   it('maps headings loosely, ignores columns that are not in the template and skips blank rows', () => {

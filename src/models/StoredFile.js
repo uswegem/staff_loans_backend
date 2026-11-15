@@ -17,7 +17,8 @@ const fileSchema = new mongoose.Schema(
     size: { type: Number, required: true },
     sha256: { type: String, required: true },
     storageKey: { type: String, required: true },
-    scan: { status: { type: String, enum: ['pending', 'clean', 'infected'], default: 'pending' }, at: Date, engine: String },
+    // Legacy scan metadata is retained for existing records; new uploads do not use it.
+    scan: { status: { type: String, enum: ['pending', 'clean', 'infected'] }, at: Date, engine: String },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     removedAt: Date,
   },

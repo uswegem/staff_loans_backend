@@ -14,11 +14,12 @@ process.env.BCRYPT_ROUNDS = '4';
 process.env.LOGIN_RATE_LIMIT_PER_MIN = '1000';
 // A developer's .env may turn Secure cookies off for http://localhost; tests use the default.
 process.env.COOKIE_SECURE = 'true';
+// Likewise MFA may be switched off in a developer's .env (D-103); tests expect FR-49 unless they turn it off.
+process.env.MFA_ENABLED = 'true';
 process.env.MONGODB_URI = process.env.SLAS_TEST_MONGO_URI;
 // Uploads (and the data reset's backups next to them) go in this run's folder, removed at teardown.
 process.env.UPLOAD_DIR = require('path').join(require('./testDirs').runDir(), 'uploads');
-// Deterministic test-only scanner: production always uses ClamAV and fails closed.
-require('../src/services/files/malwareScanner').register({ scan: async () => ({ status: 'clean', engine: 'test-fixture' }) });
+// Offline upload tests exercise content signatures without an antivirus scanner.
 
 beforeAll(async () => {
   const dbName = `slas_test_${crypto.randomBytes(4).toString('hex')}`;

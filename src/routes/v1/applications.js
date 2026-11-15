@@ -33,7 +33,7 @@ const uploadOne = (req, res, next) => upload.single('file')(req, res, (err) => n
  * /applications/{id}/agreement/preview:
  *   get: { tags: [Applications], summary: "The Swahili agreement for these terms, with schedule and text fingerprint (FR-33)", security: [{ bearer: [] }], responses: { 200: { description: Blocks and SHA-256 }, 400: { description: Hard rules fail } } }
  * /applications/{id}/sign-and-submit:
- *   post: { tags: [Applications], summary: "Consents, acceptance tick, password and the fingerprint read; signing submits (FR-10, FR-34, FR-35, FR-37)", security: [{ bearer: [] }], responses: { 200: { description: Submitted }, 401: { description: Wrong password }, 409: { description: Agreement changed } } }
+ *   post: { tags: [Applications], summary: "Consents, acceptance and agreement fingerprint; authenticated submission automatically signs (FR-10, FR-34, FR-35, FR-37)", security: [{ bearer: [] }], responses: { 200: { description: Submitted }, 409: { description: Agreement changed } } }
  * /applications/{id}/withdraw:
  *   post: { tags: [Applications], summary: "Withdraw before final approval; voids the agreement (FR-11)", security: [{ bearer: [] }], responses: { 200: { description: Withdrawn } } }
  * /applications/{id}/documents:
@@ -81,7 +81,6 @@ router.post(
       consents: Joi.object({ truth: Joi.boolean(), deduct: Joi.boolean(), crb: Joi.boolean(), sms: Joi.boolean() }).required(),
       accepted: Joi.boolean().required(),
       scrolledToEnd: Joi.boolean().required(),
-      password: Joi.string().max(128).required(),
       textSha256: Joi.string().hex().length(64).required(),
     }),
   }),

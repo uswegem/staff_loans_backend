@@ -61,7 +61,7 @@ async function detail(staff) {
     User.findOne({ staffId: staff._id }).select('status lastLoginAt').lean(),
     completeness(staff),
     staffSvc.probationFor(staff),
-    staff.lineManagerId ? Staff.findById(staff.lineManagerId).select('staffNo firstName lastName').lean() : null,
+    staff.lineManagerId ? Staff.findById(staff.lineManagerId).select('staffNo firstName middleName lastName').lean() : null,
     Settings.get(),
   ]);
   const o = staff.toObject();
@@ -110,7 +110,7 @@ const StaffController = {
     if (department) filter.department = department;
     if (q) {
       const re = new RegExp(escapeRe(q), 'i');
-      filter.$or = [{ firstName: re }, { lastName: re }, { staffNo: re }, { title: re }, { station: re }];
+      filter.$or = [{ firstName: re }, { middleName: re }, { lastName: re }, { staffNo: re }, { title: re }, { station: re }];
     }
     const [total, rows] = await Promise.all([Staff.countDocuments(filter), Staff.find(filter).sort({ staffNo: 1 }).skip((page - 1) * limit).limit(limit)]);
     const ids = rows.map((r) => r._id);

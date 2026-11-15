@@ -51,6 +51,9 @@ function load() {
     bcryptRounds: int('BCRYPT_ROUNDS', 12),
     issuer: 'slas-api',
     mfaIssuer: process.env.MFA_ISSUER || 'LFB Staff Loans',
+    // FR-49 switch (D-103): false turns MFA off for every user, for an internal-only
+    // deployment whose risk owner accepted it. On unless set to false.
+    mfaEnabled: bool('MFA_ENABLED', true),
   });
 }
 
