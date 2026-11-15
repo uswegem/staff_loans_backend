@@ -114,7 +114,10 @@ async function seedSampleApplications({ users, products: byCode }) {
     const staff = await Staff.findOne({ staffNo: s.a });
     const salary = PEOPLE.find((p) => p.staffNo === s.a).pay;
     const { product, version } = await products.liveProductVersion(byCode[s.p]._id);
-    const submittedAt = s.submittedWh != null ? wt.subtractWorkingHours(cal, now, s.submittedWh) : new Date(now.getTime() - s.submittedDays * DAY);
+    // Steps are dated in working hours and may fall before "N days ago" on weekends or after hours,
+    // so the submission is moved back to stay ahead of the first decision.
+    const firstStep = (s.steps || []).reduce((m, step) => Math.min(m, ago(step).getTime()), Infinity);
+    const submittedAt = s.submittedWh != null ? wt.subtractWorkingHours(cal, now, s.submittedWh) : new Date(Math.min(now.getTime() - s.submittedDays * DAY, firstStep - 2 * HOUR));
     // A fictional payslip dated a few days before submission, read as an upload would be.
     const payDate = localDay(new Date(submittedAt.getTime() - 5 * DAY));
     const slipPdf = await samplePayslip({ staff: { fullName: fullName(staff), staffNo: staff.staffNo, title: staff.title, department: staff.department }, basic: salary.basic, allowances: salary.allowances || 0, payDate, pricing });
