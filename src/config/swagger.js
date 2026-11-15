@@ -10,7 +10,7 @@ const spec = swaggerJsdoc({
     info: {
       title: 'LFB Staff Loan Application System (SLAS) API',
       version: pkg.version,
-      description: 'REST JSON API for SLAS. Requirement IDs refer to BRD v0.8. Responses use { success, data } or { success: false, code, message, details }.',
+      description: 'REST JSON API for SLAS. Requirement IDs refer to BRD v0.9. Responses use { success, data } or { success: false, code, message, details }.',
     },
     servers: [{ url: '/api/v1' }],
     components: {
