@@ -27,10 +27,12 @@ function values(input, templateVersion) {
     fullName: [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' '),
     staffNo: staff.staffNo,
     // P.O. Box is no longer collected (D-93): only an earlier answer appears here.
-    poBox: staff.personal?.poBox || '—',
+    // A missing party detail is null, so the renderer leaves its phrase out ("wa {{poBox}},")
+    // rather than printing a dash in the legal text.
+    poBox: staff.personal?.poBox || null,
     // D-93: the structured address (house/plot, street, ward, district, region) fills {{residence}}.
-    residence: addressLine(staff.personal?.address) || '—',
-    mobile: staff.personal?.mobile || '—',
+    residence: addressLine(staff.personal?.address) || null,
+    mobile: staff.personal?.mobile || null,
     productName: input.product.name,
     amount: tshs(amount),
     amountWords: amountInWords(amount),

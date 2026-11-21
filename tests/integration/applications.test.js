@@ -291,6 +291,17 @@ describe('agreement preview (FR-33, BRD 8)', () => {
     expect(res.body.data.template).toMatchObject({ version: '2026.11', sample: true });
   });
 
+  it('leaves out a party detail that is not on file instead of printing a dash', async () => {
+    // P.O. Box is no longer collected (D-93): the parties clause read "wa —," before.
+    await Staff.updateOne({ staffNo: 'LFB0412' }, { $unset: { 'personal.poBox': 1 } });
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS);
+    const res = await api(neema.token).get(`/applications/${id}/agreement/preview`);
+    const parties = res.body.data.blocks.map((b) => (b.parts || []).map((p) => p.text).join('')).find((t) => t.includes('namba ya mfanyakazi'));
+    expect(parties).toMatch(/namba ya mfanyakazi LFB0412, Plot/);
+    expect(parties).not.toMatch(/—|wa ,|, ,/);
+  });
+
   it('is refused while a hard rule fails', async () => {
     const neema = await signIn('LFB0412');
     const { id } = await draft(neema, PL(), { amount: 400000, tenor: 12, purpose: 'x' });
