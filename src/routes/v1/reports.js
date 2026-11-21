@@ -26,7 +26,8 @@ const filters = Joi.object({
   status: Joi.string().max(40).pattern(/^[a-z_]+$/),
   groupBy: Joi.string().valid('product', 'branch', 'category'),
   q: Joi.string().trim().max(80).allow(''),
-  action: Joi.string().max(60).pattern(/^[a-z._]+$/),
+  action: Joi.string().max(300).pattern(/^[a-z._,]+$/),
+  actor: Joi.string().trim().max(20).pattern(/^[A-Za-z0-9-]+$/),
 });
 
 /**

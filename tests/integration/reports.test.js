@@ -200,6 +200,6 @@ describe('exports are safe and consistent', () => {
     const r = await api((await signIn('LFB0002')).token).get('/reports/overview');
     expect(r.body.data).toMatchObject({ pendingDisbursement: 1, disbursedCount: 1, disbursedAmount: 500000 });
     expect(r.body.data.inReview).toBeGreaterThanOrEqual(7);
-    expect(r.body.data.stages.map((s) => s.label)).toEqual(['Credit Analyst', 'P&C Manager', 'Head of HR', 'CEO']);
+    expect(r.body.data.stages.map((s) => s.label)).toEqual(['Credit Analyst', 'People and Culture Manager', 'Head of HR', 'CEO']);
   });
 });

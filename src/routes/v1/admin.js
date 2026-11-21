@@ -23,6 +23,8 @@ const objectId = Joi.string().hex().length(24);
  *   delete: { tags: [Admin], summary: Remove a public holiday, security: [{ bearer: [] }], responses: { 200: { description: Removed } } }
  * /audit:
  *   get: { tags: [Audit], summary: Read-only audit log with filters (RP-10), security: [{ bearer: [] }], responses: { 200: { description: Entries } } }
+ * /audit/people:
+ *   get: { tags: [Audit], summary: Staff to filter the audit log by (name or staff number), security: [{ bearer: [] }], responses: { 200: { description: People } } }
  */
 router.get('/admin/settings', requireAll('admin.workflow'), asyncHandler(SettingsController.get));
 router.put(
@@ -70,7 +72,8 @@ router.get(
   validate({
     query: Joi.object({
       q: Joi.string().max(80).allow(''),
-      action: Joi.string().max(60).pattern(/^[a-z._]+$/),
+      action: Joi.string().max(300).pattern(/^[a-z._,]+$/),
+      actor: Joi.string().trim().max(20).pattern(/^[A-Za-z0-9-]+$/),
       actorId: objectId,
       entity: Joi.string().max(40),
       entityId: Joi.string().max(40),
@@ -81,6 +84,12 @@ router.get(
     }),
   }),
   asyncHandler(AuditController.list)
+);
+router.get(
+  '/audit/people',
+  requireAll('audit.view'),
+  validate({ query: Joi.object({ q: Joi.string().trim().max(80).allow('') }) }),
+  asyncHandler(AuditController.people)
 );
 
 module.exports = router;

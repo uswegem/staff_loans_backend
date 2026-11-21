@@ -49,6 +49,25 @@ describe('append-only audit log', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.items.every((e) => e.action.startsWith('auth'))).toBe(true);
   });
+
+  it('filters by several action types and by person, and names the person', async () => {
+    const daniel = await signIn('LFB0067');
+    await signIn('LFB0233');
+    const res = await request(app()).get('/api/v1/audit?action=auth.login,auth.logout&actor=lfb0233').set(authed(daniel.token));
+    expect(res.status).toBe(200);
+    expect(res.body.data.items.length).toBeGreaterThan(0);
+    expect(res.body.data.items.every((e) => ['auth.login', 'auth.logout'].some((a) => e.action.startsWith(a)) && e.actorStaffNo === 'LFB0233')).toBe(true);
+    expect(res.body.data.items[0].actorName).toMatch(/\S+ \S+/);
+  });
+
+  it('finds people to filter by, for audit viewers only', async () => {
+    const daniel = await signIn('LFB0067');
+    const res = await request(app()).get('/api/v1/audit/people?q=LFB0233').set(authed(daniel.token));
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([expect.objectContaining({ staffNo: 'LFB0233', name: expect.any(String) })]);
+    const staff = await signIn('LFB0233');
+    expect((await request(app()).get('/api/v1/audit/people?q=a').set(authed(staff.token))).status).toBe(403);
+  });
 });
 
 describe('workflow settings and calendar', () => {

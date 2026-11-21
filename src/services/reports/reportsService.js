@@ -21,6 +21,7 @@ const RoleAssignment = require('../../models/RoleAssignment');
 const ProductVersion = require('../../models/ProductVersion');
 const Product = require('../../models/Product');
 const AuditLog = require('../../models/AuditLog');
+const { auditFilter } = require('../audit/auditQuery');
 const Settings = require('../../models/Settings');
 const workflow = require('../workflow/workflowService');
 const calendar = require('../calendar/calendarService');
@@ -292,16 +293,9 @@ async function access() {
 
 // ---------- RP-10 audit log extract ----------
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 async function auditExtract(viewer, f, { max }) {
-  const q = {};
+  const q = auditFilter(f);
   if (f.from || f.to) q.at = { ...(f.from && { $gte: localMidnight(f.from) }), ...(f.to && { $lt: new Date(localMidnight(f.to).getTime() + DAY) }) };
-  if (f.action) q.action = new RegExp(`^${escapeRe(f.action)}`);
-  if (f.q) {
-    const re = new RegExp(escapeRe(f.q), 'i');
-    q.$or = [{ description: re }, { action: re }, { actorStaffNo: re }, { appRef: re }];
-  }
   const [total, items] = await Promise.all([AuditLog.countDocuments(q), AuditLog.find(q).sort({ at: -1 }).limit(max).lean()]);
   return {
     columns: [col('When', 'datetime'), col('Staff number'), col('Action'), col('Description'), col('Reference'), col('IP address'), col('Result')],
@@ -320,7 +314,7 @@ const REPORTS = {
   summary: { id: 'RP-05', name: 'Report Filter', view: ['reports.view'], build: summary, filters: ['dates', 'groupBy', 'product', 'department', 'branch', 'category'] },
   agreements: { id: 'RP-06', name: 'Agreement register', view: ['reports.view'], build: agreements, filters: ['dates', 'product', 'department', 'branch', 'category'] },
   access: { id: 'RP-07', name: 'Users, roles and permissions', view: ['admin.users', 'admin.roles', 'audit.view'], export: ['admin.users', 'admin.roles', 'audit.view'], build: access, filters: [] },
-  audit: { id: 'RP-10', name: 'Audit log extract', view: ['audit.view'], export: ['audit.view'], build: auditExtract, filters: ['dates', 'q', 'action'] },
+  audit: { id: 'RP-10', name: 'Audit log extract', view: ['audit.view'], export: ['audit.view'], build: auditExtract, filters: ['dates', 'q', 'action', 'actor'] },
 };
 
 const holds = (req, perms) => perms.some((p) => req.auth.permissions.has(p));

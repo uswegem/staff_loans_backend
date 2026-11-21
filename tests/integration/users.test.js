@@ -48,6 +48,24 @@ describe('creating a user from a staff record', () => {
     expect(first.body.data.user.mustChangePassword).toBe(true);
   });
 
+  it('offers staff records without a sign-in to pick from, by name or staff number', async () => {
+    const res = await request(app()).get('/api/v1/users/candidates?q=temba').set(authed(admin.token));
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([{ staffNo: 'LFB0700', name: 'Baraka Temba', station: '' }]);
+    // Staff who already sign in are not offered.
+    expect((await request(app()).get('/api/v1/users/candidates?q=LFB0412').set(authed(admin.token))).body.data).toEqual([]);
+    // Only for people who manage users.
+    const juma = await signIn('LFB0233');
+    expect((await request(app()).get('/api/v1/users/candidates').set(authed(juma.token))).status).toBe(403);
+  });
+
+  it('says whether one-time codes are switched on, for the screens', async () => {
+    const list = await request(app()).get('/api/v1/users').set(authed(admin.token));
+    expect(typeof list.body.data.mfaEnabled).toBe('boolean');
+    const me = await request(app()).get('/api/v1/auth/me').set(authed(admin.token));
+    expect(typeof (me.body.data.mfaSystemEnabled ?? me.body.data.session?.mfaSystemEnabled)).toBe('boolean');
+  });
+
   it('refuses an unknown staff number and a duplicate account', async () => {
     expect((await request(app()).post('/api/v1/users').set(authed(admin.token)).send({ staffNo: 'LFB0701', temporaryPassword: 'Temp#2026x' })).status).toBe(400);
     expect((await request(app()).post('/api/v1/users').set(authed(admin.token)).send({ staffNo: 'LFB0412', temporaryPassword: 'Temp#2026x' })).status).toBe(409);

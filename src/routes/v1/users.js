@@ -24,6 +24,8 @@ router.use(requireAll('admin.users'));
  * /users:
  *   get: { tags: [Users], summary: "List users with roles, MFA and lock status", security: [{ bearer: [] }], responses: { 200: { description: Page of users } } }
  *   post: { tags: [Users], summary: Create a user for an existing staff record with a temporary password, security: [{ bearer: [] }], responses: { 201: { description: Created } } }
+ * /users/candidates:
+ *   get: { tags: [Users], summary: "Active staff records without a sign-in, for Add user", security: [{ bearer: [] }], responses: { 200: { description: Up to 20 matches } } }
  * /users/{id}:
  *   get: { tags: [Users], summary: User detail with effective permissions, security: [{ bearer: [] }], responses: { 200: { description: User } } }
  * /users/{id}/activate:
@@ -52,6 +54,11 @@ router.get(
     }),
   }),
   asyncHandler(UserController.list)
+);
+router.get(
+  '/candidates',
+  validate({ query: Joi.object({ q: Joi.string().trim().max(80).allow('') }) }),
+  asyncHandler(UserController.candidates)
 );
 router.post(
   '/',
