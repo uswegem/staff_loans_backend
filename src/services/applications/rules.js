@@ -254,7 +254,7 @@ function evaluate(ctx, input) {
   const slip = payslipProblem(input.payslip, ctx.settings, ctx.today);
   if (slip) fields.payslip = slip;
   const checks = loanChecks(input, ctx.version, ctx.staff, q, ctx.settings);
-  const flags = elig.onProbation ? ['Applied during probation: verify the reason (NS-01).'] : [];
+  const flags = elig.onProbation ? ['Applied during probation: check the reason they gave.'] : [];
   // No salary record to compare the payslip with (D-100): HR confirm Basic Pay from the payslip.
   // D-101: a staff loan line that matches no product still counts against Room; reviewers are told.
   ded.unmatched.forEach((l) => flags.push(`The payslip shows a staff loan deduction that matches no product: ${l.label}, ${tzs(l.amount)}. It is counted against Room; confirm it with Payroll.`));

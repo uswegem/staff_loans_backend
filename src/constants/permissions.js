@@ -70,7 +70,7 @@ const SOD_RULES = Object.freeze([
   {
     id: 'sod3',
     name: 'The two product approvals are held by different people',
-    why: 'No product goes live, changes or is withdrawn without two separate approvals (BRD 5.1, D-89). A maker never approves their own version either.',
+    why: 'No product goes live, changes or is withdrawn without two separate approvals. A maker never approves their own version either.',
     all: ['products.approveCredit', 'products.approveRisk'],
   },
 ]);

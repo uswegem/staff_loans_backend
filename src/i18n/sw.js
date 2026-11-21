@@ -209,7 +209,7 @@ module.exports = [
   ['Say why you are applying during probation. People and Culture will verify it.', 'Eleza kwa nini unaomba ukiwa kwenye matazamio. Rasilimali Watu wataithibitisha.'],
   ['Choose one of the options for {a}.', 'Chagua mojawapo ya machaguo ya {a}.'],
   ['Salary deduction is the only repayment method.', 'Makato ya mshahara ndiyo njia pekee ya urejeshaji.'],
-  ['Applied during probation: verify the reason (NS-01).', 'Ameomba akiwa kwenye matazamio: thibitisha sababu (NS-01).'],
+  ['Applied during probation: check the reason they gave.', 'Ameomba akiwa kwenye matazamio: angalia sababu aliyotoa.'],
 
   // ---------- payslip ----------
   ['Attach your latest payslip. Basic Pay and LFB deductions are read from it.', 'Ambatisha hati yako ya mshahara ya karibuni. Mshahara wa Msingi na makato ya LFB husomwa kutoka humo.'],
@@ -268,7 +268,7 @@ module.exports = [
   ['Choose approve, return or reject.', 'Chagua kuidhinisha, kurudisha au kukataa.'],
   ['Add a comment so the applicant knows what to do.', 'Andika maoni ili mwombaji ajue la kufanya.'],
   ['Add a comment about the arrears.', 'Andika maoni kuhusu malimbikizo.'],
-  ['Add a comment: the Credit Analyst recorded arrears (BR-10).', 'Andika maoni: Mchambuzi wa Mikopo amerekodi malimbikizo (BR-10).'],
+  ['Add a comment: the Credit Analyst recorded arrears.', 'Andika maoni: Mchambuzi wa Mikopo amerekodi malimbikizo.'],
   ['Record the credit bureau outcome before approving.', 'Rekodi matokeo ya CRB kabla ya kuidhinisha.'],
   ['Choose the bureau report file.', 'Chagua faili la ripoti ya CRB.'],
   ['Only the Credit Analyst at this stage can attach the bureau report.', 'Mchambuzi wa Mikopo wa hatua hii tu ndiye anayeweza kuambatisha ripoti ya CRB.'],

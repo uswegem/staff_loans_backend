@@ -39,7 +39,7 @@ function toXlsx(report) {
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, report.name.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '));
   const about = [['Report', report.name], ['Generated', new Date().toISOString()], ...Object.entries(report.filters || {}).filter(([, v]) => v).map(([k, v]) => [k, String(v)])];
-  if (report.limitedCount) about.push(['Limited details', `${report.limitedCount} row(s) show name only (FR-55)`]);
+  if (report.limitedCount) about.push(['Limited details', `${report.limitedCount} row(s) show name only`]);
   XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(about), 'About');
   return XLSX.write(book, { type: 'buffer', bookType: 'xlsx' });
 }
