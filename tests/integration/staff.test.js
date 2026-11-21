@@ -95,6 +95,7 @@ describe('staff records (FR-01)', () => {
     for (const m of messages) expect(m).not.toMatch(/\b[a-z]+[A-Z]\w*\b/); // no staffNo, userName, dateJoined …
     expect(res.body.details.staffNo).toEqual(['Enter the staff number.']);
     expect(res.body.details.dateJoined).toEqual(['Choose the date joined.']);
+    expect(res.body.details.station).toEqual(['Enter the work station.']);
     const sw = await request(app()).post('/api/v1/staff').set(authed(grace.token)).set('Accept-Language', 'sw').send({});
     expect(sw.body.details.staffNo).toEqual(['Weka namba ya mfanyakazi.']);
     expect(sw.body.details.lastName).toEqual(['Weka jina la ukoo.']);
