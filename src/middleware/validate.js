@@ -1,8 +1,10 @@
 'use strict';
 
-// Joi validation for body, query and params. Unknown keys are stripped.
+// Joi validation for body, query and params. Unknown keys are stripped. Messages name
+// fields in plain words, never by their keys (validationMessages.js).
 
 const { badRequest } = require('../utils/errors');
+const { friendly } = require('./validationMessages');
 
 function validate(schemas) {
   const mw = (req, res, next) => {
@@ -13,7 +15,7 @@ function validate(schemas) {
         const details = {};
         for (const d of error.details) {
           const key = d.path.join('.') || part;
-          (details[key] = details[key] || []).push(d.message.replace(/"/g, ''));
+          (details[key] = details[key] || []).push(friendly(d));
         }
         return next(badRequest('Check the highlighted fields.', details));
       }
