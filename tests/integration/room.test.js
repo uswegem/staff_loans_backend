@@ -115,6 +115,27 @@ describe('top-ups of payslip deductions (D-101)', () => {
     expect(app.topUp.applicationId).toBeUndefined();
   });
 
+  it("keeps the staff member's top-up choice, an unticked one included, across reloads and payslips (chosen)", async () => {
+    const { neema, id, view } = await draft({ lines: [PL_LINE(150000)] });
+    expect(view.topUp).toMatchObject({ on: false, chosen: false });
+    const a = api(neema.token);
+    const ticked = await a.patch(`/applications/${id}`, { topUp: { on: true } });
+    expect(ticked.body.data.topUp).toMatchObject({ on: true, chosen: false });
+
+    const unticked = await a.patch(`/applications/${id}`, { topUp: { on: false, chosen: true } });
+    expect(unticked.status).toBe(200);
+    expect(unticked.body.data.topUp).toMatchObject({ on: false, chosen: true });
+    expect((await a.get(`/applications/${id}`)).body.data.topUp).toMatchObject({ on: false, chosen: true });
+    expect((await Application.findById(id).lean()).topUp).toMatchObject({ on: false, chosen: true });
+
+    // A new payslip, or an edit that leaves chosen out, does not reset the choice.
+    expect((await attachPayslip(neema, id, { lfbLines: [PL_LINE(160000)] })).status).toBe(201);
+    await a.patch(`/applications/${id}`, { purpose: 'School fees and books' });
+    expect((await a.get(`/applications/${id}`)).body.data.topUp).toMatchObject({ on: false, chosen: true });
+    const again = await a.patch(`/applications/${id}`, { topUp: { on: true } });
+    expect(again.body.data.topUp).toMatchObject({ on: true, chosen: true });
+  });
+
   it('is refused when the payslip shows no deduction for the product', async () => {
     const { view } = await draft({ lines: [VL_LINE(100000)], topUp: { on: true } });
     expect(view.checks.fieldErrors['topUp.on']).toBe('Your payslip shows no Personal Loan deduction (Staff Loan - Personal), so there is no loan to top up. Untick top-up to apply for a new loan, or attach a payslip that shows it.');
