@@ -262,7 +262,7 @@ const ProductController = {
       success: true,
       data: {
         live: live ? { ...summary(live), ...values(PRICING_FIELDS, live) } : null,
-        openChange: open ? summary(open) : null,
+        openChange: approvalSummary(req, open),
         versions: versions.map((v) => meta(v, names)),
       },
     });
