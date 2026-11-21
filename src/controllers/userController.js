@@ -19,6 +19,7 @@ const credentials = require('../services/auth/credentialProvider');
 const rbac = require('../services/rbac/rbacService');
 const audit = require('../services/audit/auditService');
 const { withTransaction } = require('../config/db');
+const env = require('../config/env');
 const { badRequest, notFound, conflict, forbidden } = require('../utils/errors');
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -79,11 +80,23 @@ const UserController = {
       filter._id = { $in: ids };
     }
     const [total, users] = await Promise.all([User.countDocuments(filter), User.find(filter).sort({ staffNo: 1 }).skip((page - 1) * limit).limit(limit)]);
-    res.json({ success: true, data: { items: await Promise.all(users.map(present)), total, page, limit } });
+    res.json({ success: true, data: { items: await Promise.all(users.map(present)), total, page, limit, mfaEnabled: !!env.config.mfaEnabled } });
   },
 
   async get(req, res) {
     res.json({ success: true, data: await present(await load(req.params.id)) });
+  },
+
+  /** Active staff records that have no sign-in yet, matching q: what Add user offers to pick from. */
+  async candidates(req, res) {
+    const withUser = await User.distinct('staffId');
+    const filter = { status: 'active', _id: { $nin: withUser } };
+    if (req.query.q) {
+      const re = new RegExp(req.query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ firstName: re }, { lastName: re }, { staffNo: re }];
+    }
+    const rows = await Staff.find(filter).select('staffNo firstName lastName station').sort({ staffNo: 1 }).limit(20).lean();
+    res.json({ success: true, data: rows.map((s) => ({ staffNo: s.staffNo, name: fullName(s), station: s.station || '' })) });
   },
 
   async create(req, res) {

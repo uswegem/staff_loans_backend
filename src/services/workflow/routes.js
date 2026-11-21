@@ -6,7 +6,7 @@
 
 const STAGES = Object.freeze({
   credit: { key: 'credit', label: 'Credit Analyst', permission: 'review.credit', status: 'pending_credit', target: 'stage' },
-  pcm: { key: 'pcm', label: 'People and Culture Manager', short: 'P&C Manager', permission: 'review.pcm', status: 'pending_pcm', target: 'stage' },
+  pcm: { key: 'pcm', label: 'People and Culture Manager', permission: 'review.pcm', status: 'pending_pcm', target: 'stage' },
   hr: { key: 'hr', label: 'Head of People and Culture', short: 'Head of HR', permission: 'review.hr', status: 'pending_hr', target: 'stage' },
   ceo: { key: 'ceo', label: 'CEO', permission: 'review.ceo', status: 'pending_ceo', target: 'ceo' },
 });

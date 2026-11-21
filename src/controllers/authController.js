@@ -65,6 +65,8 @@ async function profileFor(user) {
     roles: eff.roles,
     permissions: [...eff.permissions].sort(),
     mfaRequired: eff.mfaRequired,
+    // Whether one-time codes are switched on at all, so screens can leave out MFA text while off.
+    mfaSystemEnabled: !!config.mfaEnabled,
   };
 }
 
