@@ -63,7 +63,10 @@ function friendly(detail) {
   // A schema's own .messages() text does not start with the field key: keep it.
   if (!ctxLabel || !raw.startsWith(String(ctxLabel))) return raw;
   const label = labelOf(detail.path || []);
-  const isDate = /date|joined|from|until|^to$|on$/i.test(label) || DATE_TYPES.has(detail.type);
+  // Dates are chosen, other values entered. Judged by the key (dateJoined, effectiveFrom,
+  // disbursedOn), not the label: "work station" must not read as a date.
+  const key = [...(detail.path || [])].reverse().find((p) => typeof p === 'string') || '';
+  const isDate = /^(date|from|until|to)$|(Date|Joined|On|From|Until)$/.test(key) || DATE_TYPES.has(detail.type);
   const { limit } = detail.context || {};
   switch (detail.type) {
     case 'any.required':

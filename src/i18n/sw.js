@@ -164,6 +164,7 @@ module.exports = [
   ['Use Change password for your own account.', 'Tumia Badilisha nenosiri kwa akaunti yako mwenyewe.'],
 
   // ---------- profile and date of birth ----------
+  ['Your date of birth ({date}) is verified. You can apply for a loan once your profile is complete.', 'Tarehe yako ya kuzaliwa ({date}) imethibitishwa. Unaweza kuomba mkopo wasifu wako ukikamilika.'],
   ['Date of birth sent for verification.', 'Tarehe ya kuzaliwa imetumwa kwa uthibitisho.'],
   ['Date of birth {a} verified.', 'Tarehe ya kuzaliwa {a} imethibitishwa.'],
   ['Change rejected.', 'Badiliko limekataliwa.'],
