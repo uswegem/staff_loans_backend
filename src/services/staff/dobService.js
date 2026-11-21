@@ -157,7 +157,8 @@ async function approve(req, id) {
       { session }
     );
   });
-  await notifyStaff(staff, `Your date of birth (${change.proposed}) is verified.`);
+  // Verification is often the last thing standing between staff and applying: link straight to Apply.
+  await notifyStaff(staff, `Your date of birth (${change.proposed}) is verified. You can apply for a loan once your profile is complete.`, '/apply');
   return DobChange.findById(id).lean();
 }
 
@@ -192,9 +193,9 @@ async function withdraw(req, id) {
   return DobChange.findById(id).lean();
 }
 
-async function notifyStaff(staff, text) {
+async function notifyStaff(staff, text, href = '/profile') {
   const user = await User.findOne({ staffId: staff._id }).select('_id').lean();
-  if (user) await notify.notifyUsers([user._id], { type: 'dob.decided', text, href: '/profile', entity: 'Staff', entityId: String(staff._id) });
+  if (user) await notify.notifyUsers([user._id], { type: 'dob.decided', text, href, entity: 'Staff', entityId: String(staff._id) });
 }
 
 module.exports = { submit, propose, list, approve, reject, withdraw, statusOf, problemWith, ageOn };

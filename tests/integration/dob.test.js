@@ -55,6 +55,9 @@ describe('a date of birth change waits for People and Culture (D-82)', () => {
     expect(change.decidedAt).toBeInstanceOf(Date);
     const fresh = await api(neema.token).get(`/applications/${draft.body.data.id}`);
     expect(fresh.body.data.retirement.dateOfBirth).toBe('1990-01-10');
+    // Neema is told, with a link straight to Apply.
+    const notes = (await api(neema.token).get('/notifications')).body.data.items;
+    expect(notes.find((n) => n.type === 'dob.decided')).toMatchObject({ text: 'Your date of birth (1990-01-10) is verified. You can apply for a loan once your profile is complete.', href: '/apply' });
   });
 
   it('the submitter cannot verify it, even as HR; another verifier can', async () => {
