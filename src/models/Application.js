@@ -40,6 +40,9 @@ const applicationSchema = new Schema(
     },
     topUp: {
       on: { type: Boolean, default: false },
+      // Whether the staff member ticked or unticked top-up themselves. Until they do, the
+      // web app ticks it when the payslip shows this product's deduction; after, it keeps their choice.
+      chosen: { type: Boolean, default: false },
       applicationId: { type: Schema.Types.ObjectId, ref: 'Application' }, // the SLAS loan topped up, when there is one (D-87, D-101)
       payslipLine: { label: String, amount: Number }, // the payslip deduction topped up (D-101)
       loanRef: String,

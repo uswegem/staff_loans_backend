@@ -71,7 +71,7 @@ function inputOf(app) {
     purpose: app.purpose,
     productFields: app.productFields || {},
     repayment: app.repayment || { method: 'payroll' },
-    topUp: app.topUp || { on: false },
+    topUp: app.topUp || { on: false, chosen: false },
     probationReason: app.probation?.reason,
     payslip: app.payslip?.fileId ? app.payslip : null,
   };
@@ -239,7 +239,9 @@ async function update(req, app, body) {
     // D-101: a top-up is of a payslip deduction; the line chosen when the payslip shows several.
     // A running SLAS loan of the product is linked by the rules and saved at submission.
     const line = body.topUp.payslipLine?.label ? { label: body.topUp.payslipLine.label, amount: body.topUp.payslipLine.amount } : undefined;
-    app.topUp = body.topUp.on ? { on: true, payslipLine: line } : { on: false };
+    // chosen stays once set, so a later default never overrides the staff member's choice.
+    const chosen = !!body.topUp.chosen || !!app.topUp?.chosen;
+    app.topUp = body.topUp.on ? { on: true, chosen, payslipLine: line } : { on: false, chosen };
   }
   if (body.probationReason !== undefined) app.set('probation.reason', body.probationReason);
   app.markModified('productFields');
@@ -379,12 +381,13 @@ async function signAndSubmit(req, app, body) {
       topUp: fresh.topUp?.on
         ? {
             on: true,
+            chosen: !!fresh.topUp.chosen,
             payslipLine: result.deductions.topUpLine >= 0 ? { label: result.deductions.lines[result.deductions.topUpLine].label, amount: result.deductions.lines[result.deductions.topUpLine].amount } : undefined,
             applicationId: result.deductions.topUpLoan?.applicationId || undefined,
             loanRef: result.deductions.topUpLoan?.ref || undefined,
             instalment: result.deductions.topUpLoan?.instalment ?? (result.deductions.topUpLine >= 0 ? result.deductions.lines[result.deductions.topUpLine].amount : undefined),
           }
-        : { on: false },
+        : { on: false, chosen: !!fresh.topUp?.chosen },
       recommended: undefined,
       approved: undefined,
       hrChecks: undefined,
