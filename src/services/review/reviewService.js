@@ -155,7 +155,7 @@ async function decide(req, app, body) {
   }
   // BR-10: only applications whose arrears note was recorded before D-99 (no longer entered).
   if (action === 'approve' && stage !== 'credit' && app.arrearsNote && !comment) {
-    throw badRequest('Add a comment: the Credit Analyst recorded arrears (BR-10).', { comment: ['Add a comment about the arrears.'] }, 'COMMENT_REQUIRED');
+    throw badRequest('Add a comment: the Credit Analyst recorded arrears.', { comment: ['Add a comment about the arrears.'] }, 'COMMENT_REQUIRED');
   }
 
   const now = new Date();
