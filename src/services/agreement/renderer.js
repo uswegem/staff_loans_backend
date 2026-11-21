@@ -14,8 +14,25 @@ const crypto = require('crypto');
 
 const PLACEHOLDER = /\{\{(\w+)\}\}/g;
 
+// Words that only introduce a party detail ("wa {{poBox}}", "simu {{mobile}}"): left out with it.
+const LEADS = ['wa', 'simu', 'ya', 'of', 'phone'];
+
+/**
+ * A value set to null is not known: its placeholder goes, with the word that introduces it
+ * and the comma after it, so the text never shows an empty value or a dash.
+ */
+function omitMissing(line, values) {
+  let out = line;
+  for (const [key, v] of Object.entries(values)) {
+    if (v !== null || !out.includes(`{{${key}}}`)) continue;
+    out = out.replace(new RegExp(`(?:\\s+(?:${LEADS.join('|')}))?\\s*\\{\\{${key}\\}\\}\\s*,?`, 'g'), '');
+  }
+  return out === line ? line : out.replace(/\s+,/g, ',').replace(/,\s*\(/g, ' (').replace(/\s{2,}/g, ' ');
+}
+
 /** Splits a line into parts, replacing placeholders. A value may be a string or parts. */
-function fill(line, values) {
+function fill(raw, values) {
+  const line = omitMissing(raw, values);
   const parts = [];
   let last = 0;
   for (const m of line.matchAll(PLACEHOLDER)) {

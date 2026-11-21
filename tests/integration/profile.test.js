@@ -14,6 +14,7 @@ let products;
 const api = (token) => ({
   get: (url) => request(app()).get(`/api/v1${url}`).set(authed(token)),
   patch: (url, body) => request(app()).patch(`/api/v1${url}`).set(authed(token)).send(body),
+  post: (url, body = {}) => request(app()).post(`/api/v1${url}`).set(authed(token)).send(body),
 });
 
 beforeEach(async () => {
@@ -205,5 +206,16 @@ describe('eligibility view (NS-02, NS-03)', () => {
     expect(pl.daysRemaining).toBeLessThanOrEqual(155);
     expect(pl.reasons[0]).toMatch(/^You applied for a Personal Loan on .+\. You can apply for this product again from .+ \(\d+ days\)\.$/);
     expect(res.body.data.products.find((p) => p.name === 'Vehicle Loan').canApply).toBe(true);
+  });
+
+  it('agrees with Apply: a product with an open application cannot be applied for, and names it', async () => {
+    const neema = await signIn('LFB0412');
+    const draft = (await api(neema.token).post('/applications', { productId: String(products.VL._id) })).body.data;
+    const res = await api(neema.token).get('/me/eligibility');
+    const vl = res.body.data.products.find((p) => p.name === 'Vehicle Loan');
+    expect(vl.canApply).toBe(false);
+    expect(vl.openApplication).toEqual({ id: draft.id, ref: draft.ref, status: 'draft' });
+    expect(vl.reasons).toContain(`You already have an open Vehicle Loan application (${draft.ref}). Finish or withdraw it first.`);
+    expect(res.body.data.products.find((p) => p.name === 'Personal Loan').openApplication).toBeNull();
   });
 });

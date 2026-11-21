@@ -8,6 +8,8 @@ const { liveProducts } = require('../products/productService');
 const { completeness } = require('./profileService');
 const { cutoffProblem, cutoffFor, dobProblem } = require('./retirement');
 const Settings = require('../../models/Settings');
+const Application = require('../../models/Application');
+const { OPEN } = require('../../constants/statuses');
 const { addMonths, localDay, localMidnight } = require('../../utils/dates');
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -74,7 +76,13 @@ function applyBlockers(staff) {
 }
 
 async function eligibilityFor(staff, now = new Date()) {
-  const [profile, products, settings] = await Promise.all([completeness(staff), liveProducts(now), Settings.get()]);
+  const [profile, products, settings, openApps] = await Promise.all([
+    completeness(staff),
+    liveProducts(now),
+    Settings.get(),
+    // The same open-application check the application rules make, so Home agrees with Apply.
+    Application.find({ applicantStaffId: staff._id, status: { $in: OPEN } }, { productId: 1, ref: 1, status: 1 }).lean(),
+  ]);
   const records = recordProblems(staff);
   const items = products.map(({ product, version }) => {
     const reasons = [];
@@ -85,6 +93,8 @@ async function eligibilityFor(staff, now = new Date()) {
     const c = cooling(staff, product._id, version.reapplyCoolingMonths, now);
     const waiting = c && c.daysRemaining > 0;
     if (waiting) reasons.push(coolingMessage(version.name, c));
+    const open = openApps.find((a) => String(a.productId) === String(product._id));
+    if (open) reasons.push(`You already have an open ${version.name} application (${open.ref}). Finish or withdraw it first.`);
     return {
       productId: String(product._id),
       versionId: String(version._id),
@@ -96,6 +106,7 @@ async function eligibilityFor(staff, now = new Date()) {
       lastAppliedAt: c?.lastAppliedAt || null,
       nextEligibleDate: waiting ? c.nextEligibleDate : null,
       daysRemaining: waiting ? c.daysRemaining : 0,
+      openApplication: open ? { id: String(open._id), ref: open.ref, status: open.status } : null,
     };
   });
   // blockers: what stops every product being applied for, once the profile is complete.
