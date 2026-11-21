@@ -152,6 +152,19 @@ async function loadPricingVersion(vid) {
   return { version, chain: pricingChain() };
 }
 
+function actionable(req, v) {
+  if (!v || v.state !== 'pending_approval' || !v.stage) return false;
+  const me = String(req.auth.user._id);
+  return !!mc.STAGE_PERMISSION[v.stage] && req.auth.permissions.has(mc.STAGE_PERMISSION[v.stage])
+    && !v.editors.some((id) => String(id) === me)
+    && !(v.approvals || []).some((a) => String(a.by) === me);
+}
+
+function approvalSummary(req, v) {
+  if (!v) return null;
+  return { ...summary(v), stage: v.stage || null, stageLabel: mc.STAGE_NAME[v.stage] || null, canCheck: actionable(req, v) };
+}
+
 function summary(v) {
   if (!v) return null;
   return { id: String(v._id), version: v.version, state: v.state, changeType: v.changeType, effectiveFrom: localDay(v.effectiveFrom), liveFrom: v.liveFrom };
@@ -200,7 +213,7 @@ const ProductController = {
         configuration: live && live.changeType !== 'deactivate' ? await require('../services/products/configReadiness').assess(live) : null,
         live: live ? { ...summary(live), ...values(PRODUCT_FIELDS, live) } : null,
         scheduled: latest && (!live || String(latest._id) !== String(live._id)) ? summary(latest) : null,
-        openChange: open ? summary(open) : null,
+        openChange: approvalSummary(req, open),
       });
     }
     res.json({ success: true, data: rows });
@@ -249,7 +262,7 @@ const ProductController = {
       success: true,
       data: {
         live: live ? { ...summary(live), ...values(PRICING_FIELDS, live) } : null,
-        openChange: open ? summary(open) : null,
+        openChange: approvalSummary(req, open),
         versions: versions.map((v) => meta(v, names)),
       },
     });
