@@ -11,6 +11,35 @@ const mc = require('./makerChecker');
 const { PRODUCT_FIELDS, validateProduct } = require('./productRules');
 const { PRICING_FIELDS, validatePricing } = require('./pricingRules');
 const { notFound } = require('../../utils/errors');
+const { normLabel } = require('../payslip/deductionLines');
+const { OPEN_STATES } = require('../../models/plugins/makerChecker');
+
+/**
+ * Each product has its own payslip deduction label: a payslip line is matched to exactly
+ * one product, so a shared label would credit the line to the wrong product (D-101).
+ * Compared with every other product's approved label and its open change, ignoring case,
+ * spaces and punctuation as the matching does. Inactive products count: their loans run on.
+ */
+async function payslipLabelClash(product, values, session) {
+  const mine = normLabel(values.payslipLabel);
+  if (!mine) return {};
+  const others = await ProductVersion.find({ productId: { $ne: product._id }, $or: [{ approvedAt: { $ne: null } }, { state: { $in: OPEN_STATES } }] })
+    .sort({ liveFrom: -1, version: -1 })
+    .select('productId name payslipLabel approvedAt state')
+    .session(session || null)
+    .lean();
+  const seen = new Set();
+  for (const v of others) {
+    const key = `${v.productId}:${v.approvedAt ? 'approved' : 'open'}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      if (normLabel(v.payslipLabel) === mine) {
+        return { payslipLabel: [`${values.payslipLabel} is already the payslip deduction label of ${v.name}. Each product needs its own label, as printed on the payslip.`] };
+      }
+    }
+  }
+  return {};
+}
 
 // Optional values a brand-new product starts with (the maker can change any of them).
 const PRODUCT_DEFAULTS = {
@@ -34,6 +63,7 @@ const productChain = (product) => ({
   entity: 'ProductVersion',
   audit: 'product',
   describe: (v) => `${v.name || product.code} (${product.code}) version ${v.version}`,
+  crossCheck: (values, session) => payslipLabelClash(product, values, session),
 });
 
 const pricingChain = () => ({
