@@ -7,6 +7,8 @@
 module.exports = [
   // ---------- general ----------
   ['Check the highlighted fields.', 'Kagua sehemu zilizoangaziwa.'],
+  // Product payslip deduction labels are unique (D-101).
+  ['{label} is already the payslip deduction label of {name}. Each product needs its own label, as printed on the payslip.', '{label} tayari ni lebo ya makato kwenye hati ya mshahara ya {name}. Kila bidhaa inahitaji lebo yake, kama ilivyoandikwa kwenye hati ya mshahara.'],
   // Validation messages (src/middleware/validationMessages.js); {label} is translated below.
   ['Enter the {label}.', 'Weka {label}.'],
   ['Choose the {label}.', 'Chagua {label}.'],

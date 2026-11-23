@@ -97,6 +97,34 @@ describe('maker drafts a change (FR-58)', () => {
     expect(past.body.code).toBe('EFFECTIVE_DATE_PASSED');
   });
 
+  it('each product has its own payslip deduction label: a shared one is refused (D-101)', async () => {
+    // Vehicle Loan already uses "Staff Loan - Vehicle"; case, spaces and punctuation do not make it different.
+    const clash = await draft({ values: { payslipLabel: 'STAFF LOAN VEHICLE' } });
+    expect(clash.status).toBe(400);
+    expect(clash.body.details.payslipLabel[0]).toBe('STAFF LOAN VEHICLE is already the payslip deduction label of Vehicle Loan. Each product needs its own label, as printed on the payslip.');
+    const sw = await request(app()).post(`/api/v1/admin/products/${pl()}/drafts`).set(authed(maker.token)).set('Accept-Language', 'sw').send({ effectiveFrom: today(), values: { payslipLabel: 'STAFF LOAN VEHICLE' } });
+    expect(sw.body.details.payslipLabel[0]).toBe('STAFF LOAN VEHICLE tayari ni lebo ya makato kwenye hati ya mshahara ya Vehicle Loan. Kila bidhaa inahitaji lebo yake, kama ilivyoandikwa kwenye hati ya mshahara.');
+    // A label of its own is fine, even one another label starts with.
+    expect((await draft({ values: { payslipLabel: 'STAFF LOAN' } })).status).toBe(201);
+  });
+
+  it('a label another product has in an open change is refused too, and approval checks again', async () => {
+    const vl = String(products.VL._id);
+    const vlDraft = await draft({ values: { payslipLabel: 'CAR LOAN' } }, vl);
+    expect(vlDraft.status).toBe(201);
+    const plDraft = await draft({ values: { payslipLabel: 'Car Loan' } });
+    expect(plDraft.status).toBe(400);
+    expect(plDraft.body.details.payslipLabel[0]).toMatch(/already the payslip deduction label of Vehicle Loan/);
+
+    // Personal Loan takes "STAFF LOAN" and is submitted; meanwhile Vehicle Loan's change is edited to the same.
+    const ok = await draft({ values: { payslipLabel: 'STAFF LOAN' } });
+    expect((await submit(ok.body.data.id)).status).toBe(200);
+    await ProductVersion.updateOne({ _id: vlDraft.body.data.id }, { $set: { payslipLabel: 'STAFF LOAN' } });
+    const res = await approveAs(ok.body.data.id, checker);
+    expect(res.status).toBe(400);
+    expect(res.body.details.payslipLabel[0]).toMatch(/already the payslip deduction label of Vehicle Loan/);
+  });
+
   it('allows one open change per product', async () => {
     await draft({ values: { maxTenor: 72 } });
     const second = await draft({ values: { maxTenor: 84 } });

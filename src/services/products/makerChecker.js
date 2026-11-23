@@ -4,7 +4,8 @@
 // FR-58 to FR-63, decision 32). Used for product versions and for pricing.
 //
 // A chain is the series of versions of one thing:
-//   { Model, filter, fields, validate, entity, describe(doc), defaults (for a first version) }
+//   { Model, filter, fields, validate, entity, describe(doc), defaults (for a first version),
+//     crossCheck(values, session): optional async check against other chains, returns field errors }
 // Rules enforced here:
 //   - one open change (draft, rejected or pending approval) per chain (DECISIONS D-35)
 //   - saving validates every value and returns the comparison with the live version (FR-58)
@@ -39,6 +40,13 @@ function openChange(chain, session) {
 
 function refuseIfInvalid(chain, values) {
   const errors = chain.validate(values);
+  if (Object.keys(errors).length) throw badRequest('Check the highlighted values.', errors, 'INVALID_VALUES');
+}
+
+/** Values that clash with another chain (e.g. a payslip label another product uses) are refused. */
+async function refuseIfClash(chain, values, session) {
+  if (!chain.crossCheck) return;
+  const errors = await chain.crossCheck(values, session);
   if (Object.keys(errors).length) throw badRequest('Check the highlighted values.', errors, 'INVALID_VALUES');
 }
 
@@ -84,6 +92,7 @@ async function createDraft(chain, { req, values, changeType = 'change', effectiv
   const base = await latestApproved(chain, session);
   const merged = { ...(base ? pick(chain.fields, base) : chain.defaults || {}), ...values };
   refuseIfInvalid(chain, merged);
+  await refuseIfClash(chain, merged, session);
   const last = await chain.Model.findOne(chain.filter).sort({ version: -1 }).select('version').session(session || null);
   const actor = req.auth.user._id;
   const [doc] = await chain.Model.create(
@@ -114,6 +123,7 @@ async function updateDraft(chain, doc, { req, values, effectiveFrom, note, sessi
   const next = doc.changeType === 'deactivate' ? {} : values; // a deactivation carries the live values unchanged
   const merged = { ...pick(chain.fields, doc), ...next };
   refuseIfInvalid(chain, merged);
+  await refuseIfClash(chain, merged, session);
   const set = { ...next, state: 'draft', makerId: req.auth.user._id };
   if (effectiveFrom) set.effectiveFrom = localMidnight(effectiveFrom);
   if (note !== undefined) set.note = note;
@@ -127,6 +137,7 @@ async function updateDraft(chain, doc, { req, values, effectiveFrom, note, sessi
 async function submit(chain, doc, { req, session }) {
   if (!EDITABLE_STATES.includes(doc.state)) throw conflict('Only drafts can be submitted.', 'NOT_EDITABLE');
   refuseIfInvalid(chain, pick(chain.fields, doc));
+  await refuseIfClash(chain, pick(chain.fields, doc), session);
   await checkEffectiveDate(chain, doc, session);
   const { changes } = await comparison(chain, doc, session);
   if (!changes.length && doc.changeType === 'change') throw badRequest('Nothing has changed from the live version.', undefined, 'NO_CHANGES');
@@ -161,6 +172,8 @@ function refuseSelfCheck(doc, req, verb) {
 async function approve(chain, doc, { req, session }) {
   if (doc.state !== 'pending_approval') throw conflict('Only versions waiting for approval can be approved.', 'NOT_PENDING');
   refuseSelfCheck(doc, req, 'approve');
+  // Checked again at approval: another product may have taken the value since submission.
+  await refuseIfClash(chain, pick(chain.fields, doc), session);
   await checkEffectiveDate(chain, doc, session);
   const now = new Date();
   const approvals = [...(doc.approvals || []), { stage: doc.stage, by: req.auth.user._id, at: now }];
