@@ -16,6 +16,8 @@ const templateSchema = new Schema(
     version: { type: String, required: true, unique: true, trim: true },
     status: { type: String, enum: STATES, default: 'pending_legal_approval' },
     body: { type: String, required: true },
+    // The language of the text; filled values, dates and the schedule are written in it.
+    language: { type: String, enum: ['sw', 'en'], default: 'sw' },
     sample: { type: Boolean, default: false }, // prototype clauses, not yet the Legal text (DECISIONS Q6)
     effectiveFrom: Date,
     note: String,

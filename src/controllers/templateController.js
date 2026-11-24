@@ -6,7 +6,7 @@
 const templates = require('../services/agreement/templateService');
 const { notFound } = require('../utils/errors');
 
-const view = (t) => ({ id: String(t._id), version: t.version, status: t.status });
+const view = (t) => ({ id: String(t._id), version: t.version, language: t.language || 'sw', status: t.status });
 
 const TemplateController = {
   async list(req, res) {
@@ -20,7 +20,7 @@ const TemplateController = {
   },
 
   async preview(req, res) {
-    res.json({ success: true, data: await templates.preview(req.body.body) });
+    res.json({ success: true, data: await templates.preview(req.body.body, req.body.language) });
   },
 
   async upload(req, res) {

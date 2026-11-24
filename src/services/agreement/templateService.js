@@ -13,8 +13,8 @@ const AgreementTemplate = require('../../models/AgreementTemplate');
 const Agreement = require('../../models/Agreement');
 const audit = require('../audit/auditService');
 const calc = require('../calc/loanCalculator');
-const { values, scheduleTable } = require('./agreementService');
-const { render } = require('./renderer');
+const { values, scheduleTable, LANGUAGES } = require('./agreementService');
+const { render, declarationsOf } = require('./renderer');
 const { livePricing } = require('../products/productService');
 const { namesOf } = require('../review/reviewView');
 const { localDay, localMidnight } = require('../../utils/dates');
@@ -38,7 +38,8 @@ async function sampleInput() {
     kind: 'original',
     agreementNumber: 'MKT-0000-00000',
     staff: { firstName: 'Mfano', lastName: 'Mwajiriwa', staffNo: 'LFB0000', personal: { poBox: 'S.L.P. 1', address: { house: '12', street: 'Mtaa wa Mfano', ward: 'Buguruni', district: 'Ilala', region: 'Dar-Es-Salaam' }, mobile: '+255700000000' } },
-    product: { name: 'Mkopo wa mfano' }, // sample name; code never names a real product
+    product: { name: 'Mkopo wa mfano', fields: [{ key: 'make', label: 'Make and model' }, { key: 'year', label: 'Year' }] }, // sample name; code never names a real product
+    fields: { make: 'Mfano X', year: 2020 },
     quote: q,
     amount: 4500000,
     tenor: 36,
@@ -48,11 +49,12 @@ async function sampleInput() {
 }
 
 /** Renders the body with the sample; returns { blocks, textSha256 } or throws 400 with the problems. */
-async function check(body, version = 'preview') {
+async function check(body, version = 'preview', language = 'sw') {
+  if (!LANGUAGES.includes(language)) throw badRequest('Choose English or Swahili.', { language: ['Choose English or Swahili.'] }, 'LANGUAGE_INVALID');
   const input = await sampleInput();
   let out;
   try {
-    out = render(body, values(input, version), scheduleTable(input.quote.schedule));
+    out = render(body, values(input, version, language), scheduleTable(input.quote.schedule, language));
   } catch (err) {
     throw badRequest(err.message.replace('Agreement template uses an unknown value', 'The text uses an unknown value'), { body: [err.message] }, 'TEMPLATE_INVALID');
   }
@@ -60,10 +62,10 @@ async function check(body, version = 'preview') {
   const missing = REQUIRED.filter((k) => !used.has(k));
   if (!used.has('schedule')) missing.push('schedule');
   if (missing.length) throw badRequest(`The text must include ${missing.map((k) => `{{${k}}}`).join(', ')}.`, { body: missing.map((k) => `Missing {{${k}}}`) }, 'TEMPLATE_INCOMPLETE');
-  return { blocks: out.blocks, textSha256: out.textSha256, placeholders: [...used].sort() };
+  return { blocks: out.blocks, textSha256: out.textSha256, placeholders: [...used].sort(), declarations: declarationsOf(out.blocks) };
 }
 
-const preview = (body) => check(body);
+const preview = (body, language) => check(body, 'preview', language);
 
 const STATE_LABEL = { pending_legal_approval: 'Pending Legal Approval', approved: 'Approved', rejected: 'Rejected' };
 
@@ -80,6 +82,7 @@ async function list() {
     return {
       id: String(t._id),
       version: t.version,
+      language: t.language || 'sw',
       status: t.status,
       statusLabel: STATE_LABEL[t.status],
       state,
@@ -103,20 +106,21 @@ async function list() {
 async function get(id) {
   const t = await AgreementTemplate.findById(id).lean();
   if (!t) return null;
-  return { id: String(t._id), version: t.version, status: t.status, statusLabel: STATE_LABEL[t.status], body: t.body, note: t.note || '', effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null, editorIds: (t.editors || []).map(String), rejectionReason: t.rejectionReason || null, ...(await check(t.body, t.version)) };
+  return { id: String(t._id), version: t.version, language: t.language || 'sw', status: t.status, statusLabel: STATE_LABEL[t.status], body: t.body, note: t.note || '', effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null, editorIds: (t.editors || []).map(String), rejectionReason: t.rejectionReason || null, ...(await check(t.body, t.version, t.language || 'sw')) };
 }
 
 function checkDate(effectiveFrom) {
   if (effectiveFrom < localDay()) throw badRequest('The date it is used from cannot be in the past.', { effectiveFrom: ['Today or later.'] }, 'DATE_INVALID');
 }
 
-/** Upload a new version (Legal Officer). body: { version, effectiveFrom, body, note } */
+/** Upload a new version (Legal Officer). body: { version, language, effectiveFrom, body, note } */
 async function upload(req, body) {
   if (await AgreementTemplate.exists({ version: body.version })) throw conflict(`Version ${body.version} already exists. Use a new version number.`, 'VERSION_EXISTS');
   checkDate(body.effectiveFrom);
-  const checked = await check(body.body, body.version);
-  const t = await AgreementTemplate.create({ version: body.version, status: 'pending_legal_approval', body: body.body, effectiveFrom: localMidnight(body.effectiveFrom), loadedBy: req.auth.user._id, editors: [req.auth.user._id], note: body.note || '' });
-  await audit.record({ req, action: 'template.upload', description: `Agreement template ${t.version} uploaded; pending Legal approval`, entity: 'AgreementTemplate', entityId: String(t._id), after: { version: t.version, status: t.status, effectiveFrom: body.effectiveFrom, sampleSha256: checked.textSha256 } });
+  const language = body.language || 'sw';
+  const checked = await check(body.body, body.version, language);
+  const t = await AgreementTemplate.create({ version: body.version, language, status: 'pending_legal_approval', body: body.body, effectiveFrom: localMidnight(body.effectiveFrom), loadedBy: req.auth.user._id, editors: [req.auth.user._id], note: body.note || '' });
+  await audit.record({ req, action: 'template.upload', description: `Agreement template ${t.version} uploaded; pending Legal approval`, entity: 'AgreementTemplate', entityId: String(t._id), after: { version: t.version, language, status: t.status, effectiveFrom: body.effectiveFrom, sampleSha256: checked.textSha256 } });
   return t;
 }
 
@@ -129,16 +133,18 @@ async function edit(req, id, body) {
   const t = await AgreementTemplate.findById(id);
   if (!t) throw notFound('Template not found.');
   if (body.effectiveFrom) checkDate(body.effectiveFrom);
-  const checked = await check(body.body, body.version || t.version);
+  const language = body.language || t.language || 'sw';
+  const checked = await check(body.body, body.version || t.version, language);
   if (t.status === 'approved') {
     if (!body.version || body.version === t.version) throw badRequest('Give the edited text a new version number. The approved version stays in use until the new one is approved.', { version: ['A new version number is required.'] }, 'NEW_VERSION_REQUIRED');
     if (await AgreementTemplate.exists({ version: body.version })) throw conflict(`Version ${body.version} already exists. Use a new version number.`, 'VERSION_EXISTS');
-    const next = await AgreementTemplate.create({ version: body.version, status: 'pending_legal_approval', body: body.body, effectiveFrom: localMidnight(body.effectiveFrom || localDay()), basedOnId: t._id, loadedBy: req.auth.user._id, editors: [req.auth.user._id], note: body.note || '' });
+    const next = await AgreementTemplate.create({ version: body.version, language, status: 'pending_legal_approval', body: body.body, effectiveFrom: localMidnight(body.effectiveFrom || localDay()), basedOnId: t._id, loadedBy: req.auth.user._id, editors: [req.auth.user._id], note: body.note || '' });
     await audit.record({ req, action: 'template.edit', description: `Agreement template ${t.version} edited as new version ${next.version}; pending Legal approval (${t.version} stays in use)`, entity: 'AgreementTemplate', entityId: String(next._id), before: { version: t.version, status: t.status }, after: { version: next.version, status: next.status, basedOn: t.version, sampleSha256: checked.textSha256 } });
     return next;
   }
-  const before = { body: t.body, note: t.note, status: t.status, effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null };
+  const before = { body: t.body, language: t.language || 'sw', note: t.note, status: t.status, effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null };
   t.body = body.body;
+  t.language = language;
   if (body.note !== undefined) t.note = body.note;
   if (body.effectiveFrom) t.effectiveFrom = localMidnight(body.effectiveFrom);
   t.status = 'pending_legal_approval';
@@ -147,7 +153,7 @@ async function edit(req, id, body) {
   t.rejectionReason = undefined;
   if (!t.editors.some((e) => String(e) === String(req.auth.user._id))) t.editors.push(req.auth.user._id);
   await t.save();
-  await audit.record({ req, action: 'template.edit', description: `Agreement template ${t.version} edited; pending Legal approval`, entity: 'AgreementTemplate', entityId: String(t._id), before, after: { body: t.body, note: t.note, status: t.status, effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null, sampleSha256: checked.textSha256 } });
+  await audit.record({ req, action: 'template.edit', description: `Agreement template ${t.version} edited; pending Legal approval`, entity: 'AgreementTemplate', entityId: String(t._id), before, after: { body: t.body, language: t.language, note: t.note, status: t.status, effectiveFrom: t.effectiveFrom ? localDay(t.effectiveFrom) : null, sampleSha256: checked.textSha256 } });
   return t;
 }
 
@@ -180,4 +186,4 @@ async function reject(req, id, reason) {
   return done;
 }
 
-module.exports = { list, get, upload, edit, approve, reject, preview, REQUIRED };
+module.exports = { list, get, upload, edit, approve, reject, preview, check, REQUIRED };

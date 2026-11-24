@@ -7,17 +7,37 @@
 
 const AgreementTemplate = require('../../models/AgreementTemplate');
 const { render, sentence } = require('./renderer');
-const { amountInWords, tshs, dateSw } = require('./swahili');
+const sw = require('./swahili');
+const en = require('./english');
 const { notFound } = require('../../utils/errors');
 const { addressLine } = require('../reference/locationService');
 
-const pctSw = (bps) => `${Number.parseFloat((bps / 100).toFixed(2))}%`;
+const pct = (bps) => `${Number.parseFloat((bps / 100).toFixed(2))}%`;
+
+const LANGUAGES = ['sw', 'en'];
+
+/** The product's own application fields as one line ("Make: Toyota; Year: 2019"), or null. */
+function productDetails(product, fields) {
+  const shown = (product.fields || [])
+    .map((f) => [f, fields?.[f.key]])
+    .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+    // Money is grouped (24,500,000); other numbers, such as a year, are printed as entered.
+    .map(([f, v]) => `${f.label}: ${f.type === 'money' && Number.isFinite(Number(v)) ? Number(v).toLocaleString('en-US') : String(v).trim()}`);
+  return shown.length ? shown.join('; ') : null;
+}
 
 /**
  * input: { ref, kind, staff, product (version), quote, amount, tenor, repayment, topUp,
- *          agreementNumber?, employerClause?, employeeClause? }
+ *          fields? (the product's application fields), agreementNumber?, employerClause?,
+ *          employeeClause? }
+ * language: 'sw' (default) or 'en', the template's language: every filled value, clause
+ * and date is written in it.
  */
-function values(input, templateVersion) {
+function values(input, templateVersion, language = 'sw') {
+  return language === 'en' ? enValues(input, templateVersion) : swValues(input, templateVersion);
+}
+
+function swValues(input, templateVersion) {
   const { staff, quote: q, amount, tenor, topUp } = input;
   const revised = input.kind === 'revised';
   const v = {
@@ -34,20 +54,21 @@ function values(input, templateVersion) {
     residence: addressLine(staff.personal?.address) || null,
     mobile: staff.personal?.mobile || null,
     productName: input.product.name,
-    amount: tshs(amount),
-    amountWords: amountInWords(amount),
+    productDetails: productDetails(input.product, input.fields),
+    amount: sw.tshs(amount),
+    amountWords: sw.amountInWords(amount),
     tenor: String(tenor),
-    instalment: tshs(q.instalment),
-    instalmentWords: amountInWords(q.instalment),
-    interestRate: pctSw(q.rates.interestBps),
-    processingFee: tshs(q.processingFee),
-    processingRate: pctSw(q.rates.processingFeeBps),
+    instalment: sw.tshs(q.instalment),
+    instalmentWords: sw.amountInWords(q.instalment),
+    interestRate: pct(q.rates.interestBps),
+    processingFee: sw.tshs(q.processingFee),
+    processingRate: pct(q.rates.processingFeeBps),
     loanKind: topUp?.on ? 'mkopo wa nyongeza' : 'mkopo mpya',
-    insuranceFee: tshs(q.insuranceFee),
-    insuranceRate: pctSw(q.rates.insuranceBps),
-    totalInterest: tshs(q.totalInterest),
-    totalRepayable: tshs(q.totalRepayable),
-    firstDueDate: dateSw(q.firstDueDate),
+    insuranceFee: sw.tshs(q.insuranceFee),
+    insuranceRate: pct(q.rates.insuranceBps),
+    totalInterest: sw.tshs(q.totalInterest),
+    totalRepayable: sw.tshs(q.totalRepayable),
+    firstDueDate: sw.dateSw(q.firstDueDate),
     repaymentMethod: 'Makato ya mshahara', // salary deduction only (D-84)
   };
   v.requestClause = sentence(
@@ -68,11 +89,61 @@ function values(input, templateVersion) {
   return v;
 }
 
-function scheduleTable(rows) {
+/** English values: the same keys as the Swahili ones, so a template may use any of them. */
+function enValues(input, templateVersion) {
+  const { staff, quote: q, amount, tenor, topUp } = input;
+  const revised = input.kind === 'revised';
+  const v = {
+    agreementNumber: input.agreementNumber || 'issued at signing',
+    templateVersion,
+    ref: input.ref,
+    fullName: [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' '),
+    staffNo: staff.staffNo,
+    poBox: staff.personal?.poBox || null,
+    residence: addressLine(staff.personal?.address) || null,
+    mobile: staff.personal?.mobile || null,
+    productName: input.product.name,
+    productDetails: productDetails(input.product, input.fields),
+    amount: en.tzs(amount),
+    amountWords: en.amountInWords(amount),
+    tenor: String(tenor),
+    instalment: en.tzs(q.instalment),
+    instalmentWords: en.amountInWords(q.instalment),
+    interestRate: pct(q.rates.interestBps),
+    processingFee: en.tzs(q.processingFee),
+    processingRate: pct(q.rates.processingFeeBps),
+    loanKind: topUp?.on ? 'top-up' : 'new loan',
+    insuranceFee: en.tzs(q.insuranceFee),
+    insuranceRate: pct(q.rates.insuranceBps),
+    totalInterest: en.tzs(q.totalInterest),
+    totalRepayable: en.tzs(q.totalRepayable),
+    firstDueDate: en.dateEn(q.firstDueDate),
+    repaymentMethod: 'Salary deduction', // salary deduction only (D-84)
+  };
+  v.requestClause = sentence(
+    revised
+      ? 'The Bank has approved a loan to the Employee of {{amount}} ({{amountWords}}) for {{tenor}} months, repayable by monthly instalments of {{instalment}} ({{instalmentWords}}), on the terms of this Agreement.'
+      : 'The Employee has applied for a loan of {{amount}} ({{amountWords}}) for {{tenor}} months, repayable by monthly instalments of {{instalment}} ({{instalmentWords}}), on the terms of this Agreement.',
+    v
+  );
+  v.effectClause = [
+    {
+      text: revised
+        ? 'This revised Agreement replaces the Agreement the Employee signed when applying, because the amount or period was changed at approval. It takes effect when the Employee accepts it.'
+        : 'The Employee signs this Agreement when submitting the application. It takes effect only when the Bank fully approves the application on these terms. If the Bank changes the amount or period at approval, the Employee will accept a revised Agreement before the loan is paid out. If the application is rejected or withdrawn, this Agreement is void; if it is returned for correction, the Employee signs a new Agreement on resubmitting.',
+    },
+  ];
+  v.employerClause = [{ text: input.employerClause || "Awaiting the Bank's final approval. The approvals recorded in the System stand as the Bank's signature." }];
+  v.employeeClause = [{ text: input.employeeClause || 'To be signed electronically by the Employee by ticking the declarations and accepting in the System.' }];
+  return v;
+}
+
+function scheduleTable(rows, language = 'sw') {
   const n = (x) => Math.round(x).toLocaleString('en-US');
+  const date = language === 'en' ? en.dateEn : sw.dateSw;
   return {
-    head: ['Awamu', 'Tarehe', 'Malipo', 'Mtaji', 'Riba', 'Salio'],
-    rows: rows.map((r) => [String(r.n), dateSw(r.due), n(r.payment), n(r.principal), n(r.interest), n(r.balance)]),
+    head: language === 'en' ? ['No.', 'Date', 'Payment', 'Principal', 'Interest', 'Balance'] : ['Awamu', 'Tarehe', 'Malipo', 'Mtaji', 'Riba', 'Salio'],
+    rows: rows.map((r) => [String(r.n), date(r.due), n(r.payment), n(r.principal), n(r.interest), n(r.balance)]),
   };
 }
 
@@ -80,8 +151,9 @@ function scheduleTable(rows) {
 async function build(input, { template, session } = {}) {
   const t = template || (await AgreementTemplate.active(session));
   if (!t) throw notFound('No agreement template is loaded. An administrator must load one.');
-  const out = render(t.body, values(input, t.version), scheduleTable(input.quote.schedule));
-  return { ...out, template: { id: String(t._id), version: t.version, sample: t.sample } };
+  const language = t.language || 'sw';
+  const out = render(t.body, values(input, t.version, language), scheduleTable(input.quote.schedule, language));
+  return { ...out, template: { id: String(t._id), version: t.version, sample: t.sample, language } };
 }
 
-module.exports = { build, values, scheduleTable };
+module.exports = { build, values, scheduleTable, LANGUAGES };

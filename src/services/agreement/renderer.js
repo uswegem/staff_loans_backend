@@ -7,7 +7,9 @@
 // Template syntax, one block per line:
 //   # Title            ## Heading           ~ small centred note
 //   1. Numbered item   - Plain list item    {{schedule}} alone on a line: the Jedwali
+//   [ ] Declaration    a statement the staff member ticks before signing
 //   anything else      a paragraph
+// A line whose only content was a value that is not known (null) is left out.
 // {{key}} inserts a value; filled values are marked so they can be highlighted.
 
 const crypto = require('crypto');
@@ -67,20 +69,25 @@ function render(template, values, schedule) {
       blocks.push({ type: 'h2', parts: fill(line.slice(3), values) });
     } else if (line.startsWith('# ')) {
       blocks.push({ type: 'h1', parts: fill(line.slice(2), values) });
+    } else if (line.startsWith('[ ] ')) {
+      blocks.push({ type: 'declaration', parts: fill(line.slice(4), values) });
     } else if (line.startsWith('~ ')) {
       blocks.push({ type: 'note', parts: fill(line.slice(2), values) });
     } else if (/^\d+\.\s/.test(line)) {
       const prev = blocks.at(-1);
       const item = fill(line.replace(/^\d+\.\s+/, ''), values);
+      if (!plain(item).trim()) continue;
       if (prev && prev.type === 'ol') prev.items.push(item);
       else blocks.push({ type: 'ol', items: [item] });
     } else if (line.startsWith('- ')) {
       const prev = blocks.at(-1);
       const item = fill(line.slice(2), values);
+      if (!plain(item).trim()) continue;
       if (prev && prev.type === 'ul') prev.items.push(item);
       else blocks.push({ type: 'ul', items: [item] });
     } else {
-      blocks.push({ type: 'p', parts: fill(line, values) });
+      const parts = fill(line, values);
+      if (plain(parts).trim()) blocks.push({ type: 'p', parts });
     }
   }
   const text = canonicalText(blocks);
@@ -93,6 +100,7 @@ function canonicalText(blocks) {
   for (const b of blocks) {
     if (b.type === 'ol') b.items.forEach((it, i) => lines.push(`${i + 1}. ${plain(it)}`));
     else if (b.type === 'ul') b.items.forEach((it) => lines.push(`- ${plain(it)}`));
+    else if (b.type === 'declaration') lines.push(`[ ] ${plain(b.parts)}`);
     else if (b.type === 'table') {
       lines.push(b.head.join('\t'));
       b.rows.forEach((r) => lines.push(r.join('\t')));
@@ -101,4 +109,13 @@ function canonicalText(blocks) {
   return lines.join('\n');
 }
 
-module.exports = { render, sentence, canonicalText, plain };
+/** The statements a template asks the staff member to tick, in order, as plain text. */
+const declarationsOf = (blocks) => blocks.filter((b) => b.type === 'declaration').map((b) => plain(b.parts));
+
+/** True when every declaration of the agreement was ticked: one true per declaration, in order. */
+const allDeclared = (blocks, ticked) => {
+  const n = declarationsOf(blocks).length;
+  return Array.isArray(ticked) && ticked.length === n && ticked.every((v) => v === true);
+};
+
+module.exports = { render, sentence, canonicalText, plain, declarationsOf, allDeclared };
