@@ -11,8 +11,11 @@
 //
 // roles: beyond Staff. TST101 is the CEO and TST102 the Head of People and Culture (HR),
 // to test their review journeys; everyone else is Staff only.
-// payslip.lfbLines: the staff loan lines printed on the payslip; each is also declared
-// as an existing LFB loan on the profile, as the staff member would.
+// lfbLines: the loan deductions printed on the payslip, STAFF LOAN and/or CAR LOAN (none
+// for TST101, TST103, TST108 and TST109); each is also declared as an existing LFB loan
+// on the profile, as the staff member would. The reader counts CAR LOAN only where a
+// live product's payslip deduction label is CAR LOAN (D-101).
+const CAR_LOAN_LABEL = 'CAR LOAN';
 
 const TEST_STAFF_PREFIX = 'TST';
 const PAY_DATE = '2026-11-25';
@@ -73,7 +76,7 @@ const TEST_STAFF = [
     bankBranch: 'Head Office', accountNo: '4010 9999 0105',
     nextOfKin: [{ firstName: 'Asha', lastName: 'Mfano', relationship: 'Spouse', phone: '+255 700 201 005', address: 'Gerezani, Dar es Salaam', employer: 'CRDB Bank' }],
     pay: { basic: 3200000 },
-    lfbLines: [{ label: 'STAFF LOAN', amount: 420000, outstanding: 5040000, description: 'Home improvement loan (2025)' }],
+    lfbLines: [{ label: 'CAR LOAN', amount: 420000, outstanding: 5040000, description: 'Car loan (2025)' }],
   },
   {
     staffNo: 'TST106', firstName: 'Neema', lastName: 'Mfano', gender: 'Female', roles: [],
@@ -84,10 +87,10 @@ const TEST_STAFF = [
     bankBranch: 'Head Office', accountNo: '4010 9999 0106',
     nextOfKin: [{ firstName: 'Petro', lastName: 'Mfano', relationship: 'Spouse', phone: '+255 700 201 006', address: 'Bonyokwa, Dar es Salaam', employer: 'Self-employed' }],
     pay: { basic: 2600000 },
-    // Two staff loan lines, to test a payslip with several LFB deductions.
+    // A staff loan and a car loan, to test a payslip with several LFB deductions.
     lfbLines: [
       { label: 'STAFF LOAN', amount: 300000, outstanding: 3000000, description: 'Personal loan (2025)' },
-      { label: 'LFB LOAN', amount: 100000, outstanding: 600000, description: 'School fees loan (2026)' },
+      { label: 'CAR LOAN', amount: 100000, outstanding: 600000, description: 'Car loan (2026)' },
     ],
   },
   {
@@ -100,7 +103,7 @@ const TEST_STAFF = [
     bankBranch: 'Mwanza', accountNo: '4010 9999 0107',
     nextOfKin: [{ firstName: 'Esther', lastName: 'Mfano', relationship: 'Spouse', phone: '+255 700 201 007', address: 'Buswelu, Mwanza', employer: 'Bugando Hospital' }],
     pay: { basic: 5000000 },
-    lfbLines: [{ label: 'STAFF LOAN', amount: 800000, outstanding: 14400000, description: 'Vehicle loan (2025)' }],
+    lfbLines: [{ label: 'STAFF LOAN', amount: 800000, outstanding: 14400000, description: 'Personal loan (2025)' }],
   },
   {
     staffNo: 'TST108', firstName: 'Zawadi', lastName: 'Mfano', gender: 'Female', roles: [],
@@ -135,9 +138,12 @@ const TEST_STAFF = [
     address: { region: 'Dar-Es-Salaam', district: 'Ilala', ward: 'Buguruni', street: 'Mtaa wa Rozana', house: 'Plot 31' },
     bankBranch: 'Head Office', accountNo: '4010 9999 0110',
     nextOfKin: [{ firstName: 'Grace', lastName: 'Mfano', relationship: 'Child', phone: '+255 700 201 010', address: 'Buguruni, Dar es Salaam', employer: 'University of Dar es Salaam' }],
-    // A large existing deduction, close to the affordability limit.
+    // Large existing deductions (staff loan and car loan), close to the affordability limit.
     pay: { basic: 4100000 },
-    lfbLines: [{ label: 'STAFF LOAN', amount: 1200000, outstanding: 21600000, description: 'Mortgage top-up (2024)' }],
+    lfbLines: [
+      { label: 'STAFF LOAN', amount: 700000, outstanding: 12600000, description: 'Personal loan (2024)' },
+      { label: 'CAR LOAN', amount: 500000, outstanding: 9000000, description: 'Car loan (2025)' },
+    ],
   },
 ];
 
@@ -185,4 +191,4 @@ function toStaffDoc(p) {
   };
 }
 
-module.exports = { TEST_STAFF, TEST_STAFF_PREFIX, PAY_DATE, toStaffDoc, fullName };
+module.exports = { TEST_STAFF, TEST_STAFF_PREFIX, PAY_DATE, CAR_LOAN_LABEL, toStaffDoc, fullName };

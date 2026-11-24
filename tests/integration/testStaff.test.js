@@ -16,7 +16,7 @@ const reader = require('../../src/services/payslip/payslipReader');
 const { completeness } = require('../../src/services/staff/profileService');
 const { applyBlockers } = require('../../src/services/staff/eligibilityService');
 const testStaff = require('../../scripts/test-staff');
-const { TEST_STAFF, PAY_DATE } = require('../../seed/data/testStaff');
+const { TEST_STAFF, PAY_DATE, CAR_LOAN_LABEL } = require('../../seed/data/testStaff');
 
 jest.setTimeout(120000);
 
@@ -75,21 +75,29 @@ describe('test staff', () => {
     expect(await Staff.countDocuments({ staffNo: /^TST/ })).toBe(1);
   });
 
+  it('mixes payslips with a staff loan, a car loan, both, and no loan deduction', () => {
+    const labels = (p) => p.lfbLines.map((l) => l.label).sort().join('+');
+    const kinds = new Set(TEST_STAFF.map(labels));
+    expect([...kinds].sort()).toEqual(['', 'CAR LOAN', 'CAR LOAN+STAFF LOAN', 'STAFF LOAN']);
+  });
+
   it('each committed payslip matches the dataset and reads only for its own staff number', async () => {
+    // CAR LOAN is read as a product's payslip deduction label (D-101).
+    const rules = { ...reader.DEFAULT_RULES, productLabels: [CAR_LOAN_LABEL] };
     const files = fs.readdirSync(testStaff.PAYSLIP_DIR);
     expect(files).toHaveLength(10);
     for (const p of TEST_STAFF) {
       /* eslint-disable no-await-in-loop */
       const file = files.find((f) => f.startsWith(p.staffNo.toLowerCase()));
       const pdf = fs.readFileSync(path.join(testStaff.PAYSLIP_DIR, file));
-      const out = await reader.read(pdf, { staff: { staffNo: p.staffNo } });
+      const out = await reader.read(pdf, { staff: { staffNo: p.staffNo }, rules });
       expect(out).toEqual({
         basic: p.pay.basic,
         payDate: '2026-11-30',
         lfbLines: p.lfbLines.map((l) => ({ label: l.label, amount: l.amount })),
         lfbDeductions: p.lfbLines.reduce((s, l) => s + l.amount, 0),
       });
-      expect((await reader.read(pdf, { staff: { staffNo: 'AT637' } })).problem.code).toBe('PAYSLIP_NOT_YOURS');
+      expect((await reader.read(pdf, { staff: { staffNo: 'AT637' }, rules })).problem.code).toBe('PAYSLIP_NOT_YOURS');
       /* eslint-enable no-await-in-loop */
     }
   });
