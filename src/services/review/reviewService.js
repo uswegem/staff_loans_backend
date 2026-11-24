@@ -18,6 +18,7 @@ const calc = require('../calc/loanCalculator');
 const rules = require('../applications/rules');
 const appSvc = require('../applications/applicationService');
 const agreementService = require('../agreement/agreementService');
+const { declarationsOf, allDeclared } = require('../agreement/renderer');
 const { agreementPdf, textBlocks } = require('../agreement/pdfService');
 const fileStore = require('../files/fileStore');
 const workflow = require('../workflow/workflowService');
@@ -285,7 +286,7 @@ async function revisedAgreement(req, app, session) {
   ]);
   const ctx = await appSvc.context(req, app.productId, { app, versions: { product: { _id: app.productId }, version, pricing } });
   const result = rules.evaluate(ctx, { ...appSvc.inputOf(app), amount: app.approved.amount, tenor: app.approved.tenor });
-  const doc = await agreementService.build({ ref: app.ref, kind: 'revised', staff, product: version, quote: result.quote, amount: app.approved.amount, tenor: app.approved.tenor, repayment: app.repayment, topUp: app.topUp }, { session, template: await require('../agreement/productTemplate').resolve(version, { session, historicalTemplateId: signed?.templateId }) });
+  const doc = await agreementService.build({ ref: app.ref, kind: 'revised', staff, product: version, fields: app.productFields, quote: result.quote, amount: app.approved.amount, tenor: app.approved.tenor, repayment: app.repayment, topUp: app.topUp }, { session, template: await require('../agreement/productTemplate').resolve(version, { session, historicalTemplateId: signed?.templateId }) });
   return { doc, quote: result.quote, signed, staff };
 }
 
@@ -310,6 +311,7 @@ async function acceptRevised(req, app, body) {
   if (body.accepted !== true || body.scrolledToEnd !== true) throw badRequest('Read the revised agreement to the end and tick the acceptance.', undefined, 'CONSENTS_REQUIRED');
   const { doc, quote, staff } = await revisedAgreement(req, app);
   if (doc.textSha256 !== body.textSha256) throw conflict('The revised agreement changed since you opened it. Read it again before you sign.', 'AGREEMENT_CHANGED', { textSha256: doc.textSha256 });
+  if (declarationsOf(doc.blocks).length && !allDeclared(doc.blocks, body.declarations)) throw badRequest('Tick every statement in the revised agreement before you accept it.', undefined, 'CONSENTS_REQUIRED');
   const AuthController = require('../../controllers/authController');
   const check = await AuthController.verifyPassword(req.auth.user, body.password, req);
   if (!check.ok) {

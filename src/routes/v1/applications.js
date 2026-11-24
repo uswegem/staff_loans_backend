@@ -79,7 +79,9 @@ router.post(
   validate({
     ...idParams,
     body: Joi.object({
-      consents: Joi.object({ truth: Joi.boolean(), deduct: Joi.boolean(), crb: Joi.boolean(), sms: Joi.boolean() }).required(),
+      // The four standard statements, or one tick per declaration of the agreement.
+      consents: Joi.object({ truth: Joi.boolean(), deduct: Joi.boolean(), crb: Joi.boolean(), sms: Joi.boolean() }),
+      declarations: Joi.array().items(Joi.boolean()).max(50),
       accepted: Joi.boolean().required(),
       scrolledToEnd: Joi.boolean().required(),
       textSha256: Joi.string().hex().length(64).required(),

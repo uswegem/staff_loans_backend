@@ -21,6 +21,7 @@ const products = require('../products/productService');
 const rules = require('./rules');
 const { productLabels } = require('../payslip/deductionLines');
 const agreementService = require('../agreement/agreementService');
+const { declarationsOf, allDeclared } = require('../agreement/renderer');
 const { agreementPdf } = require('../agreement/pdfService');
 const fileStore = require('../files/fileStore');
 const { completeness } = require('../staff/profileService');
@@ -264,7 +265,7 @@ async function agreementFor(req, app, { session } = {}) {
     await validateAttachments(app, ctx.version);
   }
   const doc = await agreementService.build(
-    { ref: app.ref, kind: 'original', staff: ctx.staff, product: ctx.version, quote: result.quote, amount: app.amount, tenor: app.tenor, repayment: app.repayment, topUp: app.topUp },
+    { ref: app.ref, kind: 'original', staff: ctx.staff, product: ctx.version, fields: app.productFields, quote: result.quote, amount: app.amount, tenor: app.tenor, repayment: app.repayment, topUp: app.topUp },
     { session, template: await require('../agreement/productTemplate').resolve(ctx.version, { session, enforce: !!ctx.settings.productConfigEnforcementEnabled }) }
   );
   return { ctx, result, doc };
@@ -287,14 +288,20 @@ async function preview(req, app) {
 
 async function signAndSubmit(req, app, body) {
   if (!EDITABLE.includes(app.status)) throw conflict('This application has already been submitted.', 'NOT_EDITABLE');
-  const consentsGiven = ['truth', 'deduct', 'crb', 'sms'].every((k) => body.consents?.[k] === true);
-  if (!consentsGiven || body.accepted !== true) throw badRequest('Tick every statement and the agreement to sign.', undefined, 'CONSENTS_REQUIRED');
+  if (body.accepted !== true) throw badRequest('Tick every statement and the agreement to sign.', undefined, 'CONSENTS_REQUIRED');
   if (body.scrolledToEnd !== true) throw badRequest('Read the agreement to the end before you sign.', undefined, 'NOT_READ');
 
   const { ctx, result, doc } = await agreementFor(req, app);
   if (doc.textSha256 !== body.textSha256) {
     throw conflict('The agreement changed since you opened it. Read it again before you sign.', 'AGREEMENT_CHANGED', { textSha256: doc.textSha256 });
   }
+  // The statements to tick are the agreement's own declarations; a template without any
+  // keeps the four standard statements.
+  const declarations = declarationsOf(doc.blocks);
+  const consentsGiven = declarations.length
+    ? allDeclared(doc.blocks, body.declarations)
+    : ['truth', 'deduct', 'crb', 'sms'].every((k) => body.consents?.[k] === true);
+  if (!consentsGiven) throw badRequest('Tick every statement and the agreement to sign.', undefined, 'CONSENTS_REQUIRED');
 
   const now = new Date();
   const resubmission = app.status === 'returned';
@@ -313,7 +320,9 @@ async function signAndSubmit(req, app, body) {
     ['Anwani ya IP / IP address', req.ip],
     ['Toleo la mkataba / Template version', doc.template.version],
     ['Alama ya maandishi (SHA-256) / Text fingerprint', doc.textSha256],
-    ['Idhini / Consents', 'Taarifa ni sahihi; makato; ofisi za kumbukumbu za mikopo; SMS'],
+    declarations.length
+      ? ['Idhini / Declarations ticked', `${declarations.length} of ${declarations.length}`]
+      : ['Idhini / Consents', 'Taarifa ni sahihi; makato; ofisi za kumbukumbu za mikopo; SMS'],
   ];
   const pdf = await agreementPdf({ blocks: doc.blocks, title: `Mkataba ${number} (${app.ref})`, evidence });
 
@@ -359,7 +368,7 @@ async function signAndSubmit(req, app, body) {
       lastSubmittedAt: now,
       productVersionId: ctx.version._id,
       pricingVersionId: ctx.pricing._id,
-      consents: { ...body.consents, at: now },
+      consents: declarations.length ? { declarations, at: now } : { ...body.consents, at: now },
       currentAgreementId: agreement._id,
       calcSnapshot: q,
       applicantSnapshot: {

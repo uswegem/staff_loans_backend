@@ -69,7 +69,7 @@ router.get('/applications/:id/revised', requireAll('loan.viewOwn'), validate(idP
 router.post(
   '/applications/:id/accept-revised',
   requireAll('loan.viewOwn'),
-  validate({ ...idParams, body: Joi.object({ accepted: Joi.boolean().required(), scrolledToEnd: Joi.boolean().required(), password: Joi.string().max(128).required(), textSha256: Joi.string().hex().length(64).required() }) }),
+  validate({ ...idParams, body: Joi.object({ accepted: Joi.boolean().required(), scrolledToEnd: Joi.boolean().required(), password: Joi.string().max(128).required(), textSha256: Joi.string().hex().length(64).required(), declarations: Joi.array().items(Joi.boolean()).max(50) }) }),
   asyncHandler(ReviewController.acceptRevised)
 );
 router.post(

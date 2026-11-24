@@ -109,6 +109,8 @@ async function agreementPdf({ blocks, title, evidence }) {
     else if (b.type === 'p') w.text(plain(b.parts), { size: 10, gap: 6 });
     else if (b.type === 'ol') b.items.forEach((it, i) => w.text(`${i + 1}. ${plain(it)}`, { size: 10, indent: 10, gap: 3 }));
     else if (b.type === 'ul') b.items.forEach((it) => w.text(`• ${plain(it)}`, { size: 10, indent: 10, gap: 3 }));
+    // A declaration is printed ticked: the PDF is made only once every one was ticked.
+    else if (b.type === 'declaration') w.text(`[X] ${plain(b.parts)}`, { size: 10, indent: 10, gap: 3 });
     else if (b.type === 'table') w.table(b.head, b.rows, [0.1, 0.22, 0.17, 0.17, 0.15, 0.19]);
   }
 
@@ -141,6 +143,7 @@ function textBlocks(text) {
       }
       blocks.push({ type: 'table', head, rows });
     } else if (i === 0) blocks.push({ type: 'h1', parts: [{ text: line }] });
+    else if (line.startsWith('[ ] ')) blocks.push({ type: 'declaration', parts: [{ text: line.slice(4) }] });
     else blocks.push({ type: 'p', parts: [{ text: line }] });
   }
   return blocks;
