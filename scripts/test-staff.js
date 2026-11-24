@@ -6,6 +6,8 @@
 //
 //   npm run test-staff -- payslips [dir]       writes the payslip PDFs (default
 //                                              tests/fixtures/payslips/test-staff)
+//   npm run test-staff -- sheet [dir]          writes the staff sheet (CSV and Excel; default
+//                                              seed/data)
 //   npm run test-staff -- load --dry-run       shows the target and who would be loaded
 //   npm run test-staff -- load                 loads them (RESET_TEMP_PASSWORD needed)
 //
@@ -21,8 +23,11 @@ const calc = require('../src/services/calc/loanCalculator');
 const { samplePayslip } = require('../seed/samplePayslip');
 const { PRICING } = require('../seed/pricing');
 const { TEST_STAFF, TEST_STAFF_PREFIX, PAY_DATE, toStaffDoc, fullName } = require('../seed/data/testStaff');
+const { formatNida } = require('../src/services/staff/profileService');
 
 const PAYSLIP_DIR = path.join(__dirname, '..', 'tests', 'fixtures', 'payslips', 'test-staff');
+const SHEET_DIR = path.join(__dirname, '..', 'seed', 'data');
+const SHEET_NAME = 'test-staff';
 const WATERMARK = 'SAMPLE - TEST DATA';
 const SALARY_FROM = new Date(`${PAY_DATE.slice(0, 7)}-01T00:00:00+03:00`);
 
@@ -50,6 +55,70 @@ async function writePayslips(dir = PAYSLIP_DIR) {
     files.push(name);
   }
   return files;
+}
+
+// The staff sheet's columns, in order, as asked by the business.
+const SHEET_COLUMNS = [
+  ['SN', (p, i) => i + 1],
+  ['Staff Number', (p) => p.staffNo],
+  ['Full Name', (p) => fullName(p)],
+  ['First Name', (p) => p.firstName],
+  ['Middle Name', (p) => p.middleName || ''],
+  ['Last Name', (p) => p.lastName],
+  ['Gender', (p) => p.gender],
+  ['Department', (p) => p.department],
+  ['Job Title', (p) => p.title],
+  ['Category', (p) => p.category],
+  ['Employment Type', (p) => p.employmentType],
+  ['Date Joined', (p) => p.dateJoined],
+  ['Probation End Date', (p) => p.probationEndDate || ''],
+  ['Contract End Date', (p) => p.contractEndDate || ''],
+  ['Email', (p, i, doc) => doc.email],
+  ['Username', (p) => p.userName],
+  ['Marital Status', (p) => p.maritalStatus],
+  ['Date of Birth', (p) => p.dob],
+  ['NIDA Number', (p, i, doc) => formatNida(doc.personal.nida)],
+  ['Nationality', (p, i, doc) => doc.personal.nationality],
+  ['Mobile Phone', (p) => p.mobile],
+  ['Work Phone', (p) => p.workPhone],
+  ['Region', (p) => p.address.region],
+  ['District', (p) => p.address.district],
+  ['Ward', (p) => p.address.ward],
+  ['Street', (p) => p.address.street],
+  ['House Number', (p) => p.address.house],
+  ['Branch', (p) => p.station],
+  ['Bank Name', (p, i, doc) => doc.bank.bank],
+  ['Bank Branch', (p) => p.bankBranch],
+  ['Bank Account Name', (p, i, doc) => doc.bank.accountName],
+  ['Bank Account Number', (p) => p.accountNo],
+  ['Next of Kin First Name', (p) => p.nextOfKin[0]?.firstName || ''],
+  ['Next of Kin Surname', (p) => p.nextOfKin[0]?.lastName || ''],
+  ['Next of Kin Relationship', (p) => p.nextOfKin[0]?.relationship || ''],
+  ['Next of Kin Phone', (p) => p.nextOfKin[0]?.phone || ''],
+  ['Next of Kin Address', (p) => p.nextOfKin[0]?.address || ''],
+];
+
+/** The staff sheet as rows: headings, then one row per person. */
+function sheetRows() {
+  return [SHEET_COLUMNS.map(([h]) => h), ...TEST_STAFF.map((p, i) => {
+    const doc = toStaffDoc(p);
+    return SHEET_COLUMNS.map(([, get]) => get(p, i, doc));
+  })];
+}
+
+/** Writes the staff sheet as CSV and Excel to dir; returns the file names. */
+function writeSheet(dir = SHEET_DIR) {
+  const XLSX = require('xlsx'); // eslint-disable-line global-require
+  fs.mkdirSync(dir, { recursive: true });
+  const rows = sheetRows();
+  const cell = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  fs.writeFileSync(path.join(dir, `${SHEET_NAME}.csv`), `${rows.map((r) => r.map(cell).join(',')).join('\n')}\n`);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = rows[0].map((h, c) => ({ wch: Math.max(h.length, ...rows.slice(1).map((r) => String(r[c]).length)) + 2 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Test staff');
+  XLSX.writeFile(wb, path.join(dir, `${SHEET_NAME}.xlsx`));
+  return [`${SHEET_NAME}.csv`, `${SHEET_NAME}.xlsx`];
 }
 
 /** Salary figures as on the payslip. */
@@ -93,6 +162,11 @@ async function load({ dryRun = false, ownConnection = true } = {}) {
       return s.firstName !== p.firstName || s.lastName !== p.lastName;
     });
     if (clashes.length) throw new Error(`These staff numbers belong to someone else, nothing changed: ${clashes.map((s) => `${s.staffNo} (${s.firstName} ${s.lastName})`).join(', ')}`);
+    // Nor is a username already used by another staff number.
+    const names = TEST_STAFF.map((p) => p.userName);
+    const takenBy = [...await Staff.find({ userName: { $in: names } }, { staffNo: 1, userName: 1 }).lean(), ...await User.find({ userName: { $in: names } }, { staffNo: 1, userName: 1 }).lean()]
+      .filter((x) => x.staffNo !== TEST_STAFF.find((p) => p.userName === x.userName).staffNo);
+    if (takenBy.length) throw new Error(`These usernames are already used by other staff, nothing changed: ${[...new Set(takenBy.map((x) => `${x.userName} (${x.staffNo})`))].join(', ')}`);
 
     const plan = TEST_STAFF.map((p) => `${fullName(p)} (${p.staffNo}), ${p.title}${p.roles.length ? ` [${p.roles.join(', ')}]` : ''}`);
     if (dryRun) return { target, dryRun, plan, alreadyOnFile: existing.length, loaded: null };
@@ -131,7 +205,7 @@ async function load({ dryRun = false, ownConnection = true } = {}) {
 
       let user = await User.findOne({ staffNo: p.staffNo });
       if (!user) {
-        user = await User.create({ staffNo: p.staffNo, userName: doc.userName, staffId: staff._id, mustChangePassword: true, ...hash });
+        user = await User.create({ staffNo: p.staffNo, userName: p.userName, staffId: staff._id, mustChangePassword: true, ...hash });
         await AuditLog.create({ action: 'user.create', description: `User created for test staff ${p.staffNo} (${fullName(p)}) by the test staff loader; temporary password, change forced at first sign-in`, entity: 'User', entityId: String(user._id), after: { staffNo: p.staffNo, roles: ['staff', ...p.roles] } });
         loaded.usersCreated += 1;
       }
@@ -154,7 +228,10 @@ async function load({ dryRun = false, ownConnection = true } = {}) {
 
 if (require.main === module) {
   const [cmd, arg] = process.argv.slice(2);
-  const job = cmd === 'payslips'
+  const dirArg = arg && !arg.startsWith('--') ? path.resolve(arg) : null;
+  const job = cmd === 'sheet'
+    ? Promise.resolve(writeSheet(dirArg || SHEET_DIR)).then((files) => console.log(`Wrote ${files.join(' and ')}`))
+    : cmd === 'payslips'
     ? writePayslips(arg && !arg.startsWith('--') ? path.resolve(arg) : PAYSLIP_DIR).then((files) => {
       console.log(`Wrote ${files.length} payslips:`);
       files.forEach((f) => console.log(`  ${f}`));
@@ -166,11 +243,11 @@ if (require.main === module) {
         r.plan.forEach((x) => console.log(`  ${x}`));
         if (r.loaded) console.log(`Created ${r.loaded.created}, updated ${r.loaded.updated}; accounts created ${r.loaded.usersCreated}; salaries recorded ${r.loaded.salaries}`);
       })
-      : Promise.reject(new Error('Usage: npm run test-staff -- payslips [dir] | load [--dry-run]'));
+      : Promise.reject(new Error('Usage: npm run test-staff -- sheet [dir] | payslips [dir] | load [--dry-run]'));
   job.catch((err) => {
     console.error(`Stopped: ${err.message}`);
     process.exit(1);
   });
 }
 
-module.exports = { load, writePayslips, payslipFor, salaryFor, PAYSLIP_DIR };
+module.exports = { load, writePayslips, writeSheet, sheetRows, payslipFor, salaryFor, PAYSLIP_DIR, SHEET_COLUMNS };

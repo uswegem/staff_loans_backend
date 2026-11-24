@@ -37,6 +37,31 @@ describe('test staff', () => {
     expect(TEST_STAFF.filter((p) => p.roles.includes('head_pc')).map((p) => p.title)).toEqual(['Head of People and Culture']);
   });
 
+  it('the staff sheet has the agreed columns, in order, filled for everyone', () => {
+    const [head, ...rows] = testStaff.sheetRows();
+    expect(head).toEqual([
+      'SN', 'Staff Number', 'Full Name', 'First Name', 'Middle Name', 'Last Name', 'Gender', 'Department', 'Job Title', 'Category',
+      'Employment Type', 'Date Joined', 'Probation End Date', 'Contract End Date',
+      'Email', 'Username', 'Marital Status', 'Date of Birth', 'NIDA Number', 'Nationality', 'Mobile Phone', 'Work Phone',
+      'Region', 'District', 'Ward', 'Street', 'House Number', 'Branch', 'Bank Name', 'Bank Branch', 'Bank Account Name', 'Bank Account Number',
+      'Next of Kin First Name', 'Next of Kin Surname', 'Next of Kin Relationship', 'Next of Kin Phone', 'Next of Kin Address',
+    ]);
+    expect(rows).toHaveLength(10);
+    // Probation and contract end dates apply only to those on probation or contract.
+    const optional = new Set(['Probation End Date', 'Contract End Date'].map((h) => head.indexOf(h)));
+    rows.forEach((r) => r.forEach((v, c) => optional.has(c) || expect(String(v)).not.toBe('')));
+    expect(rows.find((r) => r[1] === 'TST108')[head.indexOf('Probation End Date')]).toBe('2026-12-01');
+    expect(rows.find((r) => r[1] === 'TST109')[head.indexOf('Contract End Date')]).toBe('2027-12-31');
+    expect(rows[0].slice(0, 6)).toEqual([1, 'TST101', 'Bahati Grace Mfano', 'Bahati', 'Grace', 'Mfano']);
+    expect(new Set(rows.map((r) => r[head.indexOf('Username')])).size).toBe(10);
+  });
+
+  it('never takes a username used by another staff number', async () => {
+    await Staff.create({ staffNo: 'AT9100', userName: 'juma.mfano', firstName: 'Juma', lastName: 'Other', category: 'Non-management' });
+    await expect(testStaff.load({ ownConnection: false })).rejects.toThrow('juma.mfano (AT9100)');
+    expect(await Staff.countDocuments({ staffNo: /^TST/ })).toBe(0);
+  });
+
   it('a dry run changes nothing', async () => {
     const before = await Staff.countDocuments();
     const out = await testStaff.load({ dryRun: true, ownConnection: false });
@@ -53,8 +78,9 @@ describe('test staff', () => {
       const staff = await Staff.findOne({ staffNo: p.staffNo });
       expect(await completeness(staff)).toMatchObject({ complete: true, missing: [] });
       expect(applyBlockers(staff)).toEqual([]);
+      expect(staff).toMatchObject({ middleName: p.middleName, userName: p.userName });
       const user = await User.findOne({ staffNo: p.staffNo });
-      expect(user.mustChangePassword).toBe(true);
+      expect(user).toMatchObject({ userName: p.userName, mustChangePassword: true });
       const codes = (await RoleAssignment.find({ userId: user._id, revokedAt: null }).populate('roleId').lean()).map((a) => a.roleId.code).sort();
       expect(codes).toEqual(['staff', ...p.roles].sort());
       const salary = await Salary.inForce(staff._id, new Date(`${PAY_DATE}T12:00:00+03:00`));

@@ -22,7 +22,7 @@ const PAY_DATE = '2026-11-25';
 
 const TEST_STAFF = [
   {
-    staffNo: 'TST101', firstName: 'Bahati', lastName: 'Mfano', gender: 'Female', roles: ['ceo'],
+    staffNo: 'TST101', userName: 'bahati.mfano', firstName: 'Bahati', middleName: 'Grace', lastName: 'Mfano', gender: 'Female', roles: ['ceo'],
     title: 'Chief Executive Officer', department: 'Executive Office', station: 'Head Office, Dar es Salaam', category: 'Management',
     employmentType: 'Permanent', dateJoined: '2015-03-02', dob: '1974-05-14', maritalStatus: 'Married',
     mobile: '+255 700 101 001', workPhone: '+255 22 000 0101',
@@ -33,7 +33,7 @@ const TEST_STAFF = [
     lfbLines: [],
   },
   {
-    staffNo: 'TST102', firstName: 'Halima', lastName: 'Mfano', gender: 'Female', roles: ['head_pc'],
+    staffNo: 'TST102', userName: 'halima.mfano', firstName: 'Halima', middleName: 'Zuhura', lastName: 'Mfano', gender: 'Female', roles: ['head_pc'],
     title: 'Head of People and Culture', department: 'People and Culture', station: 'Head Office, Dar es Salaam', category: 'Management',
     employmentType: 'Permanent', dateJoined: '2017-08-14', dob: '1980-11-03', maritalStatus: 'Married',
     mobile: '+255 700 101 002', workPhone: '+255 22 000 0102',
@@ -44,7 +44,7 @@ const TEST_STAFF = [
     lfbLines: [{ label: 'STAFF LOAN', amount: 650000, outstanding: 9100000, description: 'Personal loan (2025)' }],
   },
   {
-    staffNo: 'TST103', firstName: 'Amani', lastName: 'Mfano', gender: 'Male', roles: [],
+    staffNo: 'TST103', userName: 'amani.mfano', firstName: 'Amani', middleName: 'Joseph', lastName: 'Mfano', gender: 'Male', roles: [],
     title: 'Relationship Officer', department: 'Business', station: 'Arusha Branch', category: 'Non-management',
     stationHead: { name: 'Branch Manager (test)', phone: '+255 700 301 003' },
     employmentType: 'Permanent', dateJoined: '2020-02-03', dob: '1991-02-19', maritalStatus: 'Single',
@@ -56,7 +56,7 @@ const TEST_STAFF = [
     lfbLines: [],
   },
   {
-    staffNo: 'TST104', firstName: 'Rehema', lastName: 'Mfano', gender: 'Female', roles: [],
+    staffNo: 'TST104', userName: 'rehema.mfano', firstName: 'Rehema', middleName: 'Anna', lastName: 'Mfano', gender: 'Female', roles: [],
     title: 'Teller', department: 'Branch Network', station: 'Dodoma Branch', category: 'Non-management',
     stationHead: { name: 'Branch Manager (test)', phone: '+255 700 301 004' },
     employmentType: 'Permanent', dateJoined: '2022-05-09', dob: '1996-08-27', maritalStatus: 'Single',
@@ -68,7 +68,7 @@ const TEST_STAFF = [
     lfbLines: [{ label: 'STAFF LOAN', amount: 150000, outstanding: 1350000, description: 'Salary advance top-up (2026)' }],
   },
   {
-    staffNo: 'TST105', firstName: 'Juma', lastName: 'Mfano', gender: 'Male', roles: [],
+    staffNo: 'TST105', userName: 'juma.mfano', firstName: 'Juma', middleName: 'Omari', lastName: 'Mfano', gender: 'Male', roles: [],
     title: 'Credit Officer', department: 'Credit', station: 'Head Office, Dar es Salaam', category: 'Non-management',
     employmentType: 'Permanent', dateJoined: '2018-10-01', dob: '1988-04-06', maritalStatus: 'Married',
     mobile: '+255 700 101 005', workPhone: '+255 22 000 0105',
@@ -79,7 +79,7 @@ const TEST_STAFF = [
     lfbLines: [{ label: 'CAR LOAN', amount: 420000, outstanding: 5040000, description: 'Car loan (2025)' }],
   },
   {
-    staffNo: 'TST106', firstName: 'Neema', lastName: 'Mfano', gender: 'Female', roles: [],
+    staffNo: 'TST106', userName: 'neema.mfano', firstName: 'Neema', middleName: 'Joyce', lastName: 'Mfano', gender: 'Female', roles: [],
     title: 'Operations Officer', department: 'Central Operations', station: 'Head Office, Dar es Salaam', category: 'Non-management',
     employmentType: 'Permanent', dateJoined: '2019-01-14', dob: '1990-12-09', maritalStatus: 'Married',
     mobile: '+255 700 101 006', workPhone: '+255 22 000 0106',
@@ -94,7 +94,7 @@ const TEST_STAFF = [
     ],
   },
   {
-    staffNo: 'TST107', firstName: 'Daudi', lastName: 'Mfano', gender: 'Male', roles: [],
+    staffNo: 'TST107', userName: 'daudi.mfano', firstName: 'Daudi', middleName: 'Emmanuel', lastName: 'Mfano', gender: 'Male', roles: [],
     title: 'Branch Manager', department: 'Branch Network', station: 'Mwanza Branch', category: 'Non-management',
     stationHead: { name: 'Regional Manager (test)', phone: '+255 700 301 007' },
     employmentType: 'Permanent', dateJoined: '2016-07-04', dob: '1984-09-22', maritalStatus: 'Married',
@@ -106,7 +106,7 @@ const TEST_STAFF = [
     lfbLines: [{ label: 'STAFF LOAN', amount: 800000, outstanding: 14400000, description: 'Personal loan (2025)' }],
   },
   {
-    staffNo: 'TST108', firstName: 'Zawadi', lastName: 'Mfano', gender: 'Female', roles: [],
+    staffNo: 'TST108', userName: 'zawadi.mfano', firstName: 'Zawadi', middleName: 'Rose', lastName: 'Mfano', gender: 'Female', roles: [],
     title: 'Customer Service Officer', department: 'Branch Network', station: 'Mbeya Branch', category: 'Non-management',
     stationHead: { name: 'Branch Manager (test)', phone: '+255 700 301 008' },
     // On probation: tests the eligibility rules for new staff.
@@ -119,7 +119,7 @@ const TEST_STAFF = [
     lfbLines: [],
   },
   {
-    staffNo: 'TST109', firstName: 'Faraji', lastName: 'Mfano', gender: 'Male', roles: [],
+    staffNo: 'TST109', userName: 'faraji.mfano', firstName: 'Faraji', middleName: 'Hassan', lastName: 'Mfano', gender: 'Male', roles: [],
     title: 'IT Support Officer', department: 'IT and Cybersecurity', station: 'Head Office, Dar es Salaam', category: 'Non-management',
     // On a fixed-term contract: tests contract-end limits on the tenor.
     employmentType: 'Contract', dateJoined: '2025-01-06', contractEndDate: '2027-12-31', dob: '1993-06-15', maritalStatus: 'Single',
@@ -131,7 +131,7 @@ const TEST_STAFF = [
     lfbLines: [],
   },
   {
-    staffNo: 'TST110', firstName: 'Upendo', lastName: 'Mfano', gender: 'Female', roles: [],
+    staffNo: 'TST110', userName: 'upendo.mfano', firstName: 'Upendo', middleName: 'Mary', lastName: 'Mfano', gender: 'Female', roles: [],
     title: 'Senior Accountant', department: 'Finance', station: 'Head Office, Dar es Salaam', category: 'Non-management',
     employmentType: 'Permanent', dateJoined: '2014-09-15', dob: '1978-01-25', maritalStatus: 'Widowed',
     mobile: '+255 700 101 010', workPhone: '+255 22 000 0110',
@@ -148,14 +148,15 @@ const TEST_STAFF = [
 ];
 
 const day = (s) => (s ? new Date(`${s}T00:00:00+03:00`) : undefined);
-const fullName = (p) => `${p.firstName} ${p.lastName}`;
+const fullName = (p) => [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
 
 /** The Staff document for a test person: a complete profile, ready to apply. */
 function toStaffDoc(p) {
   return {
     staffNo: p.staffNo,
-    userName: p.staffNo.toLowerCase(),
+    userName: p.userName,
     firstName: p.firstName,
+    middleName: p.middleName,
     lastName: p.lastName,
     gender: p.gender,
     title: p.title,
@@ -168,7 +169,7 @@ function toStaffDoc(p) {
     probationEndDate: day(p.probationEndDate),
     contractEndDate: day(p.contractEndDate),
     incomeClass: 'fixed',
-    email: `${p.staffNo.toLowerCase()}@example.com`,
+    email: `${p.userName}@example.com`,
     lfbAccountNo: p.accountNo,
     workPhone: p.workPhone,
     status: 'active',
