@@ -21,7 +21,12 @@ function buildApp() {
   if (config.corsOrigin) {
     app.use(cors({ origin: config.corsOrigin.split(','), credentials: true }));
   }
-  app.use(express.json({ limit: '1mb' }));
+  // Sign-out and refresh take no body. They must work whatever a client or proxy sends
+  // (an empty body, or the JSON "null" that strict parsing refuses), so a malformed body can
+  // never leave a session running after the person signed out.
+  const json = express.json({ limit: '1mb' });
+  const NO_BODY = new Set(['/api/v1/auth/logout', '/api/v1/auth/refresh']);
+  app.use((req, res, next) => (NO_BODY.has(req.path) ? next() : json(req, res, next)));
   app.use(cookieParser());
   app.use((req, res, next) => {
     res.set('Cache-Control', 'no-store');
