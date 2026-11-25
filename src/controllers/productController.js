@@ -176,7 +176,7 @@ const ProductController = {
     const items = await AgreementTemplate.find({
       status: 'approved', sample: { $ne: true },
       $or: [{ effectiveFrom: null }, { effectiveFrom: { $lte: now } }],
-    }).select('version note effectiveFrom approvedAt').sort({ effectiveFrom: -1, approvedAt: -1 }).lean();
+    }).select('version note language effectiveFrom approvedAt').sort({ effectiveFrom: -1, approvedAt: -1 }).lean();
     res.json({ success: true, data: items.map((t) => ({
       id: String(t._id), version: t.version, note: t.note || '',
       effectiveFrom: t.effectiveFrom, approvedAt: t.approvedAt,
