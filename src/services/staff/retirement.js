@@ -43,7 +43,11 @@ function cutoffProblem(staff, version, settings, today) {
   const cutoff = cutoffFor(staff, settings);
   const fits = calc.instalmentsBefore(cutoff, calc.firstDueDate(today, settings.firstDueDay || 25));
   if (fits < 1) return `You cannot take a new loan: it must be repaid by ${cutoff} (${cutoffRule(settings)}), and no monthly instalment falls on or before that date.`;
-  if (fits < version.minTenor) return `${version.name} needs at least ${version.minTenor} months, but only ${fits} monthly ${fits === 1 ? 'instalment falls' : 'instalments fall'} on or before ${cutoff} (${cutoffRule(settings)}).`;
+  if (fits < version.minTenor) {
+    return fits === 1
+      ? `${version.name} needs at least ${version.minTenor} months, but only ${fits} monthly instalment falls on or before ${cutoff} (${cutoffRule(settings)}).`
+      : `${version.name} needs at least ${version.minTenor} months, but only ${fits} monthly instalments fall on or before ${cutoff} (${cutoffRule(settings)}).`;
+  }
   return null;
 }
 

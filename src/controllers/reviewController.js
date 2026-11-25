@@ -72,6 +72,12 @@ const ReviewController = {
     res.status(201).json({ success: true, data: appSvc.DOC_VIEW(f) });
   },
 
+  async removeCrbReport(req, res) {
+    const { app } = await loadForReview(req);
+    await review.removeCrbReport(req, app, req.params.fileId);
+    res.status(204).end();
+  },
+
   // ---------- revised terms (applicant) ----------
 
   async revised(req, res) {

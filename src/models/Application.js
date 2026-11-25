@@ -50,7 +50,16 @@ const applicationSchema = new Schema(
       outstanding: { type: Number, min: 0 }, // confirmed by OPS from core banking (BR-09)
     },
     probation: { onProbation: Boolean, reason: String, verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' }, verifiedAt: Date }, // NS-01
-    consents: { truth: Boolean, deduct: Boolean, crb: Boolean, sms: Boolean, declarations: { type: [String], default: undefined }, at: Date },
+    consents: {
+      truth: Boolean,
+      deduct: Boolean,
+      crb: Boolean,
+      sms: Boolean,
+      declarations: { type: [String], default: undefined },
+      at: Date,
+      // D-108: the data protection notice ticked before signing, in the language shown.
+      dataProtection: { accepted: Boolean, version: String, language: String, at: Date, _id: false },
+    },
     documentIds: { type: [{ type: Schema.Types.ObjectId, ref: 'StoredFile' }], default: [] },
     // The latest payslip and the figures read from it (D-78, D-79). Only the reader sets them.
     payslip: {
@@ -64,7 +73,9 @@ const applicationSchema = new Schema(
     },
 
     // Review (M5)
-    crb: { outcome: String, reportDate: Date, fileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' } },
+    // Credit bureau check (D-105): every report file the Credit Analyst attached. fileId is the
+    // single file kept before D-105; scripts/migrate-2026-12.js moves it into fileIds.
+    crb: { outcome: String, reportDate: Date, fileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' }, fileIds: { type: [{ type: Schema.Types.ObjectId, ref: 'StoredFile' }], default: undefined } },
     appraisalNote: String,
     arrearsNote: String,
     recommended: { amount: Number, tenor: Number, reason: String, by: { type: Schema.Types.ObjectId, ref: 'User' } },
@@ -78,6 +89,15 @@ const applicationSchema = new Schema(
     // Set on a loan when a top-up of it is disbursed: its deduction stops (D-87).
     settledByTopUp: { applicationId: { type: Schema.Types.ObjectId, ref: 'Application' }, ref: String, at: Date }, // Q3: Pending Disbursement past approvalSlaDays (flag only)
     overdueNotifiedAt: Date, // stage-overdue reminder sent for the current stage (BRD 12)
+
+    // D-107: People and Culture book the loan in core banking before OPS disburses it.
+    booking: {
+      loanAccountNumber: String,
+      date: Date, // local midnight of the booking date
+      note: String,
+      bookedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      bookedAt: Date,
+    },
 
     // OPS confirmation (FR-20 to FR-22)
     disbursement: {
@@ -94,6 +114,7 @@ const applicationSchema = new Schema(
     calcSnapshot: Schema.Types.Mixed, // the full quote at submission (BRD 10)
     ruleFlags: { type: [String], default: [] }, // soft rules for reviewers
     currentAgreementId: { type: Schema.Types.ObjectId, ref: 'Agreement', default: null },
+    agreementLanguage: { type: String, enum: ['en', 'sw'] }, // D-109: the language the applicant signed in
     closedAtStage: String,
     closedReason: String,
     closedAt: Date,

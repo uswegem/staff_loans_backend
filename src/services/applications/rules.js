@@ -8,7 +8,7 @@ const calc = require('../calc/loanCalculator');
 const { cooling, coolingMessage, recordProblems } = require('../staff/eligibilityService');
 const { probationInfo } = require('../staff/staffService');
 const { cutoffFor, cutoffRule, cutoffProblem } = require('../staff/retirement');
-const { OPEN } = require('../../constants/statuses');
+const { OPEN, APPROVED_LOAN } = require('../../constants/statuses');
 const { matchLines, normLabel } = require('../payslip/deductionLines');
 const { localDay } = require('../../utils/dates');
 
@@ -27,10 +27,10 @@ function monthsBetweenDays(from, to) {
  * approval takes over its deduction (D-87).
  */
 function runningLoans(apps, excludeId, today) {
-  const replaced = new Set(apps.filter((a) => a.topUp?.on && a.topUp.applicationId && ['pending_disbursement', 'disbursed'].includes(a.status)).map((a) => String(a.topUp.applicationId)));
+  const replaced = new Set(apps.filter((a) => a.topUp?.on && a.topUp.applicationId && APPROVED_LOAN.includes(a.status)).map((a) => String(a.topUp.applicationId)));
   return apps.filter((a) => {
     if (String(a._id) === String(excludeId) || replaced.has(String(a._id)) || a.settledByTopUp?.applicationId) return false;
-    if (!['pending_disbursement', 'disbursed'].includes(a.status) || !a.approved?.tenor) return false;
+    if (!APPROVED_LOAN.includes(a.status) || !a.approved?.tenor) return false;
     const lastDue = a.schedule?.length ? a.schedule.at(-1).due : calc.addMonthsToDay(calc.firstDueDate(day(a.finalApprovedAt || a.updatedAt)), a.approved.tenor - 1);
     return lastDue >= today;
   });
@@ -56,7 +56,7 @@ function deductions({ apps, appId, today, products = [], productId, payslip, top
   const payDate = payslip?.payDate || null;
   const loans = runningLoans(apps, appId, today).map((a) => ({ applicationId: String(a._id), ref: a.ref, productId: String(a.productId), status: a.status, instalment: a.approved?.instalment || 0, firstDue: firstDueOf(a), topUp: a.topUp }));
   const slas = loans
-    .filter((l) => !payDate || l.status === 'pending_disbursement' || l.firstDue > payDate)
+    .filter((l) => !payDate || l.status !== 'disbursed' || l.firstDue > payDate)
     .map(({ topUp: t, ...l }) => ({ ...l, replaces: t?.on ? t : null }));
   const lines = matchLines(payslip?.lfbLines, products);
   // A SLAS top-up not yet on the payslip replaces a line still printed there: count only the new instalment.

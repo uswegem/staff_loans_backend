@@ -14,6 +14,7 @@ const STATUS = Object.freeze({
   rejected: 'Rejected',
   pending_reaccept: 'Approved – Revised Terms to Accept',
   declined: 'Declined by Applicant',
+  pending_booking: 'Pending Booking', // D-107: People and Culture book it in core banking
   pending_disbursement: 'Pending Disbursement',
   disbursed: 'Disbursed',
   withdrawn: 'Withdrawn',
@@ -22,10 +23,12 @@ const STATUS = Object.freeze({
 const STATUSES = Object.keys(STATUS);
 const PENDING_STAGE = ['pending_credit', 'pending_pcm', 'pending_hr', 'pending_pc', 'pending_ceo'];
 /** Open applications count for BR-08 (one open application per product). */
-const OPEN = ['draft', ...PENDING_STAGE, 'returned', 'pending_reaccept', 'pending_disbursement'];
+const OPEN = ['draft', ...PENDING_STAGE, 'returned', 'pending_reaccept', 'pending_booking', 'pending_disbursement'];
+/** Finally approved and in force (D-107): being booked, waiting for OPS, or disbursed. */
+const APPROVED_LOAN = ['pending_booking', 'pending_disbursement', 'disbursed'];
 /** The applicant may change the request in these. */
 const EDITABLE = ['draft', 'returned'];
 /** The applicant may withdraw before final approval (FR-11). */
 const WITHDRAWABLE = ['draft', ...PENDING_STAGE, 'returned'];
 
-module.exports = { STATUS, STATUSES, PENDING_STAGE, OPEN, EDITABLE, WITHDRAWABLE };
+module.exports = { STATUS, STATUSES, PENDING_STAGE, OPEN, APPROVED_LOAN, EDITABLE, WITHDRAWABLE };

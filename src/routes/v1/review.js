@@ -3,6 +3,7 @@
 const express = require('express');
 const Joi = require('joi');
 const multer = require('multer');
+const { STAGES } = require('../../services/workflow/routes');
 const ReviewController = require('../../controllers/reviewController');
 const { requireAll } = require('../../middleware/permission');
 const { validate } = require('../../middleware/validate');
@@ -15,9 +16,10 @@ const idParams = { params: Joi.object({ id: objectId.required() }) };
 const day = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/);
 const money = Joi.number().integer().min(1).max(10_000_000_000);
 
-const upload = multer({
+// Credit bureau reports (D-105): PDF, JPG or PNG, up to 10 MB each.
+const crbUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => (/\.(pdf|jpe?g|png)$/i.test(file.originalname) ? cb(null, true) : cb(badRequest('Only PDF, JPG and PNG files can be uploaded.', undefined, 'FILE_TYPE'))),
 });
 
@@ -29,6 +31,8 @@ const upload = multer({
  *   get: { tags: [Review], summary: "Review screen: full (FR-14) or limited to name, mobile and NIDA (FR-55); audited", security: [{ bearer: [] }], responses: { 200: { description: Review view }, 403: { description: Own application } } }
  * /review/{id}/decision:
  *   post: { tags: [Review], summary: "Approve, return or reject with the stage's checks (FR-15 to FR-18, FR-42, FR-56)", security: [{ bearer: [] }], responses: { 200: { description: Outcome }, 400: { description: Missing comment or checks } } }
+ * /review/{id}/crb-report/{fileId}:
+ *   delete: { tags: [Review], summary: "Remove a credit bureau report file the current Credit Analyst attached, before deciding (D-105); audited", security: [{ bearer: [] }], responses: { 204: { description: Removed }, 403: { description: Not your file or stage } } }
  * /review/{id}/crb-report:
  *   post: { tags: [Review], summary: "Attach the credit bureau report (FR-42)", security: [{ bearer: [] }], responses: { 201: { description: File } } }
  * /applications/{id}/revised:
@@ -53,6 +57,8 @@ router.post(
     ...idParams,
     body: Joi.object({
       action: Joi.string().valid('approve', 'return', 'reject').required(),
+      // D-106: where a return goes: the applicant (default) or an earlier stage passed in this cycle.
+      returnTo: Joi.string().valid('applicant', ...Object.keys(STAGES)),
       comment: Joi.string().trim().max(2000).allow(''),
       // D-99: the four outcomes; no appraisal or arrears note (earlier ones are kept and shown).
       crb: Joi.object({ outcome: Joi.string().valid(...CRB_OUTCOMES).required(), reportDate: day.required(), fileId: objectId }),
@@ -63,7 +69,8 @@ router.post(
   }),
   asyncHandler(ReviewController.decide)
 );
-router.post('/review/:id/crb-report', validate(idParams), (req, res, next) => upload.single('file')(req, res, next), asyncHandler(ReviewController.crbReport));
+router.post('/review/:id/crb-report', validate(idParams), (req, res, next) => crbUpload.single('file')(req, res, (err) => next(err && err.code === 'LIMIT_FILE_SIZE' ? badRequest('The file is larger than 10 MB.', { file: ['The file is larger than 10 MB.'] }, 'FILE_TOO_LARGE') : err)), asyncHandler(ReviewController.crbReport));
+router.delete('/review/:id/crb-report/:fileId', validate({ params: Joi.object({ id: objectId.required(), fileId: objectId.required() }) }), asyncHandler(ReviewController.removeCrbReport));
 
 router.get('/applications/:id/revised', requireAll('loan.viewOwn'), validate(idParams), asyncHandler(ReviewController.revised));
 router.post(

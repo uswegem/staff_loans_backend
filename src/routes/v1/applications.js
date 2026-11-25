@@ -33,7 +33,7 @@ const uploadOne = (req, res, next) => upload.single('file')(req, res, (err) => n
  * /applications/{id}/agreement/preview:
  *   get: { tags: [Applications], summary: "The Swahili agreement for these terms, with schedule and text fingerprint (FR-33)", security: [{ bearer: [] }], responses: { 200: { description: Blocks and SHA-256 }, 400: { description: Hard rules fail } } }
  * /applications/{id}/sign-and-submit:
- *   post: { tags: [Applications], summary: "Consents, acceptance and agreement fingerprint; authenticated submission automatically signs (FR-10, FR-34, FR-35, FR-37)", security: [{ bearer: [] }], responses: { 200: { description: Submitted }, 409: { description: Agreement changed } } }
+ *   post: { tags: [Applications], summary: "Consents, the data protection notice (dataProtection true, D-108), acceptance and agreement fingerprint; authenticated submission automatically signs (FR-10, FR-34, FR-35, FR-37)", security: [{ bearer: [] }], responses: { 200: { description: Submitted }, 409: { description: Agreement changed } } }
  * /applications/{id}/withdraw:
  *   post: { tags: [Applications], summary: "Withdraw before final approval; voids the agreement (FR-11)", security: [{ bearer: [] }], responses: { 200: { description: Withdrawn } } }
  * /applications/{id}/documents:
@@ -85,6 +85,9 @@ router.post(
       accepted: Joi.boolean().required(),
       scrolledToEnd: Joi.boolean().required(),
       textSha256: Joi.string().hex().length(64).required(),
+      // D-108: the data protection notice's own box, and the version shown.
+      dataProtection: Joi.boolean(),
+      dataProtectionVersion: Joi.string().trim().max(40),
     }),
   }),
   asyncHandler(ApplicationController.signAndSubmit)

@@ -6,6 +6,7 @@
  *
  * kind drives segregation of duties (FR-48) and MFA (FR-49):
  *   approve  – review stages
+ *   book     – People and Culture booking in core banking (D-107)
  *   disburse – OPS confirmation
  *   admin    – configuration and access management
  *   check    – product / pricing checker (FR-60, DECISIONS D-05)
@@ -19,6 +20,7 @@ const PERMISSIONS = Object.freeze([
   { id: 'review.ceo', group: 'Reviews', label: 'Give final approval (CEO stage)', kind: 'approve' },
   { id: 'review.delegate', group: 'Reviews', label: 'Delegate own reviews during absence' },
   { id: 'loan.viewAll', group: 'Reviews', label: 'View every application and its approvals, read-only (Auditor)' },
+  { id: 'loan.book', group: 'Operations', label: 'Book finally approved loans in core banking (People and Culture)', kind: 'book' },
   { id: 'disb.confirm', group: 'Operations', label: 'Confirm disbursements', kind: 'disburse' },
   { id: 'staff.view', group: 'Staff records', label: 'View staff records' },
   { id: 'staff.manage', group: 'Staff records', label: 'Maintain staff records and salaries' },
@@ -44,7 +46,7 @@ const permById = (id) => PERMISSIONS.find((p) => p.id === id);
 const LOCKED_PERMISSIONS = Object.freeze(PERMISSIONS.filter((p) => p.locked).map((p) => p.id));
 
 /** FR-49: MFA for anyone holding a review, disbursement or administration permission. */
-const MFA_KINDS = Object.freeze(['approve', 'disburse', 'admin', 'check']);
+const MFA_KINDS = Object.freeze(['approve', 'book', 'disburse', 'admin', 'check']);
 
 const REVIEW_PERMISSIONS = Object.freeze(['review.credit', 'review.pcm', 'review.hr', 'review.ceo']);
 
@@ -66,6 +68,12 @@ const SOD_RULES = Object.freeze([
     why: 'The person who approves a loan must not also confirm that it was paid out.',
     a: ['approve'],
     b: ['disburse'],
+  },
+  {
+    id: 'sod4',
+    name: 'Booking is kept apart from confirming disbursement',
+    why: 'The person who books a loan in core banking must not also confirm that it was paid out.',
+    all: ['loan.book', 'disb.confirm'],
   },
   {
     id: 'sod3',

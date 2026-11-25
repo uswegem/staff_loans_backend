@@ -19,15 +19,20 @@ const rules = require('../applications/rules');
 const appSvc = require('../applications/applicationService');
 const agreementService = require('../agreement/agreementService');
 const { declarationsOf, allDeclared } = require('../agreement/renderer');
-const { agreementPdf, textBlocks } = require('../agreement/pdfService');
+const { agreementPdf, textBlocks, pdfText } = require('../agreement/pdfService');
+const { translate } = require('../../i18n');
+const dataProtection = require('../consent/dataProtection');
 const fileStore = require('../files/fileStore');
 const workflow = require('../workflow/workflowService');
 const { capCheck } = require('../applications/capCheck');
 const { namesOf, stageName, decisionStage, fullName } = require('./reviewView');
 const { STAGES, PC_STAGES } = require('../workflow/routes');
+const { validApprovals, returnTargets } = require('./approvals');
 const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
-const { AppError, badRequest, conflict, forbidden } = require('../../utils/errors');
+const { AppError, badRequest, conflict, forbidden, notFound } = require('../../utils/errors');
+const StoredFile = require('../../models/StoredFile');
+const AgreementTemplate = require('../../models/AgreementTemplate');
 
 const tzs = (n) => `TZS ${Math.round(n).toLocaleString('en-US')}`;
 const DAY = 24 * 3600 * 1000;
@@ -36,9 +41,16 @@ async function notifyOps(text, href, entityId, session, type = 'application.read
   return notify.notifyPermission('disb.confirm', { type, text, href, entity: 'Application', entityId }, { session });
 }
 
+/** D-107: a finally approved loan is booked in core banking by People and Culture first. */
+async function notifyBookers(text, href, entityId, session, type = 'application.ready_to_book') {
+  return notify.notifyPermission('loan.book', { type, text, href, entity: 'Application', entityId }, { session });
+}
+
 /** Approvals in this cycle, as printed "kwa niaba ya Mwajiri" (FR-36). */
 async function approvalsFor(app, extra, session) {
-  const rows = await Decision.find({ applicationId: app._id, cycle: app.cycle, action: 'approve' }).sort({ at: 1 }).session(session || null).lean();
+  // Approvals still in force: one cancelled by a return to an earlier stage is not printed (D-106).
+  const history = await Decision.find({ applicationId: app._id, cycle: app.cycle, action: { $in: ['approve', 'return'] } }).sort({ at: 1 }).session(session || null).lean();
+  const rows = validApprovals(history, app.stages || []);
   const all = [...rows.map((d) => ({ actorId: d.actorId, onBehalfOfId: d.onBehalfOfId, stage: d.stage, details: d.details, at: d.at })), ...(extra ? [extra] : [])];
   const names = await namesOf(all.flatMap((a) => [a.actorId, a.onBehalfOfId]));
   return all.map((a) => ({ name: names.get(String(a.actorId))?.name, title: names.get(String(a.actorId))?.title, stage: decisionStage(a), at: a.at, onBehalfOf: a.onBehalfOfId ? names.get(String(a.onBehalfOfId))?.name : undefined }));
@@ -46,18 +58,22 @@ async function approvalsFor(app, extra, session) {
 
 /** The in-force PDF: the accepted text, the acceptance evidence and the employer's approvals. */
 async function inForcePdf(agreement, app, approvals) {
+  // D-109: in the language it was signed in (older agreements: their template's).
+  const language = agreement.language || (await AgreementTemplate.findById(agreement.templateId).select('language').lean())?.language || 'sw';
+  const L = pdfText(language);
+  const stage = (s) => (language === 'sw' ? translate(s, 'sw') : s);
   const evidence = [
-    ['Namba ya mkataba / Agreement number', agreement.number],
-    ['Maombi / Application', app.ref],
-    ['Mwajiriwa / Staff member', `${agreement.acceptance.fullName} (${agreement.acceptance.staffNo})`],
-    ['Amekubali / Accepted at', `${new Date(agreement.acceptance.at).toISOString()} (UTC), IP ${agreement.acceptance.ip}`],
-    ['Toleo la mkataba / Template version', agreement.templateVersion],
-    ['Alama ya maandishi (SHA-256) / Text fingerprint', agreement.textSha256],
-    ...approvals.map((a, i) => [`Kwa niaba ya Mwajiri ${i + 1} / For the employer`, `${a.name}, ${a.title || ''}${a.onBehalfOf ? ` (kwa niaba ya ${a.onBehalfOf})` : ''}, ${a.stage}, ${new Date(a.at).toISOString()} (UTC)`]),
-    ['Unaanza kutumika / In force from', new Date().toISOString()],
+    [L.number, agreement.number],
+    [L.application, app.ref],
+    [L.staff, `${agreement.acceptance.fullName} (${agreement.acceptance.staffNo})`],
+    [L.acceptedAt, `${new Date(agreement.acceptance.at).toISOString()} (UTC), IP ${agreement.acceptance.ip}`],
+    [L.template, agreement.templateVersion],
+    [L.fingerprint, agreement.textSha256],
+    ...approvals.map((a, i) => [`${L.employer} ${i + 1}`, `${a.name}, ${a.title || ''}${a.onBehalfOf ? ` (${L.onBehalf} ${a.onBehalfOf})` : ''}, ${stage(a.stage)}, ${new Date(a.at).toISOString()} (UTC)`]),
+    [L.inForce, new Date().toISOString()],
   ];
   // Agreements signed since the blocks were kept print as rendered (with bold); earlier ones from their text.
-  return agreementPdf({ blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text), title: `Mkataba ${agreement.number} (${app.ref}) - unatumika`, evidence });
+  return agreementPdf({ blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text), title: `${L.agreement} ${agreement.number} (${app.ref}) - ${L.inForceTitle}`, evidence, dataProtection: dataProtection.pdfSection(agreement.dataProtection), language });
 }
 
 /** Repayment schedule from today on the approved terms (FR-24). */
@@ -77,7 +93,7 @@ async function recordSuccess(app, now, session) {
   );
 }
 
-/** Puts the agreement in force (FR-18, FR-56) and sends the application to OPS. */
+/** Puts the agreement in force (FR-18, FR-56) and sends the application to booking (D-107). */
 async function putInForce(req, app, agreement, terms, now, session, approvals) {
   const pdf = await inForcePdf(agreement, app, approvals);
   const file = await fileStore.store(pdf, { kind: 'agreement_pdf', originalName: `${agreement.number}-in-force.pdf`, applicationId: app._id, ownerUserId: app.applicantUserId, uploadedBy: req.auth.user._id }, { session });
@@ -85,7 +101,7 @@ async function putInForce(req, app, agreement, terms, now, session, approvals) {
   const sched = await scheduleFrom(app, terms, localDay(now));
   await Application.updateOne(
     { _id: app._id },
-    { $set: { status: 'pending_disbursement', currentStage: null, stageEnteredAt: now, stageDueAt: null, approved: { amount: terms.amount, tenor: terms.tenor, instalment: sched.instalment }, schedule: sched.rows, scheduleBasis: 'final_approval' } },
+    { $set: { status: 'pending_booking', currentStage: null, stageEnteredAt: now, stageDueAt: null, approved: { amount: terms.amount, tenor: terms.tenor, instalment: sched.instalment }, schedule: sched.rows, scheduleBasis: 'final_approval' } },
     { session }
   );
   await recordSuccess(app, now, session);
@@ -126,7 +142,7 @@ async function decide(req, app, body) {
   const actor = await workflow.canAct(req.auth.user._id, app);
   if (!actor) {
     if (String(app.applicantUserId) === String(req.auth.user._id)) throw forbidden('You cannot review your own application.', 'SELF_REVIEW');
-    if (await Decision.exists({ applicationId: app._id, action: 'approve', actorId: req.auth.user._id, stage: { $ne: app.currentStage } })) {
+    if ((await workflow.otherStageApprovers(app)).includes(String(req.auth.user._id))) {
       throw forbidden('You approved an earlier stage of this application, so another person must decide this stage.', 'SEPARATE_STAGES');
     }
     throw forbidden('This application is not waiting for you.', 'NOT_YOUR_STAGE');
@@ -137,11 +153,26 @@ async function decide(req, app, body) {
   const isFinal = app.stages.indexOf(stage) === app.stages.length - 1;
 
   if (action !== 'approve' && !comment) throw badRequest('Add a comment so the applicant knows what to do.', { comment: ['Add a comment so the applicant knows what to do.'] }, 'COMMENT_REQUIRED');
+  // D-106: a return goes to the applicant (as before) or to an earlier stage passed in this cycle.
+  let returnTo;
+  if (action === 'return') {
+    returnTo = body.returnTo || 'applicant';
+    if (returnTo !== 'applicant') {
+      const history = await Decision.find({ applicationId: app._id, action: { $in: ['approve', 'return'] } }).lean();
+      if (!returnTargets(app, history).includes(returnTo)) {
+        throw badRequest('Choose the applicant or an earlier stage this application has already passed.', { returnTo: ['Choose the applicant or an earlier stage this application has already passed.'] }, 'RETURN_TARGET_INVALID');
+      }
+    }
+  }
   const set = {};
   let recommended = null;
   if (stage === 'credit') {
     if (action === 'approve' && !body.crb?.outcome) throw badRequest('Record the credit bureau outcome before approving.', { crb: ['Record the credit bureau outcome before approving.'] }, 'CRB_REQUIRED');
-    if (body.crb?.outcome) set.crb = { outcome: body.crb.outcome, reportDate: body.crb.reportDate ? localMidnight(body.crb.reportDate) : null, fileId: body.crb.fileId || app.crb?.fileId || null };
+    if (action === 'approve' && !body.crb?.reportDate) throw badRequest('Enter the credit bureau report date before approving.', { crb: ['Enter the credit bureau report date before approving.'] }, 'CRB_REQUIRED');
+    // D-105: approving needs at least one bureau report file; returning or rejecting does not.
+    if (action === 'approve' && !crbFileIds(app).length) throw badRequest('Attach at least one credit bureau report before approving.', { crb: ['Attach at least one credit bureau report before approving.'] }, 'CRB_FILE_REQUIRED');
+    // The outcome and date only: the files are kept as attached (D-105).
+    if (body.crb?.outcome) Object.assign(set, { 'crb.outcome': body.crb.outcome, 'crb.reportDate': body.crb.reportDate ? localMidnight(body.crb.reportDate) : null });
     // D-86: the Credit Analyst records the bureau check only; terms are not recommended any more.
     if (body.recommended) throw badRequest('The Credit Analyst records the credit bureau check only and cannot recommend terms.', undefined, 'RECOMMENDATION_NOT_ALLOWED');
   } else if (body.recommended || body.crb) {
@@ -192,11 +223,25 @@ async function decide(req, app, body) {
     if (!fresh) throw conflict('Someone else has just decided on this application. Reload it.', 'STATE_CHANGED');
 
     await Decision.create(
-      [{ applicationId: app._id, cycle: app.cycle, stage, action, actorId: req.auth.user._id, onBehalfOfId: actor.onBehalfOf || undefined, comment: storedComment, details: { permission: actor.permission, crb: set.crb ? { outcome: set.crb.outcome } : undefined, hrChecks: set.hrChecks, recommended: recommended ? { amount: recommended.amount, tenor: recommended.tenor } : undefined }, at: now, ip: req.ip }],
+      [{ applicationId: app._id, cycle: app.cycle, stage, action, actorId: req.auth.user._id, onBehalfOfId: actor.onBehalfOf || undefined, comment: storedComment, details: { permission: actor.permission, returnTo: action === 'return' ? returnTo : undefined, crb: set['crb.outcome'] ? { outcome: set['crb.outcome'] } : undefined, hrChecks: set.hrChecks, recommended: recommended ? { amount: recommended.amount, tenor: recommended.tenor } : undefined }, at: now, ip: req.ip }],
       { session }
     );
 
-    if (action === 'return') {
+    if (action === 'return' && returnTo !== 'applicant') {
+      // D-106: back to an earlier stage. Approvals from that stage on, in this cycle, no longer
+      // count (approvals.js); the stage decides again, with a new due date.
+      const cal = await calendar.load(session);
+      const dueAt = workingTime.addWorkingHours(cal, now, STAGES[returnTo].target === 'ceo' ? cal.ceoTargetHours : cal.stageTargetHours);
+      const moved = await Application.findByIdAndUpdate(app._id, { $set: { status: STAGES[returnTo].status, currentStage: returnTo, stageEnteredAt: now, stageDueAt: dueAt } }, { new: true, session });
+      const actors = await workflow.stageActors(moved, { session });
+      await notify.notifyUsers(
+        actors.map((a) => a.userId),
+        { type: 'application.stage_returned', text: `${app.ref} from ${applicantName} was returned to your ${stageName(returnTo)} review by ${stageName(stage)}: ${storedComment}`, href: `/review/${app._id}`, entity: 'Application', entityId: String(app._id) },
+        { session }
+      );
+      await notify.notifyUsers([app.applicantUserId], { type: 'application.moved', text: `${app.ref} went back to ${stageName(returnTo)} review.`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
+      outcome = 'returned_to_stage';
+    } else if (action === 'return') {
       await Application.updateOne({ _id: app._id }, { $set: { status: 'returned', currentStage: null, stageEnteredAt: now, stageDueAt: null } }, { session });
       await notify.notifyUsers([app.applicantUserId], { type: 'application.returned', text: `${app.ref} was returned for correction: ${storedComment}`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
       outcome = 'returned';
@@ -239,8 +284,8 @@ async function decide(req, app, body) {
       const approvals = await approvalsFor(fresh, null, session);
       await Application.updateOne({ _id: app._id }, { $set: { finalApprovedAt: now } }, { session });
       await putInForce(req, fresh, agreement, { amount: agreement.terms.amount, tenor: agreement.terms.tenor }, now, session, approvals);
-      await notify.notifyUsers([app.applicantUserId], { type: 'application.approved', text: `${app.ref} is approved. Your signed agreement ${agreement.number} is now in force and OPS will disburse.`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
-      await notifyOps(`${app.ref} has final approval. Ready to disburse.`, '/disburse', String(app._id), session);
+      await notify.notifyUsers([app.applicantUserId], { type: 'application.approved', text: `${app.ref} is approved. Your signed agreement ${agreement.number} is now in force. People and Culture will book the loan and OPS will disburse it.`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
+      await notifyBookers(`${app.ref} has final approval. Ready to book in core banking.`, '/disburse', String(app._id), session);
       outcome = 'approved';
     }
 
@@ -248,14 +293,14 @@ async function decide(req, app, body) {
       {
         req,
         action: `review.${action}`,
-        description: `${app.ref} ${action === 'approve' ? `approved by ${stageName(stage)}${outcome === 'approved' ? ' (final; agreement in force)' : outcome === 'revised' ? ' (final; revised terms to accept)' : ''}` : `${action === 'return' ? 'returned' : 'rejected'} by ${stageName(stage)}`}${actor.onBehalfOf ? ' on behalf of the stage holder' : ''}`,
+        description: `${app.ref} ${action === 'approve' ? `approved by ${stageName(stage)}${outcome === 'approved' ? ' (final; agreement in force)' : outcome === 'revised' ? ' (final; revised terms to accept)' : ''}` : action === 'return' ? `returned by ${stageName(stage)} to ${returnTo === 'applicant' ? 'the applicant' : stageName(returnTo)}: ${storedComment}` : `rejected by ${stageName(stage)}`}${actor.onBehalfOf ? ' on behalf of the stage holder' : ''}`,
         entity: 'Application',
         entityId: String(app._id),
         appRef: app.ref,
         limited,
         onBehalfOfId: actor.onBehalfOf || undefined,
         before: { status: app.status, stage },
-        after: { outcome, crb: set.crb?.outcome, recommended: limited ? undefined : recommended && { amount: recommended.amount, tenor: recommended.tenor } },
+        after: { outcome, returnTo, crb: set['crb.outcome'], recommended: limited ? undefined : recommended && { amount: recommended.amount, tenor: recommended.tenor } },
       },
       { session }
     );
@@ -267,13 +312,43 @@ const isFinalStage = (app, stage) => app.stages.at(-1) === stage;
 
 // ---------- credit bureau report (FR-42) ----------
 
+/** The bureau report files attached to an application: fileIds, or the single fileId kept before D-105. */
+function crbFileIds(app) {
+  if (app.crb?.fileIds?.length) return app.crb.fileIds.map(String);
+  return app.crb?.fileId ? [String(app.crb.fileId)] : [];
+}
+
+const CRB_MAX_FILES = 10;
+
+/** Adds a bureau report file (D-105): files are added, never replaced; at most ten. */
 async function uploadCrbReport(req, app, file) {
   const actor = await workflow.canAct(req.auth.user._id, app);
   if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Analyst at this stage can attach the bureau report.', 'NOT_YOUR_STAGE');
+  const existing = crbFileIds(app);
+  if (existing.length >= CRB_MAX_FILES) throw badRequest('You can attach up to 10 credit bureau files. Remove one to add another.', { file: ['You can attach up to 10 credit bureau files. Remove one to add another.'] }, 'CRB_FILE_LIMIT');
   const stored = await fileStore.store(file.buffer, { kind: 'crb_report', originalName: file.originalname, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id });
-  await Application.updateOne({ _id: app._id }, { $set: { 'crb.fileId': stored._id } });
-  await audit.record({ req, action: 'review.crb_report', description: `${app.ref}: credit bureau report attached`, entity: 'Application', entityId: String(app._id), appRef: app.ref, limited: true });
+  // A single file kept before D-105 becomes the first of the list.
+  const moved = await Application.updateOne(
+    { _id: app._id, currentStage: 'credit', [`crb.fileIds.${CRB_MAX_FILES - 1}`]: { $exists: false } },
+    existing.length && !app.crb?.fileIds?.length ? { $set: { 'crb.fileIds': [...existing, String(stored._id)] } } : { $push: { 'crb.fileIds': stored._id } }
+  );
+  if (!moved.modifiedCount) throw conflict('The application changed while the file was uploading. Reload it and try again.', 'STATE_CHANGED');
+  await audit.record({ req, action: 'review.crb_report_add', description: `${app.ref}: credit bureau report ${stored.originalName} attached`, entity: 'Application', entityId: String(app._id), appRef: app.ref, limited: true, after: { fileId: String(stored._id), originalName: stored.originalName, sha256: stored.sha256 } });
   return stored;
+}
+
+/** Removes a bureau report file the current user attached, before the credit decision (D-105). */
+async function removeCrbReport(req, app, fileId) {
+  const actor = await workflow.canAct(req.auth.user._id, app);
+  if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Analyst at this stage can remove a bureau report.', 'NOT_YOUR_STAGE');
+  if (!crbFileIds(app).includes(String(fileId))) throw notFound('That file is not attached to this application.');
+  const file = await StoredFile.findOne({ _id: fileId, kind: 'crb_report', removedAt: null });
+  if (!file) throw notFound('That file is not attached to this application.');
+  if (String(file.uploadedBy) !== String(req.auth.user._id)) throw forbidden('You can remove only the files you attached.', 'NOT_YOUR_FILE');
+  const ids = crbFileIds(app).filter((id) => id !== String(fileId));
+  await Application.updateOne({ _id: app._id }, { $set: { 'crb.fileIds': ids }, $unset: { 'crb.fileId': '' } });
+  await StoredFile.updateOne({ _id: file._id }, { $set: { removedAt: new Date(), removedBy: req.auth.user._id } });
+  await audit.record({ req, action: 'review.crb_report_remove', description: `${app.ref}: credit bureau report ${file.originalName} removed`, entity: 'Application', entityId: String(app._id), appRef: app.ref, limited: true, before: { fileId: String(file._id), originalName: file.originalName, sha256: file.sha256 } });
 }
 
 // ---------- revised terms (FR-38, FR-39, FR-54) ----------
@@ -327,11 +402,13 @@ async function acceptRevised(req, app, body) {
   const number = await appSvc.nextRef('MKT');
   const name = agreementService.staffName(staff);
   const approvals = await approvalsFor(app);
-  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip } };
+  // D-108: the data protection notice accepted at signing stays with the loan.
+  const dp = (await Agreement.findById(app.currentAgreementId).select('dataProtection').lean())?.dataProtection;
+  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, language: doc.template.language, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip }, dataProtection: dp };
   const pdf = await inForcePdf(draft, app, approvals);
 
   await withTransaction(async (session) => {
-    const fresh = await Application.findOneAndUpdate({ _id: app._id, status: 'pending_reaccept' }, { $set: { status: 'pending_disbursement' } }, { new: true, session });
+    const fresh = await Application.findOneAndUpdate({ _id: app._id, status: 'pending_reaccept' }, { $set: { status: 'pending_booking' } }, { new: true, session });
     if (!fresh) throw conflict('There are no revised terms to accept.', 'NOT_PENDING_REACCEPT');
     const file = await fileStore.store(pdf, { kind: 'agreement_pdf', originalName: `${number}.pdf`, applicationId: app._id, ownerUserId: app.applicantUserId, uploadedBy: req.auth.user._id }, { session });
     const [revised] = await Agreement.create(
@@ -342,6 +419,7 @@ async function acceptRevised(req, app, body) {
           kind: 'revised',
           templateId: doc.template.id,
           templateVersion: doc.template.version,
+          language: doc.template.language,
           terms: { amount: app.approved.amount, tenor: app.approved.tenor, instalment: quote.instalment, interestBps: quote.rates.interestBps, processingFee: quote.processingFee, insuranceFee: quote.insuranceFee, totalInterest: quote.totalInterest, totalRepayable: quote.totalRepayable, firstDueDate: quote.firstDueDate, repaymentMethod: app.repayment.method },
           schedule: quote.schedule,
           text: doc.text,
@@ -352,6 +430,7 @@ async function acceptRevised(req, app, body) {
           inForcePdfFileId: file._id,
           approvals,
           acceptance: { userId: req.auth.user._id, staffNo: staff.staffNo, fullName: name, at: now, ip: req.ip, userAgent: req.get('User-Agent') },
+          dataProtection: dp?.accepted ? dp : undefined,
           status: 'in_force',
           effectiveAt: now,
         },
@@ -364,7 +443,7 @@ async function acceptRevised(req, app, body) {
     await recordSuccess(app, now, session);
     await Decision.create([{ applicationId: app._id, cycle: app.cycle, action: 'accept_revised', actorId: req.auth.user._id, comment: `${tzs(app.approved.amount)} over ${app.approved.tenor} months, agreement ${number}`, details: { agreementNumber: number, textSha256: doc.textSha256 }, at: now, ip: req.ip }], { session });
     await audit.record({ req, action: 'agreement.accept_revised', description: `${app.ref}: revised agreement ${number} accepted (fingerprint ${doc.textSha256.slice(0, 16)}…)`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { agreement: number, textSha256: doc.textSha256 } }, { session });
-    await notifyOps(`${app.ref}: revised terms accepted. Ready to disburse.`, '/disburse', String(app._id), session);
+    await notifyBookers(`${app.ref}: revised terms accepted. Ready to book in core banking.`, '/disburse', String(app._id), session);
   });
   return Application.findById(app._id);
 }
@@ -398,4 +477,4 @@ async function expireRevisedTerms(now = new Date()) {
   return due.length;
 }
 
-module.exports = { decide, uploadCrbReport, revisedTerms, acceptRevised, declineRevised, expireRevisedTerms };
+module.exports = { decide, uploadCrbReport, removeCrbReport, crbFileIds, CRB_MAX_FILES, revisedTerms, acceptRevised, declineRevised, expireRevisedTerms };

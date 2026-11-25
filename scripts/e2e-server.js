@@ -38,6 +38,7 @@ async function main() {
   const { seedFoundation } = require('../seed/foundation');
   const { seedProducts } = require('../tests/fixtures/products');
   const { seedAgreementTemplate } = require('../seed/agreementTemplate');
+  const { seedLegalNotices } = require('../seed/legalNotices');
   const { seedSampleApplications } = require('../tests/fixtures/applications');
   const scheduler = require('../src/jobs/scheduler');
 
@@ -45,6 +46,7 @@ async function main() {
   const { users } = await seedFoundation({ password: PASSWORD });
   const products = await seedProducts(users);
   await seedAgreementTemplate(users);
+  await seedLegalNotices();
   await seedSampleApplications({ users, products });
   const stopJobs = scheduler.start();
 

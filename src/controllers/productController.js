@@ -45,7 +45,7 @@ function meta(v, names) {
   };
 }
 
-const values = (fields, v) => Object.fromEntries(fields.map(([f]) => [f, f === 'agreementTemplateId' ? (v[f] ? String(v[f]) : null) : v[f]]));
+const values = (fields, v) => Object.fromEntries(fields.map(([f]) => [f, ['agreementTemplateId', 'agreementTemplateSwId'].includes(f) ? (v[f] ? String(v[f]) : null) : v[f]]));
 const peopleIn = (versions) => versions.flatMap((v) => [v.makerId, v.checkerId, ...v.editors]);
 
 async function loadProduct(id) {
@@ -176,9 +176,9 @@ const ProductController = {
     const items = await AgreementTemplate.find({
       status: 'approved', sample: { $ne: true },
       $or: [{ effectiveFrom: null }, { effectiveFrom: { $lte: now } }],
-    }).select('version note effectiveFrom approvedAt').sort({ effectiveFrom: -1, approvedAt: -1 }).lean();
+    }).select('version note language effectiveFrom approvedAt').sort({ effectiveFrom: -1, approvedAt: -1 }).lean();
     res.json({ success: true, data: items.map((t) => ({
-      id: String(t._id), version: t.version, note: t.note || '',
+      id: String(t._id), version: t.version, note: t.note || '', language: t.language || 'sw',
       effectiveFrom: t.effectiveFrom, approvedAt: t.approvedAt,
     })) });
   },

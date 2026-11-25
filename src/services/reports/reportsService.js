@@ -28,7 +28,7 @@ const calendar = require('../calendar/calendarService');
 const workingTime = require('../calendar/workingTime');
 const { STAGES } = require('../workflow/routes');
 const { fullName, stageName, decisionStage } = require('../review/reviewView');
-const { STATUS, PENDING_STAGE } = require('../../constants/statuses');
+const { STATUS, PENDING_STAGE, APPROVED_LOAN } = require('../../constants/statuses');
 const { permById, requiresMfa } = require('../../constants/permissions');
 const env = require('../../config/env');
 const { localDay, localMidnight, OFFSET_MIN } = require('../../utils/dates');
@@ -94,7 +94,7 @@ async function register(viewer, f) {
   const now = Date.now();
   const rows = apps.map((a) => {
     const s = staffOf(a);
-    const outside = a.status === 'pending_disbursement' && a.stageEnteredAt && now - a.stageEnteredAt >= settings.approvalSlaDays * DAY ? 'Yes' : '';
+    const outside = ['pending_booking', 'pending_disbursement'].includes(a.status) && a.stageEnteredAt && now - a.stageEnteredAt >= settings.approvalSlaDays * DAY ? 'Yes' : '';
     const common = [STATUS[a.status], a.currentStage ? stageName(a.currentStage) : '', day(a.submittedAt), Math.floor((now - new Date(a.submittedAt)) / DAY), outside];
     if (limitedFor(viewer, a)) {
       limitedCount += 1;
@@ -176,7 +176,7 @@ async function decisions(viewer, f) {
     const lim = limitedFor(viewer, a);
     if (lim) limitedCount += 1;
     const comment = lim && String(d.actorId) !== viewer.userId ? LIMITED : d.comment || '';
-    return [a.ref, fullName(staffOf(a)), decisionStage(d), DECISION_LABEL[d.action] || d.action, who.get(String(d.actorId)) || '', d.onBehalfOfId ? who.get(String(d.onBehalfOfId)) || '' : '', dateTime(d.at), comment];
+    return [a.ref, fullName(staffOf(a)), decisionStage(d), d.action === 'return' ? `Returned to ${d.details?.returnTo && d.details.returnTo !== 'applicant' ? stageName(d.details.returnTo) : 'the applicant'}` : DECISION_LABEL[d.action] || d.action, who.get(String(d.actorId)) || '', d.onBehalfOfId ? who.get(String(d.onBehalfOfId)) || '' : '', dateTime(d.at), comment];
   });
   return { columns: [col('Reference'), col('Applicant'), col('Stage'), col('Decision'), col('By'), col('On behalf of'), col('When', 'datetime'), col('Comment')], rows: out, limitedCount };
 }
@@ -193,16 +193,18 @@ async function disbursed(viewer, f) {
     const g = ags.get(String(a.currentAgreementId)) || { terms: {} };
     if (limitedFor(viewer, a)) {
       limitedCount += 1;
-      return [a.ref, '', fullName(s), '', LIMITED, '', '', '', '', '', '', '', day(a.disbursement.date), '', ''];
+      return [a.ref, '', fullName(s), '', LIMITED, '', '', '', '', '', '', '', day(a.disbursement.date), '', '', '', ''];
     }
     return [
       a.ref, s.staffNo, fullName(s), s.department || '', productOf(a), a.approved.amount, g.terms.processingFee || 0, g.terms.insuranceFee || 0, a.approved.instalment, a.approved.tenor,
       'Salary deduction', // the only repayment method (D-84)
       a.schedule?.[0]?.due || '', day(a.disbursement.date), a.disbursement.transactionRef || '', g.number || '',
+      // D-107: booked in core banking by People and Culture before OPS disbursed.
+      a.booking?.loanAccountNumber || '', a.booking?.date ? day(a.booking.date) : '',
     ];
   });
   return {
-    columns: [col('Reference'), col('Staff number'), col('Staff'), col('Department'), col('Product'), col('Amount', 'money'), col('Processing fee', 'money'), col('Insurance', 'money'), col('Instalment', 'money'), col('Tenor', 'number'), col('Repayment method'), col('First due date', 'date'), col('Disbursed', 'date'), col('Transaction ref'), col('Agreement')],
+    columns: [col('Reference'), col('Staff number'), col('Staff'), col('Department'), col('Product'), col('Amount', 'money'), col('Processing fee', 'money'), col('Insurance', 'money'), col('Instalment', 'money'), col('Tenor', 'number'), col('Repayment method'), col('First due date', 'date'), col('Disbursed', 'date'), col('Transaction ref'), col('Agreement'), col('Loan account'), col('Booked', 'date')],
     rows,
     limitedCount,
     excluded,
@@ -215,7 +217,7 @@ const GROUPS = { product: 'Product', branch: 'Branch', category: 'Category' };
 
 async function summary(viewer, f) {
   const by = GROUPS[f.groupBy] ? f.groupBy : 'product';
-  const { apps, staffOf, productOf } = await loadApps(viewer, f, { dateField: 'finalApprovedAt', extra: { status: { $in: ['pending_disbursement', 'disbursed'] } } });
+  const { apps, staffOf, productOf } = await loadApps(viewer, f, { dateField: 'finalApprovedAt', extra: { status: { $in: APPROVED_LOAN } } });
   const visible = apps.filter((a) => !limitedFor(viewer, a));
   const keyOf = (a) => (by === 'product' ? productOf(a) : by === 'branch' ? staffOf(a).station || '—' : staffOf(a).category || '—');
   const groups = new Map();
@@ -362,7 +364,7 @@ async function overview(req) {
   const [settings, cal] = await Promise.all([Settings.get(), calendar.load()]);
   const open = await Application.find({ status: { $in: PENDING_STAGE } }).select('stageDueAt').lean();
   const now = new Date();
-  const pending = await Application.find({ status: 'pending_disbursement' }).select('stageEnteredAt').lean();
+  const pending = await Application.find({ status: { $in: ['pending_booking', 'pending_disbursement'] } }).select('stageEnteredAt').lean();
   const { apps, productOf } = await loadApps(viewer, {});
   const visible = apps.filter((a) => !limitedFor(viewer, a));
   const disbursedApps = visible.filter((a) => a.status === 'disbursed');

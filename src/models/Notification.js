@@ -8,7 +8,10 @@ const notificationSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     type: { type: String, required: true },
-    text: { type: String, required: true, maxlength: 500 },
+    text: { type: String, required: true, maxlength: 500 }, // English, as sent
+    // D-109: the stable message code and its params, rendered in the reader's language.
+    code: String,
+    params: mongoose.Schema.Types.Mixed,
     href: String,
     entity: String,
     entityId: String,

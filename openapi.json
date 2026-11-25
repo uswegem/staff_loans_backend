@@ -54,6 +54,24 @@
         }
       }
     },
+    "/users/candidates": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Active staff records without a sign-in, for Add user",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Up to 20 matches"
+          }
+        }
+      }
+    },
     "/users/{id}": {
       "get": {
         "tags": [
@@ -396,6 +414,24 @@
         "responses": {
           "200": {
             "description": "Profile"
+          }
+        }
+      }
+    },
+    "/me/profile/date-joined": {
+      "patch": {
+        "tags": [
+          "Profile"
+        ],
+        "summary": "Staff self-service Date Joined; no HR approval",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated profile"
           }
         }
       }
@@ -816,6 +852,27 @@
           },
           "400": {
             "description": "Missing comment or checks"
+          }
+        }
+      }
+    },
+    "/review/{id}/crb-report/{fileId}": {
+      "delete": {
+        "tags": [
+          "Review"
+        ],
+        "summary": "Remove a credit bureau report file the current Credit Analyst attached, before deciding (D-105); audited",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "403": {
+            "description": "Not your file or stage"
           }
         }
       }
@@ -1594,7 +1651,7 @@
         "tags": [
           "Disbursement"
         ],
-        "summary": "OPS queue: ready to disburse (with Outside SLA flags) or disbursed (FR-20, Q3)",
+        "summary": "Final approval queue: to book (People and Culture), ready to disburse (OPS) or disbursed, with Outside SLA flags and what the caller may do on each loan (FR-20, Q3, D-107)",
         "security": [
           {
             "bearer": []
@@ -1643,12 +1700,36 @@
         }
       }
     },
+    "/disbursements/{id}/book": {
+      "post": {
+        "tags": [
+          "Disbursement"
+        ],
+        "summary": "Book a finally approved loan: core banking loan account number, booking date (not future, not before final approval), optional note; moves it to Pending Disbursement (D-107)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Booked"
+          },
+          "403": {
+            "description": "Own loan (SoD)"
+          },
+          "409": {
+            "description": "Already booked"
+          }
+        }
+      }
+    },
     "/disbursements/{id}/confirm": {
       "post": {
         "tags": [
           "Disbursement"
         ],
-        "summary": "Confirm disbursement: date, optional reference, comment, checklist; regenerates the schedule (FR-20 to FR-22, FR-24)",
+        "summary": "Confirm disbursement: date, mandatory reference, comment, checklist; regenerates the schedule (FR-20 to FR-22, FR-24)",
         "security": [
           {
             "bearer": []
@@ -1669,7 +1750,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Sign in with staff number and password (FR-53)",
+        "summary": "Sign in with username and password (FR-53)",
         "description": "Returns a session, or an mfaToken when a one-time code (or enrolment) is needed. Failures return remainingAttempts; the 5th failure locks the account (423).",
         "requestBody": {
           "required": true,
@@ -1678,13 +1759,13 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "staffNo",
+                  "userName",
                   "password"
                 ],
                 "properties": {
-                  "staffNo": {
+                  "userName": {
                     "type": "string",
-                    "example": "LFB0412"
+                    "example": "jsmith"
                   },
                   "password": {
                     "type": "string"
@@ -1700,7 +1781,7 @@
             "or MFA step required": null
           },
           "401": {
-            "description": "Wrong staff number or password",
+            "description": "Wrong username or password",
             "with remainingAttempts": null
           },
           "423": {
@@ -1938,7 +2019,7 @@
         "tags": [
           "Applications"
         ],
-        "summary": "Consents, acceptance tick, password and the fingerprint read; signing submits (FR-10, FR-34, FR-35, FR-37)",
+        "summary": "Consents, the data protection notice (dataProtection true, D-108), acceptance and agreement fingerprint; authenticated submission automatically signs (FR-10, FR-34, FR-35, FR-37)",
         "security": [
           {
             "bearer": []
@@ -1947,9 +2028,6 @@
         "responses": {
           "200": {
             "description": "Submitted"
-          },
-          "401": {
-            "description": "Wrong password"
           },
           "409": {
             "description": "Agreement changed"
@@ -1980,7 +2058,7 @@
         "tags": [
           "Applications"
         ],
-        "summary": "Attach an optional document: PDF, JPG or PNG (FR-09)",
+        "summary": "Attach a configured supporting document category: PDF, JPG or PNG",
         "security": [
           {
             "bearer": []
@@ -2172,6 +2250,24 @@
         "responses": {
           "200": {
             "description": "Entries"
+          }
+        }
+      }
+    },
+    "/audit/people": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Staff to filter the audit log by (name or staff number)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "People"
           }
         }
       }

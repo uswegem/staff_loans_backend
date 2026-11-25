@@ -96,7 +96,7 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     expect(final.body.data.outcome).toBe('approved');
 
     const a = await Application.findById(id);
-    expect(a).toMatchObject({ status: 'pending_disbursement', scheduleBasis: 'final_approval', approved: { amount: 4500000, tenor: 36, instalment: 136900 } });
+    expect(a).toMatchObject({ status: 'pending_booking', scheduleBasis: 'final_approval', approved: { amount: 4500000, tenor: 36, instalment: 136900 } });
     expect(a.schedule).toHaveLength(36);
     const ag = await Agreement.findById(a.currentAgreementId);
     expect(ag.status).toBe('in_force');
@@ -104,7 +104,8 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     expect(ag.approvals.map((x) => x.name)).toEqual(['Juma Kassim', 'Grace Mollel', 'Joseph Mwakalinga']); // FR-36
     expect((await StoredFile.findById(ag.inForcePdfFileId)).mime).toBe('application/pdf');
     expect((await Staff.findOne({ staffNo: 'LFB0412' })).loanHistory).toHaveLength(1); // NS-02
-    expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(1); // OPS
+    expect(await notesFor('LFB0129', 'application.ready_to_book')).toHaveLength(1); // People and Culture book it (D-107)
+    expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(0); // OPS after booking
     expect((await notesFor('LFB0412', 'application.approved'))[0].text).toMatch(/now in force/);
     expect(await Decision.countDocuments({ applicationId: id, action: 'approve' })).toBe(3);
   });
@@ -283,7 +284,7 @@ describe('CEO and Head of People and Culture routes (BRD 7.2.1, decision 31, FR-
     const v = await api(grace.token).get(`/review/${id}`);
     expect(v.body.data.panel).toMatchObject({ stage: 'hr', isFinal: true });
     expect((await decide(grace, id, { action: 'approve', hrChecks: HR_OK })).body.data.outcome).toBe('approved');
-    expect((await Application.findById(id)).status).toBe('pending_disbursement');
+    expect((await Application.findById(id)).status).toBe('pending_booking');
   });
 
   it('Head of P&C: Credit (limited), P&C Manager, then CEO', async () => {

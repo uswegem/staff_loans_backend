@@ -7,13 +7,17 @@
 const Notification = require('../../models/Notification');
 const User = require('../../models/User');
 const rbac = require('../rbac/rbacService');
+const { identify } = require('../../i18n');
 
 const inApp = {
   name: 'in_app',
   async send(userIds, message, { session } = {}) {
     if (!userIds.length) return;
+    // D-109: kept as code and params, rendered in the reader's language when read. The
+    // English text stays as the record of what was sent.
+    const coded = message.code ? { code: message.code, params: message.params || {} } : identify(message.text) || {};
     await Notification.insertMany(
-      userIds.map((userId) => ({ userId, ...message })),
+      userIds.map((userId) => ({ userId, ...message, code: coded.code, params: coded.params })),
       { session }
     );
   },

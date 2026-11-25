@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased – December 2026 release
+
+Release the API first (with `npm run upgrade:2026-12 -- --dry-run`, then `npm run upgrade:2026-12`), then the web app.
+
+- Credit bureau reports: several files per application, at least one needed to approve at the credit stage; the analyst removes their own files before deciding (D-105).
+- Returns: to the applicant or to any earlier stage passed in this cycle; later approvals are cancelled (kept, marked superseded) and given again (D-106).
+- Booking: after final approval People and Culture (`loan.book`) record the core banking loan account and booking date, then OPS disburse; booker and disburser are different people (D-107).
+- Data protection notice DP-2026-1 with its own box before signing; acceptance stored, audited and printed in the agreement PDFs (D-108).
+- One language at a time: message codes and params, coded notifications, Swahili coverage check in CI, agreements per language with the signed language saved (D-109).
+
 ## Unreleased – UAT readiness (7 Nov 2026)
 
 - MFA regression tests for UAT: username sign-in still asks privileged users for a code, an MFA token is not an access token, a role granted mid-session stays blocked (`MFA_STEP_UP`) also after a refresh, and an administrator's password reset keeps MFA.

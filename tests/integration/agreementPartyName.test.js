@@ -45,7 +45,7 @@ async function draft(person) {
   return { a, id };
 }
 
-const signBody = (preview) => ({ accepted: true, scrolledToEnd: true, textSha256: preview.textSha256, declarations: preview.blocks.filter((b) => b.type === 'declaration').map(() => true) });
+const signBody = (preview) => ({ accepted: true, dataProtection: true, scrolledToEnd: true, textSha256: preview.textSha256, declarations: preview.blocks.filter((b) => b.type === 'declaration').map(() => true) });
 /** Every page's text, items joined with spaces (the payslip reader stops at three pages). */
 async function pdfText(fileId) {
   const lib = await import(pathToFileURL(require.resolve('pdfjs-dist/legacy/build/pdf.mjs')).href);

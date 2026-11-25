@@ -20,13 +20,16 @@ const workingTime = require('../calendar/workingTime');
 const rules = require('../applications/rules');
 const appSvc = require('../applications/applicationService');
 const { STAGES, ROUTES, PC_STAGES, PERMISSION_ROLE } = require('../workflow/routes');
-const { STATUS } = require('../../constants/statuses');
+const { returnTargets, supersededIds } = require('./approvals');
+const { STATUS, APPROVED_LOAN } = require('../../constants/statuses');
 const { formatNida } = require('../staff/profileService');
 const { localDay } = require('../../utils/dates');
 const { retirementDateFor } = require('../staff/retirement');
 
 const fullName = (s) => (s ? [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') : '');
 const MASKED = '********';
+/** The bureau report files: crb.fileIds, or the single fileId kept before D-105. */
+const crbIdsOf = (app) => (app.crb?.fileIds?.length ? app.crb.fileIds : app.crb?.fileId ? [app.crb.fileId] : []).map(String);
 const stageName = (k) => (k ? STAGES[k].short || STAGES[k].label : null);
 /** A decision's stage, naming who acted at a stage several roles share: "People and Culture (P&C Manager)". */
 const decisionStage = (d) => (d.stage && STAGES[d.stage]?.permissions.length > 1 && PERMISSION_ROLE[d.details?.permission] ? `${stageName(d.stage)} (${PERMISSION_ROLE[d.details.permission]})` : stageName(d.stage));
@@ -52,7 +55,7 @@ function routeInfo(app) {
 }
 
 /** Options for the decision panel at the current stage. */
-function panelFor(app, actor) {
+function panelFor(app, actor, decisions = []) {
   if (!actor) return null;
   const stage = app.currentStage;
   const i = app.stages.indexOf(stage);
@@ -67,6 +70,12 @@ function panelFor(app, actor) {
     needsHrChecks: PC_STAGES.includes(stage),
     needsProbationCheck: PC_STAGES.includes(stage) && !!app.probation?.onProbation,
     crbOutcomes: CRB_OUTCOMES, // D-99
+    // D-106: where a return may go: an earlier stage passed in this cycle (nearest first, the
+    // default), or the applicant.
+    returnTargets: [
+      ...returnTargets(app, decisions).map((key) => ({ key, label: stageName(key) })),
+      { key: 'applicant', label: 'Applicant (for correction)' },
+    ],
   };
 }
 
@@ -92,7 +101,7 @@ async function limitedView(auth, app, actor) {
   const [staff, mine, docs, version] = await Promise.all([
     Staff.findById(app.applicantStaffId).select('firstName middleName lastName personal.mobile personal.nida').lean(),
     Decision.find({ applicationId: app._id, actorId: auth.user._id }).sort({ at: 1 }).lean(),
-    StoredFile.find({ _id: { $in: app.documentIds }, applicationId: app._id, kind: 'document', removedAt: null }).lean(),
+    StoredFile.find({ _id: { $in: [...app.documentIds, ...crbIdsOf(app)] }, applicationId: app._id, kind: { $in: ['document', 'crb_report'] }, removedAt: null }).lean(),
     ProductVersion.findById(app.productVersionId).select('name requiredDocuments').lean(),
   ]);
   const uploaders = await namesOf(docs.map((d) => d.uploadedBy).filter(Boolean));
@@ -117,8 +126,10 @@ async function limitedView(auth, app, actor) {
     // Credit-stage response is an explicit allow-list: no payslip, salary, or deduction fields.
     // The supporting-document exception is restricted to an authorised credit-stage review.
     applicant: { firstName: staff?.firstName || '', middleName: staff?.middleName || '', lastName: staff?.lastName || '', mobile: staff?.personal?.mobile || null, nida: formatNida(staff?.personal?.nida) || null },
-    documents: docs.map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: uploaders.get(String(d.uploadedBy))?.name || null })),
-    documentChecklist: (version?.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => String(f.documentCode || '').trim().toLowerCase() === String(d.code || '').trim().toLowerCase()).length })),
+    documents: docs.filter((d) => d.kind === 'document').map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: uploaders.get(String(d.uploadedBy))?.name || null })),
+    documentChecklist: (version?.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.kind === 'document' && String(f.documentCode || '').trim().toLowerCase() === String(d.code || '').trim().toLowerCase()).length })),
+    // D-105: the bureau reports attached so far, which the Credit Analyst may open or remove.
+    crbReports: crbIdsOf(app).map((id) => docs.find((d) => String(d._id) === id && d.kind === 'crb_report')).filter(Boolean).map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: uploaders.get(String(d.uploadedBy))?.name || null, uploadedById: String(d.uploadedBy) })),
     crb: app.crb?.outcome ? { outcome: app.crb.outcome, reportDate: app.crb.reportDate ? localDay(app.crb.reportDate) : null } : null,
     myDecisions: mine.map((d) => ({ action: d.action, stage: d.stage, comment: d.comment, at: d.at })),
     panel: panelFor(app, actor),
@@ -131,11 +142,12 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     Staff.findById(app.applicantStaffId).lean(),
     Decision.find({ applicationId: app._id }).sort({ at: 1 }).lean(),
     Agreement.find({ applicationId: app._id }).sort({ createdAt: -1 }).select('-text -schedule').lean(),
-    StoredFile.find({ _id: { $in: [...app.documentIds, app.crb?.fileId].filter(Boolean) }, removedAt: null }).lean(),
+    StoredFile.find({ _id: { $in: [...app.documentIds, ...crbIdsOf(app)].filter(Boolean) }, removedAt: null }).lean(),
     ProductVersion.findById(app.productVersionId).lean(),
     PricingVersion.findById(app.pricingVersionId).lean(),
   ]);
   const names = await namesOf([...decisions.flatMap((d) => [d.actorId, d.onBehalfOfId]), ...docs.map((d) => d.uploadedBy), app.recommended?.by]);
+  const cancelled = supersededIds(decisions, app.stages || []);
 
   // Fresh rule checks on the pinned versions, with the applicant's current record.
   const ctx = await appSvc.context(req, app.productId, {
@@ -145,7 +157,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
   });
   const result = rules.evaluate(ctx, appSvc.inputOf(app));
   const snapshot = app.calcSnapshot ? { ...app.calcSnapshot, schedule: undefined } : null;
-  const running = ctx.apps.filter((a) => String(a._id) !== String(app._id) && ['pending_disbursement', 'disbursed'].includes(a.status));
+  const running = ctx.apps.filter((a) => String(a._id) !== String(app._id) && APPROVED_LOAN.includes(a.status));
 
   return {
     id: String(app._id),
@@ -173,7 +185,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     // D-101: the payslip lines with their matched product, and SLAS loans not yet on the payslip, as now.
     deductions: { lines: result.deductions.lines, topUpLine: result.deductions.topUpLine, slas: result.deductions.slas.map((l) => ({ ref: l.ref, instalment: l.instalment, status: l.status, firstDue: l.firstDue, product: ctx.products.find((p) => p.productId === l.productId)?.name || null })) },
     checks: [...result.eligibility.filter((m) => !/open .* application/.test(m) && !/You applied for/.test(m)), ...result.checks],
-    crb: app.crb?.outcome ? { outcome: app.crb.outcome, reportDate: app.crb.reportDate ? localDay(app.crb.reportDate) : null, fileId: app.crb.fileId ? String(app.crb.fileId) : null } : null,
+    crb: app.crb?.outcome || crbIdsOf(app).length ? { outcome: app.crb.outcome || null, reportDate: app.crb.reportDate ? localDay(app.crb.reportDate) : null, fileIds: crbIdsOf(app) } : null,
     appraisalNote: app.appraisalNote || null,
     arrearsNote: app.arrearsNote || null,
     recommended: app.recommended?.amount ? { amount: app.recommended.amount, tenor: app.recommended.tenor, reason: app.recommended.reason, by: names.get(String(app.recommended.by))?.name } : null,
@@ -205,12 +217,18 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     documentChecklist: (version.requiredDocuments || []).filter((d) => d.active !== false).map((d) => ({ code: d.code, name: d.name, mandatory: d.mandatory, minFiles: d.minFiles, uploaded: docs.filter((f) => f.kind === 'document' && String(f.documentCode || '').trim().toLowerCase() === String(d.code || '').trim().toLowerCase()).length })),
     // D-79: what affordability used, and the payslip it was read from.
     payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [] } : null,
-    crbReport: docs.find((d) => d.kind === 'crb_report') ? appSvc.DOC_VIEW(docs.find((d) => d.kind === 'crb_report')) : null,
+    // D-105: every bureau report attached, in order, with who attached it.
+    crbReports: crbIdsOf(app).map((id) => docs.find((d) => String(d._id) === id && d.kind === 'crb_report')).filter(Boolean).map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: names.get(String(d.uploadedBy))?.name || null, uploadedById: String(d.uploadedBy) })),
+    dataProtection: app.consents?.dataProtection?.accepted ? app.consents.dataProtection : null, // D-108
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
     history: decisions.map((d) => ({
       action: d.action,
       stage: d.stage,
       stageLabel: decisionStage(d),
+      // D-106: a return names where it went; an approval cancelled by a later return is marked.
+      returnTo: d.action === 'return' ? d.details?.returnTo || 'applicant' : undefined,
+      returnToLabel: d.action === 'return' ? (d.details?.returnTo && d.details.returnTo !== 'applicant' ? stageName(d.details.returnTo) : 'Applicant') : undefined,
+      superseded: d.action === 'approve' && cancelled.has(String(d._id)),
       comment: d.comment,
       at: d.at,
       cycle: d.cycle,
@@ -219,7 +237,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
       onBehalfOf: d.onBehalfOfId ? names.get(String(d.onBehalfOfId))?.name : null,
       details: d.details || null,
     })),
-    panel: panelFor(app, actor),
+    panel: panelFor(app, actor, decisions),
   };
 }
 

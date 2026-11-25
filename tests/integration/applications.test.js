@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { app, seed, signIn, authed, request } = require('../helpers');
 const { seedProducts } = require('../fixtures/products');
 const { seedAgreementTemplate } = require('../../seed/agreementTemplate');
+const { seedLegalNotices } = require('../../seed/legalNotices');
 const Application = require('../../src/models/Application');
 const Agreement = require('../../src/models/Agreement');
 const Decision = require('../../src/models/Decision');
@@ -49,7 +50,7 @@ async function signAndSubmit(person, id, over = {}) {
   const a = api(person.token);
   const preview = await a.get(`/applications/${id}/agreement/preview`);
   if (preview.status !== 200) throw new Error(`preview failed ${JSON.stringify(preview.body)}`);
-  return a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, textSha256: preview.body.data.textSha256, ...over });
+  return a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, textSha256: preview.body.data.textSha256, dataProtection: true, ...over });
 }
 
 const NEEMA_TERMS = { amount: 4500000, tenor: 36, purpose: 'Home furniture and appliances' };
@@ -80,6 +81,7 @@ beforeEach(async () => {
   const { users } = await seed();
   products = await seedProducts(users);
   await seedAgreementTemplate(users);
+  await seedLegalNotices();
 });
 
 describe('starting an application (FR-05)', () => {
