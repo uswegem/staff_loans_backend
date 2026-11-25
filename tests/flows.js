@@ -18,6 +18,7 @@ const api = (token) => ({
   post: (url, body = {}) => request(app()).post(`/api/v1${url}`).set(authed(token)).send(body),
   patch: (url, body) => request(app()).patch(`/api/v1${url}`).set(authed(token)).send(body),
   put: (url, body) => request(app()).put(`/api/v1${url}`).set(authed(token)).send(body),
+  delete: (url) => request(app()).delete(`/api/v1${url}`).set(authed(token)),
 });
 
 async function seedAll() {
@@ -68,7 +69,25 @@ async function sign(person, id) {
   return res;
 }
 
-const decide = (person, id, body) => api(person.token).post(`/review/${id}/decision`, body);
+/** A small PDF, as a credit bureau report (D-105). */
+const CRB_PDF = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n');
+
+/** Attaches a bureau report file at the credit stage; returns the upload response. */
+const attachCrb = (person, id, name = 'crb-report.pdf') => request(app()).post(`/api/v1/review/${id}/crb-report`).set(authed(person.token)).attach('file', CRB_PDF, name);
+
+/**
+ * Decides at the current stage. Approving with a bureau outcome first attaches a report file
+ * (D-105) unless one is already attached or body.crbFile is false.
+ */
+async function decide(person, id, body) {
+  const { crbFile, ...rest } = body;
+  if (rest.action === 'approve' && rest.crb && crbFile !== false) {
+    const Application = require('../src/models/Application');
+    const a = await Application.findById(id).lean();
+    if (a?.currentStage === 'credit' && !(a.crb?.fileIds?.length || a.crb?.fileId)) await attachCrb(person, id);
+  }
+  return api(person.token).post(`/review/${id}/decision`, rest);
+}
 
 const CRB = { outcome: 'Low Risk', reportDate: '2026-10-28' };
 const HR_OK = { employment: true, category: true, salary: true };
@@ -101,4 +120,4 @@ async function runningLoan(staffNo, productId, instalment, status = 'disbursed',
   });
 }
 
-module.exports = { api, seedAll, applyAndSign, attachPayslip, sign, decide, signIn, runningLoan, CRB, HR_OK, PASSWORD };
+module.exports = { api, seedAll, applyAndSign, attachPayslip, attachCrb, CRB_PDF, sign, decide, signIn, runningLoan, CRB, HR_OK, PASSWORD };

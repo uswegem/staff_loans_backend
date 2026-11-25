@@ -27,7 +27,8 @@ const { namesOf, stageName, decisionStage, fullName } = require('./reviewView');
 const { STAGES, PC_STAGES } = require('../workflow/routes');
 const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
-const { AppError, badRequest, conflict, forbidden } = require('../../utils/errors');
+const { AppError, badRequest, conflict, forbidden, notFound } = require('../../utils/errors');
+const StoredFile = require('../../models/StoredFile');
 
 const tzs = (n) => `TZS ${Math.round(n).toLocaleString('en-US')}`;
 const DAY = 24 * 3600 * 1000;
@@ -141,7 +142,11 @@ async function decide(req, app, body) {
   let recommended = null;
   if (stage === 'credit') {
     if (action === 'approve' && !body.crb?.outcome) throw badRequest('Record the credit bureau outcome before approving.', { crb: ['Record the credit bureau outcome before approving.'] }, 'CRB_REQUIRED');
-    if (body.crb?.outcome) set.crb = { outcome: body.crb.outcome, reportDate: body.crb.reportDate ? localMidnight(body.crb.reportDate) : null, fileId: body.crb.fileId || app.crb?.fileId || null };
+    if (action === 'approve' && !body.crb?.reportDate) throw badRequest('Enter the credit bureau report date before approving.', { crb: ['Enter the credit bureau report date before approving.'] }, 'CRB_REQUIRED');
+    // D-105: approving needs at least one bureau report file; returning or rejecting does not.
+    if (action === 'approve' && !crbFileIds(app).length) throw badRequest('Attach at least one credit bureau report before approving.', { crb: ['Attach at least one credit bureau report before approving.'] }, 'CRB_FILE_REQUIRED');
+    // The outcome and date only: the files are kept as attached (D-105).
+    if (body.crb?.outcome) Object.assign(set, { 'crb.outcome': body.crb.outcome, 'crb.reportDate': body.crb.reportDate ? localMidnight(body.crb.reportDate) : null });
     // D-86: the Credit Analyst records the bureau check only; terms are not recommended any more.
     if (body.recommended) throw badRequest('The Credit Analyst records the credit bureau check only and cannot recommend terms.', undefined, 'RECOMMENDATION_NOT_ALLOWED');
   } else if (body.recommended || body.crb) {
@@ -267,13 +272,43 @@ const isFinalStage = (app, stage) => app.stages.at(-1) === stage;
 
 // ---------- credit bureau report (FR-42) ----------
 
+/** The bureau report files attached to an application: fileIds, or the single fileId kept before D-105. */
+function crbFileIds(app) {
+  if (app.crb?.fileIds?.length) return app.crb.fileIds.map(String);
+  return app.crb?.fileId ? [String(app.crb.fileId)] : [];
+}
+
+const CRB_MAX_FILES = 10;
+
+/** Adds a bureau report file (D-105): files are added, never replaced; at most ten. */
 async function uploadCrbReport(req, app, file) {
   const actor = await workflow.canAct(req.auth.user._id, app);
   if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Analyst at this stage can attach the bureau report.', 'NOT_YOUR_STAGE');
+  const existing = crbFileIds(app);
+  if (existing.length >= CRB_MAX_FILES) throw badRequest('You can attach up to 10 credit bureau files. Remove one to add another.', { file: ['You can attach up to 10 credit bureau files. Remove one to add another.'] }, 'CRB_FILE_LIMIT');
   const stored = await fileStore.store(file.buffer, { kind: 'crb_report', originalName: file.originalname, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id });
-  await Application.updateOne({ _id: app._id }, { $set: { 'crb.fileId': stored._id } });
-  await audit.record({ req, action: 'review.crb_report', description: `${app.ref}: credit bureau report attached`, entity: 'Application', entityId: String(app._id), appRef: app.ref, limited: true });
+  // A single file kept before D-105 becomes the first of the list.
+  const moved = await Application.updateOne(
+    { _id: app._id, currentStage: 'credit', [`crb.fileIds.${CRB_MAX_FILES - 1}`]: { $exists: false } },
+    existing.length && !app.crb?.fileIds?.length ? { $set: { 'crb.fileIds': [...existing, String(stored._id)] } } : { $push: { 'crb.fileIds': stored._id } }
+  );
+  if (!moved.modifiedCount) throw conflict('The application changed while the file was uploading. Reload it and try again.', 'STATE_CHANGED');
+  await audit.record({ req, action: 'review.crb_report_add', description: `${app.ref}: credit bureau report ${stored.originalName} attached`, entity: 'Application', entityId: String(app._id), appRef: app.ref, limited: true, after: { fileId: String(stored._id), originalName: stored.originalName, sha256: stored.sha256 } });
   return stored;
+}
+
+/** Removes a bureau report file the current user attached, before the credit decision (D-105). */
+async function removeCrbReport(req, app, fileId) {
+  const actor = await workflow.canAct(req.auth.user._id, app);
+  if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Analyst at this stage can remove a bureau report.', 'NOT_YOUR_STAGE');
+  if (!crbFileIds(app).includes(String(fileId))) throw notFound('That file is not attached to this application.');
+  const file = await StoredFile.findOne({ _id: fileId, kind: 'crb_report', removedAt: null });
+  if (!file) throw notFound('That file is not attached to this application.');
+  if (String(file.uploadedBy) !== String(req.auth.user._id)) throw forbidden('You can remove only the files you attached.', 'NOT_YOUR_FILE');
+  const ids = crbFileIds(app).filter((id) => id !== String(fileId));
+  await Application.updateOne({ _id: app._id }, { $set: { 'crb.fileIds': ids }, $unset: { 'crb.fileId': '' } });
+  await StoredFile.updateOne({ _id: file._id }, { $set: { removedAt: new Date(), removedBy: req.auth.user._id } });
+  await audit.record({ req, action: 'review.crb_report_remove', description: `${app.ref}: credit bureau report ${file.originalName} removed`, entity: 'Application', entityId: String(app._id), appRef: app.ref, limited: true, before: { fileId: String(file._id), originalName: file.originalName, sha256: file.sha256 } });
 }
 
 // ---------- revised terms (FR-38, FR-39, FR-54) ----------
@@ -398,4 +433,4 @@ async function expireRevisedTerms(now = new Date()) {
   return due.length;
 }
 
-module.exports = { decide, uploadCrbReport, revisedTerms, acceptRevised, declineRevised, expireRevisedTerms };
+module.exports = { decide, uploadCrbReport, removeCrbReport, crbFileIds, CRB_MAX_FILES, revisedTerms, acceptRevised, declineRevised, expireRevisedTerms };

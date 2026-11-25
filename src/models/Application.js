@@ -64,7 +64,9 @@ const applicationSchema = new Schema(
     },
 
     // Review (M5)
-    crb: { outcome: String, reportDate: Date, fileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' } },
+    // Credit bureau check (D-105): every report file the Credit Analyst attached. fileId is the
+    // single file kept before D-105; scripts/migrate-2026-12.js moves it into fileIds.
+    crb: { outcome: String, reportDate: Date, fileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' }, fileIds: { type: [{ type: Schema.Types.ObjectId, ref: 'StoredFile' }], default: undefined } },
     appraisalNote: String,
     arrearsNote: String,
     recommended: { amount: Number, tenor: Number, reason: String, by: { type: Schema.Types.ObjectId, ref: 'User' } },

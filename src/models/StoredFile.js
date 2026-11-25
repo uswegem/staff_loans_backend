@@ -21,6 +21,7 @@ const fileSchema = new mongoose.Schema(
     scan: { status: { type: String, enum: ['pending', 'clean', 'infected'] }, at: Date, engine: String },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     removedAt: Date,
+    removedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 );
