@@ -4,6 +4,11 @@
 // core banking; OPS confirms it here with the date, a mandatory transaction
 // reference, a mandatory comment and the product's checklist. Confirming ends the
 // application's journey in SLAS and regenerates the schedule from that date.
+//
+// D-107: before OPS, People and Culture (loan.book) book the finally approved loan in core
+// banking: the loan account number, the booking date and an optional note. Both teams see
+// the whole queue; each acts only on its own step. The person who booked a loan never
+// confirms its disbursement, and nobody books or disburses their own loan.
 
 const Application = require('../../models/Application');
 const Agreement = require('../../models/Agreement');
@@ -20,15 +25,20 @@ const { capCheck } = require('../applications/capCheck');
 const { fullName, namesOf } = require('../review/reviewView');
 const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
-const { STATUS } = require('../../constants/statuses');
+const { STATUS, APPROVED_LOAN } = require('../../constants/statuses');
 const { badRequest, conflict, forbidden, notFound } = require('../../utils/errors');
 
 const DAY = 24 * 3600 * 1000;
 const tzs = (n) => `TZS ${Math.round(n).toLocaleString('en-US')}`;
 
-/** Q3: a Pending Disbursement loan is Outside SLA after approvalSlaDays; it never expires. */
+const WAITING = ['pending_booking', 'pending_disbursement'];
+
+/**
+ * Q3: a loan waiting after final approval (to be booked or disbursed, D-107) is Outside SLA
+ * after approvalSlaDays from final approval; it never expires.
+ */
 function slaInfo(app, settings, now = new Date()) {
-  if (app.status !== 'pending_disbursement' || !app.stageEnteredAt) return { outsideSla: false, daysWaiting: null };
+  if (!WAITING.includes(app.status) || !app.stageEnteredAt) return { outsideSla: false, daysWaiting: null };
   const daysWaiting = Math.floor((now - app.stageEnteredAt) / DAY);
   return { outsideSla: daysWaiting >= settings.approvalSlaDays, daysWaiting, slaDays: settings.approvalSlaDays };
 }
@@ -39,8 +49,29 @@ function slaInfo(app, settings, now = new Date()) {
  */
 async function blockedReason(userId, app) {
   if (String(app.applicantUserId) === String(userId)) return 'This is your own loan. Another OPS officer confirms it.';
+  if (app.booking?.bookedBy && String(app.booking.bookedBy) === String(userId)) return 'You booked this loan, so an OPS officer confirms its disbursement.';
   const approved = await Decision.exists({ applicationId: app._id, action: 'approve', $or: [{ actorId: userId }, { onBehalfOfId: userId }] });
   return approved ? 'You approved this loan, so another OPS officer confirms it.' : null;
+}
+
+/** D-107: nobody books their own loan. Returns the reason, or null. */
+function bookBlockedReason(userId, app) {
+  return String(app.applicantUserId) === String(userId) ? 'This is your own loan. Another People and Culture officer books it.' : null;
+}
+
+/** What this person may do on a loan in the queue (D-107). */
+async function actionsFor(req, app) {
+  const perms = req.auth.permissions;
+  const out = { canBook: false, canConfirm: false, bookBlockedReason: null, blockedReason: null };
+  if (app.status === 'pending_booking' && perms.has('loan.book')) {
+    out.bookBlockedReason = bookBlockedReason(req.auth.user._id, app);
+    out.canBook = !out.bookBlockedReason;
+  }
+  if (app.status === 'pending_disbursement' && perms.has('disb.confirm')) {
+    out.blockedReason = await blockedReason(req.auth.user._id, app);
+    out.canConfirm = !out.blockedReason;
+  }
+  return out;
 }
 
 async function loadAll(apps) {
@@ -74,6 +105,9 @@ function row(app, maps, settings, names) {
     agreementNumber: ag?.number,
     approvedAt: app.stageEnteredAt,
     firstDueDate: app.schedule?.[0]?.due || ag?.terms?.firstDueDate || null,
+    booking: app.booking?.loanAccountNumber
+      ? { loanAccountNumber: app.booking.loanAccountNumber, date: localDay(app.booking.date), note: app.booking.note || null, by: names?.get(String(app.booking.bookedBy))?.name || null, at: app.booking.bookedAt }
+      : null,
     disbursement: app.disbursement?.date
       ? { date: localDay(app.disbursement.date), transactionRef: app.disbursement.transactionRef || null, comment: app.disbursement.comment, by: names?.get(String(app.disbursement.confirmedBy))?.name || null, at: app.disbursement.confirmedAt }
       : null,
@@ -81,33 +115,43 @@ function row(app, maps, settings, names) {
   };
 }
 
-/** The OPS queue (FR-20): ready to disburse, or disbursed. */
-async function list(req, { tab = 'ready', q } = {}) {
+/**
+ * The final approval queue (FR-20, D-107): to book (People and Culture), ready to disburse
+ * (OPS), or disbursed. Both teams see every tab; each item says what this person may do.
+ */
+async function list(req, { tab, q } = {}) {
   const settings = await Settings.get();
-  const [ready, done] = await Promise.all([
+  const chosen = tab || (req.auth.permissions.has('disb.confirm') ? 'ready' : 'booking');
+  const [booking, ready, done] = await Promise.all([
+    Application.find({ status: 'pending_booking' }).sort({ stageEnteredAt: 1 }).lean(),
     Application.find({ status: 'pending_disbursement' }).sort({ stageEnteredAt: 1 }).lean(),
     Application.find({ status: 'disbursed' }).sort({ 'disbursement.date': -1, 'disbursement.confirmedAt': -1 }).limit(500).lean(),
   ]);
-  const apps = tab === 'ready' ? ready : done;
+  const apps = { booking, ready, done }[chosen];
   const maps = await loadAll(apps);
-  const names = await namesOf(apps.map((a) => a.disbursement?.confirmedBy).filter(Boolean));
+  const names = await namesOf(apps.flatMap((a) => [a.disbursement?.confirmedBy, a.booking?.bookedBy]).filter(Boolean));
   let items = apps.map((a) => row(a, maps, settings, names));
   if (q) {
     const needle = q.toLowerCase();
-    items = items.filter((r) => `${r.ref} ${r.staff.name} ${r.staff.staffNo} ${r.product}`.toLowerCase().includes(needle));
+    items = items.filter((r) => `${r.ref} ${r.staff.name} ${r.staff.staffNo} ${r.product} ${r.booking?.loanAccountNumber || ''}`.toLowerCase().includes(needle));
   }
-  if (tab === 'ready') {
-    for (const item of items) {
-      // eslint-disable-next-line no-await-in-loop
-      item.blockedReason = await blockedReason(req.auth.user._id, ready.find((a) => String(a._id) === item.id));
-    }
+  for (const item of items) {
+    // eslint-disable-next-line no-await-in-loop
+    Object.assign(item, await actionsFor(req, apps.find((a) => String(a._id) === item.id)));
   }
-  return { tab, counts: { ready: ready.length, done: done.length, outsideSla: ready.filter((a) => slaInfo(a, settings).outsideSla).length }, slaDays: settings.approvalSlaDays, items };
+  const waiting = [...booking, ...ready];
+  return {
+    tab: chosen,
+    counts: { booking: booking.length, ready: ready.length, done: done.length, outsideSla: waiting.filter((a) => slaInfo(a, settings).outsideSla).length },
+    slaDays: settings.approvalSlaDays,
+    can: { book: req.auth.permissions.has('loan.book'), confirm: req.auth.permissions.has('disb.confirm') },
+    items,
+  };
 }
 
 async function load(id) {
   const app = await Application.findById(id);
-  if (!app || !['pending_disbursement', 'disbursed'].includes(app.status)) throw notFound('This loan is not with OPS.');
+  if (!app || !APPROVED_LOAN.includes(app.status)) throw notFound('This loan is not in the final approval queue.');
   return app;
 }
 
@@ -120,10 +164,10 @@ async function detail(req, id) {
   const appSvc = require('../applications/applicationService');
   const docs = await StoredFile.find({ _id: { $in: app.documentIds }, applicationId: app._id, kind: 'document', removedAt: null }).lean();
   const version = maps.versions.get(String(app.productVersionId));
-  const names = await namesOf([app.disbursement?.confirmedBy, ...docs.map((d) => d.uploadedBy)].filter(Boolean));
+  const names = await namesOf([app.disbursement?.confirmedBy, app.booking?.bookedBy, ...docs.map((d) => d.uploadedBy)].filter(Boolean));
   const staff = maps.staff.get(String(app.applicantStaffId));
   const ag = maps.agreements.get(String(app.currentAgreementId));
-  await audit.record({ req, action: 'disbursement.view', description: `${app.ref} opened by OPS`, entity: 'Application', entityId: String(app._id), appRef: app.ref });
+  await audit.record({ req, action: 'disbursement.view', description: `${app.ref} opened in the final approval queue`, entity: 'Application', entityId: String(app._id), appRef: app.ref });
   return {
     ...row(app.toObject(), maps, settings, names),
     agreement: ag && { id: String(ag._id), number: ag.number, kind: ag.kind, signedAt: ag.acceptance?.at, effectiveAt: ag.effectiveAt, terms: ag.terms },
@@ -137,8 +181,51 @@ async function detail(req, id) {
     today: localDay(),
     schedule: app.schedule || [],
     scheduleBasis: app.scheduleBasis,
-    blockedReason: app.status === 'pending_disbursement' ? await blockedReason(req.auth.user._id, app) : null,
+    ...(await actionsFor(req, app)),
   };
+}
+
+/**
+ * D-107: People and Culture record the booking in core banking.
+ * body: { loanAccountNumber, date: 'YYYY-MM-DD', note? }
+ */
+async function book(req, id, body) {
+  const app = await load(id);
+  if (app.status !== 'pending_booking') throw conflict('This loan has already been booked.', 'ALREADY_BOOKED');
+  const blocked = bookBlockedReason(req.auth.user._id, app);
+  if (blocked) throw forbidden(blocked, 'SOD_BOOK');
+  const loanAccountNumber = (body.loanAccountNumber || '').trim();
+  if (!loanAccountNumber) throw badRequest('Enter the core banking loan account number.', { loanAccountNumber: ['Enter the core banking loan account number.'] }, 'LOAN_ACCOUNT_REQUIRED');
+  if (body.date > localDay()) throw badRequest('The booking date cannot be in the future.', { date: ['The booking date cannot be in the future.'] }, 'DATE_INVALID');
+  if (body.date < localDay(app.stageEnteredAt)) throw badRequest('The booking date cannot be before the final approval.', { date: ['The booking date cannot be before the final approval.'] }, 'DATE_INVALID');
+  const note = (body.note || '').trim();
+  const now = new Date();
+  const booking = { loanAccountNumber, date: localMidnight(body.date), note: note || undefined, bookedBy: req.auth.user._id, bookedAt: now };
+
+  await withTransaction(async (session) => {
+    // The waiting time keeps counting from final approval (stageEnteredAt is not changed).
+    const fresh = await Application.findOneAndUpdate({ _id: app._id, status: 'pending_booking' }, { $set: { status: 'pending_disbursement', booking } }, { new: true, session });
+    if (!fresh) throw conflict('Someone else has just booked this loan. Reload the list.', 'STATE_CHANGED');
+    await Decision.create(
+      [{ applicationId: app._id, cycle: app.cycle, action: 'book', actorId: req.auth.user._id, comment: note ? `Loan account ${loanAccountNumber}. ${note}` : `Loan account ${loanAccountNumber}.`, details: { date: body.date, loanAccountNumber }, at: now, ip: req.ip }],
+      { session }
+    );
+    await audit.record(
+      {
+        req,
+        action: 'disbursement.book',
+        description: `${app.ref} booked in core banking: loan account ${loanAccountNumber} on ${body.date}`,
+        entity: 'Application',
+        entityId: String(app._id),
+        appRef: app.ref,
+        before: { status: 'pending_booking' },
+        after: { status: 'pending_disbursement', loanAccountNumber, date: body.date, note: note || undefined },
+      },
+      { session }
+    );
+    await notify.notifyPermission('disb.confirm', { type: 'application.ready_to_disburse', text: `${app.ref} is booked in core banking (loan account ${loanAccountNumber}). Ready to disburse.`, href: '/disburse', entity: 'Application', entityId: String(app._id) }, { session });
+  });
+  return detail(req, app._id);
 }
 
 /**
@@ -161,6 +248,7 @@ async function confirm(req, id, body) {
   const today = localDay();
   if (body.date > today) throw badRequest('The disbursement date cannot be in the future.', { date: ['The disbursement date cannot be in the future.'] }, 'DATE_INVALID');
   if (body.date < localDay(app.stageEnteredAt)) throw badRequest('The disbursement date cannot be before the final approval.', { date: ['The disbursement date cannot be before the final approval.'] }, 'DATE_INVALID');
+  if (app.booking?.date && body.date < localDay(app.booking.date)) throw badRequest('The disbursement date cannot be before the booking date.', { date: ['The disbursement date cannot be before the booking date.'] }, 'DATE_INVALID');
 
   // FR-21, FR-24: the schedule restarts from the disbursement date.
   const [pricing, settings] = await Promise.all([PricingVersion.findById(app.pricingVersionId).lean(), Settings.get()]);
@@ -217,9 +305,9 @@ async function confirm(req, id, body) {
 async function flagOutsideSla(now = new Date()) {
   const settings = await Settings.get();
   const cutoff = new Date(now.getTime() - settings.approvalSlaDays * DAY);
-  const set = await Application.updateMany({ status: 'pending_disbursement', stageEnteredAt: { $lte: cutoff }, outsideSla: { $ne: true } }, { $set: { outsideSla: true } });
-  const unset = await Application.updateMany({ status: 'pending_disbursement', stageEnteredAt: { $gt: cutoff }, outsideSla: true }, { $set: { outsideSla: false } });
+  const set = await Application.updateMany({ status: { $in: WAITING }, stageEnteredAt: { $lte: cutoff }, outsideSla: { $ne: true } }, { $set: { outsideSla: true } });
+  const unset = await Application.updateMany({ status: { $in: WAITING }, stageEnteredAt: { $gt: cutoff }, outsideSla: true }, { $set: { outsideSla: false } });
   return set.modifiedCount + unset.modifiedCount;
 }
 
-module.exports = { list, detail, confirm, flagOutsideSla, slaInfo, blockedReason };
+module.exports = { list, detail, book, confirm, flagOutsideSla, slaInfo, blockedReason, bookBlockedReason };

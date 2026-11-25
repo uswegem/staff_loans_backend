@@ -14,7 +14,7 @@ const decisionSchema = new mongoose.Schema(
     action: {
       type: String,
       required: true,
-      enum: ['create', 'submit', 'resubmit', 'approve', 'return', 'reject', 'withdraw', 'accept_revised', 'decline_revised', 'expire', 'disburse'],
+      enum: ['create', 'submit', 'resubmit', 'approve', 'return', 'reject', 'withdraw', 'accept_revised', 'decline_revised', 'expire', 'book', 'disburse'],
     },
     actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     onBehalfOfId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

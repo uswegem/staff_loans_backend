@@ -11,7 +11,7 @@ const ProductVersion = require('../models/ProductVersion');
 const svc = require('../services/applications/applicationService');
 const fileStore = require('../services/files/fileStore');
 const audit = require('../services/audit/auditService');
-const { STATUS, EDITABLE, OPEN, WITHDRAWABLE } = require('../constants/statuses');
+const { STATUS, EDITABLE, OPEN, WITHDRAWABLE, APPROVED_LOAN } = require('../constants/statuses');
 const rules = require('../services/applications/rules');
 const { localDay } = require('../utils/dates');
 const { withTransaction } = require('../config/db');
@@ -33,7 +33,8 @@ async function canSee(req, applicationId, { allowLimitedDocuments = false } = {}
   const access = await workflow.reviewAccess(req.auth, app);
   if (access && !access.limited) return { app, as: access.payHidden ? 'reviewer-without-pay' : 'reviewer' };
   if (access?.limited && allowLimitedDocuments && app.currentStage === 'credit') return { app, as: 'limited-document-reviewer' };
-  if (req.auth.permissions.has('disb.confirm') && ['pending_disbursement', 'disbursed'].includes(app.status)) return { app, as: 'ops' };
+  // D-107: People and Culture booking the loan see what OPS sees.
+  if ((req.auth.permissions.has('disb.confirm') || req.auth.permissions.has('loan.book')) && APPROVED_LOAN.includes(app.status)) return { app, as: 'ops' };
   return null;
 }
 

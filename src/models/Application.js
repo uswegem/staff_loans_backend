@@ -81,6 +81,15 @@ const applicationSchema = new Schema(
     settledByTopUp: { applicationId: { type: Schema.Types.ObjectId, ref: 'Application' }, ref: String, at: Date }, // Q3: Pending Disbursement past approvalSlaDays (flag only)
     overdueNotifiedAt: Date, // stage-overdue reminder sent for the current stage (BRD 12)
 
+    // D-107: People and Culture book the loan in core banking before OPS disburses it.
+    booking: {
+      loanAccountNumber: String,
+      date: Date, // local midnight of the booking date
+      note: String,
+      bookedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      bookedAt: Date,
+    },
+
     // OPS confirmation (FR-20 to FR-22)
     disbursement: {
       date: Date, // local midnight of the disbursement date

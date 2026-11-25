@@ -18,6 +18,11 @@ const DisbursementController = {
     res.json({ success: true, data: await disbursements.detail(req, req.params.id) });
   },
 
+  async book(req, res) {
+    const data = await disbursements.book(req, req.params.id, req.body);
+    res.json({ success: true, message: `${data.ref} booked. OPS can now disburse it.`, data });
+  },
+
   async confirm(req, res) {
     const data = await disbursements.confirm(req, req.params.id, req.body);
     res.json({ success: true, message: `${data.ref} disbursed. Journey complete.`, data });

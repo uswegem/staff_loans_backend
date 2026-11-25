@@ -2,7 +2,7 @@
 
 // Disbursement and notifications (BRD 11, 12; FR-20 to FR-22, FR-24 to FR-26; Q3).
 
-const { api, seedAll, applyAndSign, decide, signIn, runningLoan, CRB, HR_OK } = require('../flows');
+const { api, seedAll, applyAndSign, decide, signIn, runningLoan, bookLoan, CRB, HR_OK } = require('../flows');
 const Application = require('../../src/models/Application');
 const Agreement = require('../../src/models/Agreement');
 const Decision = require('../../src/models/Decision');
@@ -36,6 +36,8 @@ async function toOps() {
   await decide(await signIn('LFB0051'), id, { action: 'approve', hrChecks: HR_OK });
   const final = await decide(await signIn('LFB0002'), id, { action: 'approve' });
   expect(final.body.data.outcome).toBe('approved');
+  // D-107: People and Culture book it in core banking first.
+  expect((await bookLoan(id)).status).toBe(200);
   return { id, neema };
 }
 
@@ -163,8 +165,8 @@ describe('disbursed loans register (FR-26)', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/csv/);
     const lines = res.text.slice(1).split('\r\n');
-    expect(lines[0]).toBe('Reference,Staff number,Staff,Department,Product,Amount,Processing fee,Insurance,Instalment,Tenor,Repayment method,First due date,Disbursed,Transaction ref,Agreement');
-    expect(lines[1]).toMatch(/^SL-\d{4}-\d{5},LFB0412,Neema Mushi,.*,Personal Loan,4500000,.*,136900,36,Salary deduction,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-\d{2},FT26294AB12,MKT-/);
+    expect(lines[0]).toBe('Reference,Staff number,Staff,Department,Product,Amount,Processing fee,Insurance,Instalment,Tenor,Repayment method,First due date,Disbursed,Transaction ref,Agreement,Loan account,Booked');
+    expect(lines[1]).toMatch(/^SL-\d{4}-\d{5},LFB0412,Neema Mushi,.*,Personal Loan,4500000,.*,136900,36,Salary deduction,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-\d{2},FT26294AB12,MKT-[^,]*,LN2026000123,\d{4}-\d{2}-\d{2}$/);
     expect(await AuditLog.countDocuments({ action: 'report.export' })).toBe(1);
 
     expect((await api((await signIn('LFB0051')).token).get('/disbursements/register.csv')).status).toBe(200); // HR (reports.export)

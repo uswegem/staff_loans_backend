@@ -37,7 +37,7 @@ it('seeded agreements carry a valid fingerprint and Neema can accept her revised
   const r = await api(neema.token).get(`/applications/${id}/revised`);
   expect(r.body.data).toMatchObject({ signed: { amount: 5000000 }, approved: { amount: 4500000 } });
   const ok = await api(neema.token).post(`/applications/${id}/accept-revised`, { accepted: true, scrolledToEnd: true, password: PASSWORD, textSha256: r.body.data.textSha256 });
-  expect(ok.body.data.status).toBe('pending_disbursement');
+  expect(ok.body.data.status).toBe('pending_booking');
 });
 
 it('new references continue after the samples', async () => {

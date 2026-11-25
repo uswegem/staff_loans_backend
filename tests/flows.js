@@ -89,6 +89,13 @@ async function decide(person, id, body) {
   return api(person.token).post(`/review/${id}/decision`, rest);
 }
 
+/** D-107: People and Culture book a finally approved loan (default the P&C Manager). */
+async function bookLoan(id, { staffNo = 'LFB0129', loanAccountNumber = 'LN2026000123', date, note } = {}) {
+  const { localDay: today } = require('../src/utils/dates');
+  const person = await signIn(staffNo);
+  return api(person.token).post(`/disbursements/${id}/book`, { loanAccountNumber, date: date || today(), ...(note ? { note } : {}) });
+}
+
 const CRB = { outcome: 'Low Risk', reportDate: '2026-10-28' };
 const HR_OK = { employment: true, category: true, salary: true };
 
@@ -120,4 +127,4 @@ async function runningLoan(staffNo, productId, instalment, status = 'disbursed',
   });
 }
 
-module.exports = { api, seedAll, applyAndSign, attachPayslip, attachCrb, CRB_PDF, sign, decide, signIn, runningLoan, CRB, HR_OK, PASSWORD };
+module.exports = { api, seedAll, applyAndSign, attachPayslip, attachCrb, CRB_PDF, sign, decide, signIn, runningLoan, bookLoan, CRB, HR_OK, PASSWORD };

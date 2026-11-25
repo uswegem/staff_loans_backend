@@ -96,7 +96,7 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     expect(final.body.data.outcome).toBe('approved');
 
     const a = await Application.findById(id);
-    expect(a).toMatchObject({ status: 'pending_disbursement', scheduleBasis: 'final_approval', approved: { amount: 4500000, tenor: 36, instalment: 136900 } });
+    expect(a).toMatchObject({ status: 'pending_booking', scheduleBasis: 'final_approval', approved: { amount: 4500000, tenor: 36, instalment: 136900 } });
     expect(a.schedule).toHaveLength(36);
     const ag = await Agreement.findById(a.currentAgreementId);
     expect(ag.status).toBe('in_force');
@@ -283,7 +283,7 @@ describe('CEO and Head of People and Culture routes (BRD 7.2.1, decision 31, FR-
     const v = await api(grace.token).get(`/review/${id}`);
     expect(v.body.data.panel).toMatchObject({ stage: 'hr', isFinal: true });
     expect((await decide(grace, id, { action: 'approve', hrChecks: HR_OK })).body.data.outcome).toBe('approved');
-    expect((await Application.findById(id)).status).toBe('pending_disbursement');
+    expect((await Application.findById(id)).status).toBe('pending_booking');
   });
 
   it('Head of P&C: Credit (limited), P&C Manager, then CEO', async () => {

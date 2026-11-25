@@ -21,7 +21,7 @@ const rules = require('../applications/rules');
 const appSvc = require('../applications/applicationService');
 const { STAGES, ROUTES, PC_STAGES, PERMISSION_ROLE } = require('../workflow/routes');
 const { returnTargets, supersededIds } = require('./approvals');
-const { STATUS } = require('../../constants/statuses');
+const { STATUS, APPROVED_LOAN } = require('../../constants/statuses');
 const { formatNida } = require('../staff/profileService');
 const { localDay } = require('../../utils/dates');
 const { retirementDateFor } = require('../staff/retirement');
@@ -157,7 +157,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
   });
   const result = rules.evaluate(ctx, appSvc.inputOf(app));
   const snapshot = app.calcSnapshot ? { ...app.calcSnapshot, schedule: undefined } : null;
-  const running = ctx.apps.filter((a) => String(a._id) !== String(app._id) && ['pending_disbursement', 'disbursed'].includes(a.status));
+  const running = ctx.apps.filter((a) => String(a._id) !== String(app._id) && APPROVED_LOAN.includes(a.status));
 
   return {
     id: String(app._id),
