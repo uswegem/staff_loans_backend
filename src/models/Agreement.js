@@ -30,6 +30,9 @@ const agreementSchema = new Schema(
     },
     schedule: { type: Array, default: [] },
     text: { type: String, required: true }, // the exact text accepted
+    // The rendered blocks of that text (bold and highlighted values), for printing; not part of
+    // the fingerprint. Absent on agreements signed before they were kept.
+    blocks: { type: Array, default: undefined },
     textSha256: { type: String, required: true },
     pdfFileId: { type: Schema.Types.ObjectId, ref: 'StoredFile' },
     pdfSha256: String,

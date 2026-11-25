@@ -58,6 +58,55 @@ class Writer {
     this.y -= gap;
   }
 
+  /** A paragraph whose parts may be strong (bold), wrapped across lines word by word. */
+  rich(parts, { size = 10, gap = 4, color = rgb(0.11, 0.11, 0.11) } = {}) {
+    const words = [];
+    for (const part of parts) {
+      const font = part.strong ? this.fonts.bold : this.fonts.regular;
+      // A part may start or end inside a word ("NAME," or "(2) "): keep its leading space.
+      safe(part.text).split(/(\s+)/).forEach((w) => {
+        if (!w) return;
+        if (/^\s+$/.test(w)) words.push({ space: true });
+        else words.push({ text: w, font });
+      });
+    }
+    const space = (font) => font.widthOfTextAtSize(' ', size);
+    let line = [];
+    let width = 0;
+    let pendingSpace = false;
+    const flush = () => {
+      this.ensure(size + 3);
+      let x = MARGIN;
+      for (const seg of line) {
+        x += seg.before;
+        this.page.drawText(seg.text, { x, y: this.y - size, size, font: seg.font, color });
+        x += seg.font.widthOfTextAtSize(seg.text, size);
+      }
+      this.y -= size + 3;
+      line = [];
+      width = 0;
+    };
+    for (const w of words) {
+      if (w.space) {
+        pendingSpace = line.length > 0;
+        continue;
+      }
+      const before = pendingSpace ? space(w.font) : 0;
+      const wWidth = w.font.widthOfTextAtSize(w.text, size);
+      if (line.length && width + before + wWidth > WIDTH) {
+        flush();
+        line.push({ text: w.text, font: w.font, before: 0 });
+        width = wWidth;
+      } else {
+        line.push({ text: w.text, font: w.font, before });
+        width += before + wWidth;
+      }
+      pendingSpace = false;
+    }
+    if (line.length) flush();
+    this.y -= gap;
+  }
+
   table(head, rows, widths) {
     const size = 8;
     const rowH = 12;
@@ -106,7 +155,10 @@ async function agreementPdf({ blocks, title, evidence }) {
       w.y -= 4;
       w.text(plain(b.parts), { size: 11, bold: true, gap: 4 });
     } else if (b.type === 'note') w.text(plain(b.parts), { size: 8, center: true, gap: 6, color: rgb(0.42, 0.42, 0.4) });
-    else if (b.type === 'p') w.text(plain(b.parts), { size: 10, gap: 6 });
+    else if (b.type === 'p') {
+      if (b.parts.some((x) => x.strong)) w.rich(b.parts, { size: 10, gap: 6 });
+      else w.text(plain(b.parts), { size: 10, gap: 6 });
+    }
     else if (b.type === 'ol') b.items.forEach((it, i) => w.text(`${i + 1}. ${plain(it)}`, { size: 10, indent: 10, gap: 3 }));
     else if (b.type === 'ul') b.items.forEach((it) => w.text(`• ${plain(it)}`, { size: 10, indent: 10, gap: 3 }));
     // A declaration is printed ticked: the PDF is made only once every one was ticked.
