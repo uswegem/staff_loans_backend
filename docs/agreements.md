@@ -3,8 +3,17 @@
 The Staff Personal Loan and Staff Car Loan agreements are kept in the system's template
 markup in `seed/data/agreements/`:
 
-- `staff-personal-loan.en.md`: template version `2026.12a`, 6 declarations
-- `staff-car-loan.en.md`: template version `2026.12b`, 8 declarations
+- `staff-personal-loan.en.md`: template version `2026.12c`, 6 declarations
+- `staff-car-loan.en.md`: template version `2026.12d`, 8 declarations
+
+Versions `2026.12c` and `2026.12d` name the Employee in the parties. Party (2) reads
+"(2) **JANE DOE**, whose personal details are recorded in the System and shown in the Loan
+Details (the "Employee")." The name is the staff record's first, middle and last name, in
+capitals and bold (`{{partyName}}`); the same name, as recorded, is in the Loan Details
+(`{{fullName}}`) and the acceptance evidence. The clauses keep the defined term "Employee".
+An agreement cannot be prepared or signed while the staff record lacks a first name or
+surname (`NAME_MISSING`). Agreements signed on `2026.12a` or `2026.12b` keep their text,
+fingerprint and PDF; the new versions apply to agreements signed after they are loaded.
 
 The legal text is as written in the Word documents. Two parts are added and filled in by
 the system for each loan, as the agreements describe: an agreement-number line under the

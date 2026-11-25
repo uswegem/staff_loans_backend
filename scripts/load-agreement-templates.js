@@ -29,8 +29,11 @@ const mongoose = require('mongoose');
 
 const DIR = path.join(__dirname, '..', 'seed', 'data', 'agreements');
 const LOANS = [
-  { key: 'personal', label: 'Staff Personal Loan', file: 'staff-personal-loan.en.md', version: '2026.12a', match: /\bpersonal\b/i },
-  { key: 'car', label: 'Staff Car Loan', file: 'staff-car-loan.en.md', version: '2026.12b', match: /\b(car|vehicle|motor)\b/i },
+// 2026.12c and 2026.12d name the Employee in the parties ("(2) JANE DOE, whose personal
+// details ..."); they replace 2026.12a and 2026.12b for new agreements only. Agreements
+// already signed keep the version, text and fingerprint they were signed with.
+  { key: 'personal', label: 'Staff Personal Loan', file: 'staff-personal-loan.en.md', version: '2026.12c', match: /\bpersonal\b/i },
+  { key: 'car', label: 'Staff Car Loan', file: 'staff-car-loan.en.md', version: '2026.12d', match: /\b(car|vehicle|motor)\b/i },
 ];
 
 function argsOf(argv) {

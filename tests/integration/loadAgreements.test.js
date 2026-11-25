@@ -21,8 +21,8 @@ describe('agreement loader', () => {
   it('a dry run finds the Personal Loan and the Vehicle Loan and changes nothing', async () => {
     const out = await run({ dryRun: true });
     expect(out.summary.map((s) => s.product)).toEqual([expect.stringMatching(/^PL Personal Loan, live version \d+$/), expect.stringMatching(/^VL Vehicle Loan, live version \d+$/)]);
-    expect(out.summary[0].template).toBe('2026.12a (English, 6 declarations)');
-    expect(out.summary[1].template).toBe('2026.12b (English, 8 declarations)');
+    expect(out.summary[0].template).toBe('2026.12c (English, 6 declarations)');
+    expect(out.summary[1].template).toBe('2026.12d (English, 8 declarations)');
     expect(await AgreementTemplate.countDocuments({ language: 'en' })).toBe(0);
   });
 
@@ -36,8 +36,8 @@ describe('agreement loader', () => {
   it('loads both agreements as approved, assigns them to new live product versions, and is safe to run again', async () => {
     const out = await run({ confirm: true, approvedBy: 'LFB0451' });
     expect(out.done).toHaveLength(4);
-    const personal = await AgreementTemplate.findOne({ version: '2026.12a' }).lean();
-    const car = await AgreementTemplate.findOne({ version: '2026.12b' }).lean();
+    const personal = await AgreementTemplate.findOne({ version: '2026.12c' }).lean();
+    const car = await AgreementTemplate.findOne({ version: '2026.12d' }).lean();
     expect(personal).toMatchObject({ language: 'en', status: 'approved', sample: false });
     expect(car.body).toMatch(/^# STAFF CAR LOAN AGREEMENT/);
     const livePL = await mc.liveAt(productChain(products.PL));

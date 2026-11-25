@@ -32,7 +32,6 @@ const { localDay } = require('../../utils/dates');
 const { AppError, badRequest, conflict, notFound } = require('../../utils/errors');
 const { retirementDateFor } = require('../staff/retirement');
 
-const fullName = (s) => [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ');
 
 /**
  * Loads what the rules need for an applicant and a product (live versions unless pinned).
@@ -309,7 +308,7 @@ async function signAndSubmit(req, app, body) {
   const firstStage = route.stages[0];
   const cal = await calendar.load();
   const stageDueAt = workingTime.addWorkingHours(cal, now, STAGES[firstStage].target === 'ceo' ? cal.ceoTargetHours : cal.stageTargetHours);
-  const staffName = fullName(ctx.staff);
+  const staffName = agreementService.staffName(ctx.staff); // the name the agreement shows
 
   const number = await nextRef('MKT');
   const evidence = [
@@ -346,6 +345,7 @@ async function signAndSubmit(req, app, body) {
           terms: { amount: fresh.amount, tenor: fresh.tenor, instalment: q.instalment, interestBps: q.rates.interestBps, processingFee: q.processingFee, insuranceFee: q.insuranceFee, totalInterest: q.totalInterest, totalRepayable: q.totalRepayable, firstDueDate: q.firstDueDate, repaymentMethod: fresh.repayment.method },
           schedule: q.schedule,
           text: doc.text,
+          blocks: doc.blocks, // as rendered, with bold parts, for the in-force PDF
           textSha256: doc.textSha256,
           pdfFileId: pdfFile._id,
           pdfSha256: pdfFile.sha256,

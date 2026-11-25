@@ -9,12 +9,29 @@ const AgreementTemplate = require('../../models/AgreementTemplate');
 const { render, sentence } = require('./renderer');
 const sw = require('./swahili');
 const en = require('./english');
-const { notFound } = require('../../utils/errors');
+const { badRequest, notFound } = require('../../utils/errors');
 const { addressLine } = require('../reference/locationService');
 
 const pct = (bps) => `${Number.parseFloat((bps / 100).toFixed(2))}%`;
 
 const LANGUAGES = ['sw', 'en'];
+
+/**
+ * The staff member's full name from the staff record: first, middle and last name, with
+ * spacing tidied. The one source for the name in the agreement (parties, Loan Details)
+ * and in the acceptance evidence. Empty when the record has no name.
+ */
+const staffName = (staff) => [staff?.firstName, staff?.middleName, staff?.lastName].map((x) => String(x || '').trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ');
+
+/** Stops an agreement being prepared or signed for a staff record without a full name. */
+function requireStaffName(staff) {
+  if (!staff?.firstName?.trim() || !staff?.lastName?.trim()) {
+    throw badRequest('Your full name is missing from your staff record, so the agreement cannot be prepared. Ask People and Culture to add your first name and surname before you sign.', undefined, 'NAME_MISSING');
+  }
+}
+
+/** The name as it opens the agreement, naming the Employee party: in capitals and bold. */
+const partyName = (staff) => [{ text: staffName(staff).toUpperCase(), fill: true, strong: true }];
 
 /** The product's own application fields as one line ("Make: Toyota; Year: 2019"), or null. */
 function productDetails(product, fields) {
@@ -44,7 +61,8 @@ function swValues(input, templateVersion) {
     agreementNumber: input.agreementNumber || 'itatolewa wakati wa kusaini',
     templateVersion,
     ref: input.ref,
-    fullName: [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' '),
+    fullName: staffName(staff),
+    partyName: partyName(staff),
     staffNo: staff.staffNo,
     // P.O. Box is no longer collected (D-93): only an earlier answer appears here.
     // A missing party detail is null, so the renderer leaves its phrase out ("wa {{poBox}},")
@@ -97,7 +115,8 @@ function enValues(input, templateVersion) {
     agreementNumber: input.agreementNumber || 'issued at signing',
     templateVersion,
     ref: input.ref,
-    fullName: [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' '),
+    fullName: staffName(staff),
+    partyName: partyName(staff),
     staffNo: staff.staffNo,
     poBox: staff.personal?.poBox || null,
     residence: addressLine(staff.personal?.address) || null,
@@ -149,6 +168,7 @@ function scheduleTable(rows, language = 'sw') {
 
 /** Renders with a given template (the active one by default). */
 async function build(input, { template, session } = {}) {
+  requireStaffName(input.staff);
   const t = template || (await AgreementTemplate.active(session));
   if (!t) throw notFound('No agreement template is loaded. An administrator must load one.');
   const language = t.language || 'sw';
@@ -156,4 +176,4 @@ async function build(input, { template, session } = {}) {
   return { ...out, template: { id: String(t._id), version: t.version, sample: t.sample, language } };
 }
 
-module.exports = { build, values, scheduleTable, LANGUAGES };
+module.exports = { build, values, scheduleTable, staffName, requireStaffName, LANGUAGES };

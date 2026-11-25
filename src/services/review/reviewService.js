@@ -56,7 +56,8 @@ async function inForcePdf(agreement, app, approvals) {
     ...approvals.map((a, i) => [`Kwa niaba ya Mwajiri ${i + 1} / For the employer`, `${a.name}, ${a.title || ''}${a.onBehalfOf ? ` (kwa niaba ya ${a.onBehalfOf})` : ''}, ${a.stage}, ${new Date(a.at).toISOString()} (UTC)`]),
     ['Unaanza kutumika / In force from', new Date().toISOString()],
   ];
-  return agreementPdf({ blocks: textBlocks(agreement.text), title: `Mkataba ${agreement.number} (${app.ref}) - unatumika`, evidence });
+  // Agreements signed since the blocks were kept print as rendered (with bold); earlier ones from their text.
+  return agreementPdf({ blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text), title: `Mkataba ${agreement.number} (${app.ref}) - unatumika`, evidence });
 }
 
 /** Repayment schedule from today on the approved terms (FR-24). */
@@ -324,9 +325,9 @@ async function acceptRevised(req, app, body) {
   const cap = await capCheck(app, app.approved, now); // D-87
   if (!cap.ok) throw conflict(`You cannot accept these terms now. ${cap.message} Decline them, and apply again for a smaller amount.`, cap.code);
   const number = await appSvc.nextRef('MKT');
-  const name = fullName(staff);
+  const name = agreementService.staffName(staff);
   const approvals = await approvalsFor(app);
-  const draft = { number, text: doc.text, textSha256: doc.textSha256, templateVersion: doc.template.version, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip } };
+  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip } };
   const pdf = await inForcePdf(draft, app, approvals);
 
   await withTransaction(async (session) => {
@@ -344,6 +345,7 @@ async function acceptRevised(req, app, body) {
           terms: { amount: app.approved.amount, tenor: app.approved.tenor, instalment: quote.instalment, interestBps: quote.rates.interestBps, processingFee: quote.processingFee, insuranceFee: quote.insuranceFee, totalInterest: quote.totalInterest, totalRepayable: quote.totalRepayable, firstDueDate: quote.firstDueDate, repaymentMethod: app.repayment.method },
           schedule: quote.schedule,
           text: doc.text,
+          blocks: doc.blocks,
           textSha256: doc.textSha256,
           pdfFileId: file._id,
           pdfSha256: file.sha256,

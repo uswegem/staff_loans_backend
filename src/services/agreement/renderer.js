@@ -10,7 +10,9 @@
 //   [ ] Declaration    a statement the staff member ticks before signing
 //   anything else      a paragraph
 // A line whose only content was a value that is not known (null) is left out.
-// {{key}} inserts a value; filled values are marked so they can be highlighted.
+// {{key}} inserts a value; filled values are marked so they can be highlighted. A value given
+// as parts may mark a part strong (shown in bold, e.g. the Employee's name in the parties).
+// Bold is presentation only: the canonical text and its SHA-256 are the plain words.
 
 const crypto = require('crypto');
 
