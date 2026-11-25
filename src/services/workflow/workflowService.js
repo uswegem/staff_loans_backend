@@ -12,6 +12,7 @@ const User = require('../../models/User');
 const Staff = require('../../models/Staff');
 const rbac = require('../rbac/rbacService');
 const { STAGES, stageAccepts } = require('./routes');
+const { validApprovals } = require('../review/approvals');
 const { PENDING_STAGE } = require('../../constants/statuses');
 
 const LIMITED_ROUTES = ['mgmt', 'ceo', 'hrhead'];
@@ -31,14 +32,21 @@ async function activeUsers(ids, session) {
  * permission they act with (a stage may accept several, D-103). Someone who could act
  * both in their own right and for another holder acts in their own right.
  */
+/** Users with a valid approval of another stage of this application, in any cycle (D-106). */
+async function otherStageApprovers(app, session) {
+  const rows = await Decision.find({ applicationId: app._id, action: { $in: ['approve', 'return'] } }).select('actorId action stage cycle details at').session(session || null).lean();
+  return validApprovals(rows, app.stages || []).filter((d) => d.stage !== app.currentStage).map((d) => String(d.actorId));
+}
+
 async function stageActors(app, { now = new Date(), session } = {}) {
   const stage = STAGES[app.currentStage];
   if (!stage || !PENDING_STAGE.includes(app.status)) return [];
   const applicant = String(app.applicantUserId);
   // Segregation of duties: someone holding several review roles approves one stage of an
-  // application only. Whoever approved another stage of it, in any cycle, cannot act here.
-  const earlier = await Decision.find({ applicationId: app._id, action: 'approve', stage: { $ne: app.currentStage } }).select('actorId').session(session || null).lean();
-  const excluded = new Set([applicant, ...earlier.map((d) => String(d.actorId))]);
+  // application only. Whoever approved another stage of it, in any cycle, cannot act here;
+  // an approval cancelled by a return to an earlier stage no longer counts (D-106).
+  const earlier = await otherStageApprovers(app, session);
+  const excluded = new Set([applicant, ...earlier]);
   // The permission each holder acts with: the first of the stage's permissions they hold.
   const permissionOf = new Map();
   for (const permission of stage.permissions) {
@@ -122,4 +130,4 @@ async function queueFor(auth, now = new Date()) {
   return { items, perms };
 }
 
-module.exports = { stageActors, canAct, reviewAccess, reviewPermissions, isLimited, queueFor, delegatedTo, LIMITED_ROUTES, FULL_REVIEW, activeUsers };
+module.exports = { otherStageApprovers, stageActors, canAct, reviewAccess, reviewPermissions, isLimited, queueFor, delegatedTo, LIMITED_ROUTES, FULL_REVIEW, activeUsers };

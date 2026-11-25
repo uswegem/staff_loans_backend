@@ -20,6 +20,7 @@ const workingTime = require('../calendar/workingTime');
 const rules = require('../applications/rules');
 const appSvc = require('../applications/applicationService');
 const { STAGES, ROUTES, PC_STAGES, PERMISSION_ROLE } = require('../workflow/routes');
+const { returnTargets, supersededIds } = require('./approvals');
 const { STATUS } = require('../../constants/statuses');
 const { formatNida } = require('../staff/profileService');
 const { localDay } = require('../../utils/dates');
@@ -54,7 +55,7 @@ function routeInfo(app) {
 }
 
 /** Options for the decision panel at the current stage. */
-function panelFor(app, actor) {
+function panelFor(app, actor, decisions = []) {
   if (!actor) return null;
   const stage = app.currentStage;
   const i = app.stages.indexOf(stage);
@@ -69,6 +70,12 @@ function panelFor(app, actor) {
     needsHrChecks: PC_STAGES.includes(stage),
     needsProbationCheck: PC_STAGES.includes(stage) && !!app.probation?.onProbation,
     crbOutcomes: CRB_OUTCOMES, // D-99
+    // D-106: where a return may go: an earlier stage passed in this cycle (nearest first, the
+    // default), or the applicant.
+    returnTargets: [
+      ...returnTargets(app, decisions).map((key) => ({ key, label: stageName(key) })),
+      { key: 'applicant', label: 'Applicant (for correction)' },
+    ],
   };
 }
 
@@ -140,6 +147,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     PricingVersion.findById(app.pricingVersionId).lean(),
   ]);
   const names = await namesOf([...decisions.flatMap((d) => [d.actorId, d.onBehalfOfId]), ...docs.map((d) => d.uploadedBy), app.recommended?.by]);
+  const cancelled = supersededIds(decisions, app.stages || []);
 
   // Fresh rule checks on the pinned versions, with the applicant's current record.
   const ctx = await appSvc.context(req, app.productId, {
@@ -216,6 +224,10 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
       action: d.action,
       stage: d.stage,
       stageLabel: decisionStage(d),
+      // D-106: a return names where it went; an approval cancelled by a later return is marked.
+      returnTo: d.action === 'return' ? d.details?.returnTo || 'applicant' : undefined,
+      returnToLabel: d.action === 'return' ? (d.details?.returnTo && d.details.returnTo !== 'applicant' ? stageName(d.details.returnTo) : 'Applicant') : undefined,
+      superseded: d.action === 'approve' && cancelled.has(String(d._id)),
       comment: d.comment,
       at: d.at,
       cycle: d.cycle,
@@ -224,7 +236,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
       onBehalfOf: d.onBehalfOfId ? names.get(String(d.onBehalfOfId))?.name : null,
       details: d.details || null,
     })),
-    panel: panelFor(app, actor),
+    panel: panelFor(app, actor, decisions),
   };
 }
 

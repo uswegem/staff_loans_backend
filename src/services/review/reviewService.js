@@ -25,6 +25,7 @@ const workflow = require('../workflow/workflowService');
 const { capCheck } = require('../applications/capCheck');
 const { namesOf, stageName, decisionStage, fullName } = require('./reviewView');
 const { STAGES, PC_STAGES } = require('../workflow/routes');
+const { validApprovals, returnTargets } = require('./approvals');
 const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
 const { AppError, badRequest, conflict, forbidden, notFound } = require('../../utils/errors');
@@ -39,7 +40,9 @@ async function notifyOps(text, href, entityId, session, type = 'application.read
 
 /** Approvals in this cycle, as printed "kwa niaba ya Mwajiri" (FR-36). */
 async function approvalsFor(app, extra, session) {
-  const rows = await Decision.find({ applicationId: app._id, cycle: app.cycle, action: 'approve' }).sort({ at: 1 }).session(session || null).lean();
+  // Approvals still in force: one cancelled by a return to an earlier stage is not printed (D-106).
+  const history = await Decision.find({ applicationId: app._id, cycle: app.cycle, action: { $in: ['approve', 'return'] } }).sort({ at: 1 }).session(session || null).lean();
+  const rows = validApprovals(history, app.stages || []);
   const all = [...rows.map((d) => ({ actorId: d.actorId, onBehalfOfId: d.onBehalfOfId, stage: d.stage, details: d.details, at: d.at })), ...(extra ? [extra] : [])];
   const names = await namesOf(all.flatMap((a) => [a.actorId, a.onBehalfOfId]));
   return all.map((a) => ({ name: names.get(String(a.actorId))?.name, title: names.get(String(a.actorId))?.title, stage: decisionStage(a), at: a.at, onBehalfOf: a.onBehalfOfId ? names.get(String(a.onBehalfOfId))?.name : undefined }));
@@ -127,7 +130,7 @@ async function decide(req, app, body) {
   const actor = await workflow.canAct(req.auth.user._id, app);
   if (!actor) {
     if (String(app.applicantUserId) === String(req.auth.user._id)) throw forbidden('You cannot review your own application.', 'SELF_REVIEW');
-    if (await Decision.exists({ applicationId: app._id, action: 'approve', actorId: req.auth.user._id, stage: { $ne: app.currentStage } })) {
+    if ((await workflow.otherStageApprovers(app)).includes(String(req.auth.user._id))) {
       throw forbidden('You approved an earlier stage of this application, so another person must decide this stage.', 'SEPARATE_STAGES');
     }
     throw forbidden('This application is not waiting for you.', 'NOT_YOUR_STAGE');
@@ -138,6 +141,17 @@ async function decide(req, app, body) {
   const isFinal = app.stages.indexOf(stage) === app.stages.length - 1;
 
   if (action !== 'approve' && !comment) throw badRequest('Add a comment so the applicant knows what to do.', { comment: ['Add a comment so the applicant knows what to do.'] }, 'COMMENT_REQUIRED');
+  // D-106: a return goes to the applicant (as before) or to an earlier stage passed in this cycle.
+  let returnTo;
+  if (action === 'return') {
+    returnTo = body.returnTo || 'applicant';
+    if (returnTo !== 'applicant') {
+      const history = await Decision.find({ applicationId: app._id, action: { $in: ['approve', 'return'] } }).lean();
+      if (!returnTargets(app, history).includes(returnTo)) {
+        throw badRequest('Choose the applicant or an earlier stage this application has already passed.', { returnTo: ['Choose the applicant or an earlier stage this application has already passed.'] }, 'RETURN_TARGET_INVALID');
+      }
+    }
+  }
   const set = {};
   let recommended = null;
   if (stage === 'credit') {
@@ -197,11 +211,25 @@ async function decide(req, app, body) {
     if (!fresh) throw conflict('Someone else has just decided on this application. Reload it.', 'STATE_CHANGED');
 
     await Decision.create(
-      [{ applicationId: app._id, cycle: app.cycle, stage, action, actorId: req.auth.user._id, onBehalfOfId: actor.onBehalfOf || undefined, comment: storedComment, details: { permission: actor.permission, crb: set.crb ? { outcome: set.crb.outcome } : undefined, hrChecks: set.hrChecks, recommended: recommended ? { amount: recommended.amount, tenor: recommended.tenor } : undefined }, at: now, ip: req.ip }],
+      [{ applicationId: app._id, cycle: app.cycle, stage, action, actorId: req.auth.user._id, onBehalfOfId: actor.onBehalfOf || undefined, comment: storedComment, details: { permission: actor.permission, returnTo: action === 'return' ? returnTo : undefined, crb: set['crb.outcome'] ? { outcome: set['crb.outcome'] } : undefined, hrChecks: set.hrChecks, recommended: recommended ? { amount: recommended.amount, tenor: recommended.tenor } : undefined }, at: now, ip: req.ip }],
       { session }
     );
 
-    if (action === 'return') {
+    if (action === 'return' && returnTo !== 'applicant') {
+      // D-106: back to an earlier stage. Approvals from that stage on, in this cycle, no longer
+      // count (approvals.js); the stage decides again, with a new due date.
+      const cal = await calendar.load(session);
+      const dueAt = workingTime.addWorkingHours(cal, now, STAGES[returnTo].target === 'ceo' ? cal.ceoTargetHours : cal.stageTargetHours);
+      const moved = await Application.findByIdAndUpdate(app._id, { $set: { status: STAGES[returnTo].status, currentStage: returnTo, stageEnteredAt: now, stageDueAt: dueAt } }, { new: true, session });
+      const actors = await workflow.stageActors(moved, { session });
+      await notify.notifyUsers(
+        actors.map((a) => a.userId),
+        { type: 'application.stage_returned', text: `${app.ref} from ${applicantName} was returned to your ${stageName(returnTo)} review by ${stageName(stage)}: ${storedComment}`, href: `/review/${app._id}`, entity: 'Application', entityId: String(app._id) },
+        { session }
+      );
+      await notify.notifyUsers([app.applicantUserId], { type: 'application.moved', text: `${app.ref} went back to ${stageName(returnTo)} review.`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
+      outcome = 'returned_to_stage';
+    } else if (action === 'return') {
       await Application.updateOne({ _id: app._id }, { $set: { status: 'returned', currentStage: null, stageEnteredAt: now, stageDueAt: null } }, { session });
       await notify.notifyUsers([app.applicantUserId], { type: 'application.returned', text: `${app.ref} was returned for correction: ${storedComment}`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
       outcome = 'returned';
@@ -253,14 +281,14 @@ async function decide(req, app, body) {
       {
         req,
         action: `review.${action}`,
-        description: `${app.ref} ${action === 'approve' ? `approved by ${stageName(stage)}${outcome === 'approved' ? ' (final; agreement in force)' : outcome === 'revised' ? ' (final; revised terms to accept)' : ''}` : `${action === 'return' ? 'returned' : 'rejected'} by ${stageName(stage)}`}${actor.onBehalfOf ? ' on behalf of the stage holder' : ''}`,
+        description: `${app.ref} ${action === 'approve' ? `approved by ${stageName(stage)}${outcome === 'approved' ? ' (final; agreement in force)' : outcome === 'revised' ? ' (final; revised terms to accept)' : ''}` : action === 'return' ? `returned by ${stageName(stage)} to ${returnTo === 'applicant' ? 'the applicant' : stageName(returnTo)}: ${storedComment}` : `rejected by ${stageName(stage)}`}${actor.onBehalfOf ? ' on behalf of the stage holder' : ''}`,
         entity: 'Application',
         entityId: String(app._id),
         appRef: app.ref,
         limited,
         onBehalfOfId: actor.onBehalfOf || undefined,
         before: { status: app.status, stage },
-        after: { outcome, crb: set.crb?.outcome, recommended: limited ? undefined : recommended && { amount: recommended.amount, tenor: recommended.tenor } },
+        after: { outcome, returnTo, crb: set['crb.outcome'], recommended: limited ? undefined : recommended && { amount: recommended.amount, tenor: recommended.tenor } },
       },
       { session }
     );

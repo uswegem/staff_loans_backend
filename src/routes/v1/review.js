@@ -3,6 +3,7 @@
 const express = require('express');
 const Joi = require('joi');
 const multer = require('multer');
+const { STAGES } = require('../../services/workflow/routes');
 const ReviewController = require('../../controllers/reviewController');
 const { requireAll } = require('../../middleware/permission');
 const { validate } = require('../../middleware/validate');
@@ -19,12 +20,6 @@ const money = Joi.number().integer().min(1).max(10_000_000_000);
 const crbUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
-  fileFilter: (req, file, cb) => (/\.(pdf|jpe?g|png)$/i.test(file.originalname) ? cb(null, true) : cb(badRequest('Only PDF, JPG and PNG files can be uploaded.', undefined, 'FILE_TYPE'))),
-});
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => (/\.(pdf|jpe?g|png)$/i.test(file.originalname) ? cb(null, true) : cb(badRequest('Only PDF, JPG and PNG files can be uploaded.', undefined, 'FILE_TYPE'))),
 });
 
@@ -62,6 +57,8 @@ router.post(
     ...idParams,
     body: Joi.object({
       action: Joi.string().valid('approve', 'return', 'reject').required(),
+      // D-106: where a return goes: the applicant (default) or an earlier stage passed in this cycle.
+      returnTo: Joi.string().valid('applicant', ...Object.keys(STAGES)),
       comment: Joi.string().trim().max(2000).allow(''),
       // D-99: the four outcomes; no appraisal or arrears note (earlier ones are kept and shown).
       crb: Joi.object({ outcome: Joi.string().valid(...CRB_OUTCOMES).required(), reportDate: day.required(), fileId: objectId }),

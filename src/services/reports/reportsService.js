@@ -176,7 +176,7 @@ async function decisions(viewer, f) {
     const lim = limitedFor(viewer, a);
     if (lim) limitedCount += 1;
     const comment = lim && String(d.actorId) !== viewer.userId ? LIMITED : d.comment || '';
-    return [a.ref, fullName(staffOf(a)), decisionStage(d), DECISION_LABEL[d.action] || d.action, who.get(String(d.actorId)) || '', d.onBehalfOfId ? who.get(String(d.onBehalfOfId)) || '' : '', dateTime(d.at), comment];
+    return [a.ref, fullName(staffOf(a)), decisionStage(d), d.action === 'return' ? `Returned to ${d.details?.returnTo && d.details.returnTo !== 'applicant' ? stageName(d.details.returnTo) : 'the applicant'}` : DECISION_LABEL[d.action] || d.action, who.get(String(d.actorId)) || '', d.onBehalfOfId ? who.get(String(d.onBehalfOfId)) || '' : '', dateTime(d.at), comment];
   });
   return { columns: [col('Reference'), col('Applicant'), col('Stage'), col('Decision'), col('By'), col('On behalf of'), col('When', 'datetime'), col('Comment')], rows: out, limitedCount };
 }
