@@ -1,5 +1,9 @@
 # Changelog
 
+
+## Unreleased – sign-out fix
+
+- `POST /auth/logout` and `POST /auth/refresh` no longer parse a request body, so any body (the JSON `null` the web app sent, an empty body, or malformed JSON) still ends the session and deletes the cookies. A 400 there had left the session running, and reloading the page signed the person back in.
 ## Unreleased – December 2026 release
 
 Release the API first (with `npm run upgrade:2026-12 -- --dry-run`, then `npm run upgrade:2026-12`), then the web app.

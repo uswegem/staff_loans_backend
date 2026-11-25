@@ -276,6 +276,22 @@ describe('refresh and logout', () => {
     expect((await request(app()).get('/api/v1/auth/me').set(authed(token))).status).toBe(401);
   });
 
+  it('logout ends the session whatever body the client sends (the web app once sent JSON null)', async () => {
+    for (const body of ['null', '', '{}', 'not json']) {
+      // eslint-disable-next-line no-await-in-loop
+      const { cookies, token } = await signIn('LFB0412');
+      // eslint-disable-next-line no-await-in-loop
+      const out = await request(app()).post('/api/v1/auth/logout').set('Cookie', cookieHeader(cookies)).set('X-XSRF-TOKEN', cookies['XSRF-TOKEN'].value).set('Content-Type', 'application/json').send(body);
+      expect([body, out.status]).toEqual([body, 200]);
+      // The browser is told to delete both cookies, and the refresh token no longer works.
+      expect((out.headers['set-cookie'] || []).join(';')).toMatch(/slas_rt=;.*XSRF-TOKEN=;|XSRF-TOKEN=;.*slas_rt=;/s);
+      // eslint-disable-next-line no-await-in-loop
+      expect((await refresh(cookies)).status).toBe(401);
+      // eslint-disable-next-line no-await-in-loop
+      expect((await request(app()).get('/api/v1/auth/me').set(authed(token))).status).toBe(401);
+    }
+  });
+
   it('logout only ends the current session', async () => {
     const one = await signIn('LFB0412');
     const two = await signIn('LFB0412');
