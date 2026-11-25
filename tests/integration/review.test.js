@@ -104,7 +104,8 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     expect(ag.approvals.map((x) => x.name)).toEqual(['Juma Kassim', 'Grace Mollel', 'Joseph Mwakalinga']); // FR-36
     expect((await StoredFile.findById(ag.inForcePdfFileId)).mime).toBe('application/pdf');
     expect((await Staff.findOne({ staffNo: 'LFB0412' })).loanHistory).toHaveLength(1); // NS-02
-    expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(1); // OPS
+    expect(await notesFor('LFB0129', 'application.ready_to_book')).toHaveLength(1); // People and Culture book it (D-107)
+    expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(0); // OPS after booking
     expect((await notesFor('LFB0412', 'application.approved'))[0].text).toMatch(/now in force/);
     expect(await Decision.countDocuments({ applicationId: id, action: 'approve' })).toBe(3);
   });
