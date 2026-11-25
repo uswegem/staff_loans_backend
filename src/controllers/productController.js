@@ -178,7 +178,7 @@ const ProductController = {
       $or: [{ effectiveFrom: null }, { effectiveFrom: { $lte: now } }],
     }).select('version note language effectiveFrom approvedAt').sort({ effectiveFrom: -1, approvedAt: -1 }).lean();
     res.json({ success: true, data: items.map((t) => ({
-      id: String(t._id), version: t.version, note: t.note || '',
+      id: String(t._id), version: t.version, note: t.note || '', language: t.language || 'sw',
       effectiveFrom: t.effectiveFrom, approvedAt: t.approvedAt,
     })) });
   },
