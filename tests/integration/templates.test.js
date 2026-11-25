@@ -4,6 +4,7 @@
 // Officer (LFB0188) uploads and edits; the Head of Legal (LFB0451) approves or rejects.
 
 const { api, seedAll, signIn, applyAndSign } = require('../flows');
+const { VERSION: TEMPLATE_VERSION } = require('../../seed/agreementTemplate');
 const AgreementTemplate = require('../../src/models/AgreementTemplate');
 const Agreement = require('../../src/models/Agreement');
 const AuditLog = require('../../src/models/AuditLog');
@@ -20,14 +21,14 @@ beforeEach(async () => {
 });
 
 const DAY = 24 * 3600 * 1000;
-const body = async () => (await AgreementTemplate.findOne({ version: '2026.11' })).body.replace('# MKATABA WA MKOPO WA MWAJIRIWA', '# MKATABA WA MKOPO WA MWAJIRIWA (TOLEO JIPYA)');
+const body = async () => (await AgreementTemplate.findOne({ version: TEMPLATE_VERSION })).body.replace('# MKATABA WA MKOPO WA MWAJIRIWA', '# MKATABA WA MKOPO WA MWAJIRIWA (TOLEO JIPYA)');
 const legal = async () => api((await signIn('LFB0188')).token);
 const headLegal = async () => api((await signIn('LFB0451')).token);
 
 describe('agreement templates (FR-40, D-88)', () => {
   it('lists versions with their status and agreement counts; Legal only', async () => {
     const r = await (await legal()).get('/admin/templates');
-    expect(r.body.data.items).toEqual([expect.objectContaining({ version: '2026.11', status: 'approved', statusLabel: 'Approved', state: 'current', sample: true, agreements: 0 })]);
+    expect(r.body.data.items).toEqual([expect.objectContaining({ version: TEMPLATE_VERSION, status: 'approved', statusLabel: 'Approved', state: 'current', sample: true, agreements: 0 })]);
     expect((await (await headLegal()).get('/admin/templates')).status).toBe(200);
     expect((await api((await signIn('LFB0051')).token).get('/admin/templates')).status).toBe(403);
     // The System Administrator no longer loads templates.
@@ -41,11 +42,13 @@ describe('agreement templates (FR-40, D-88)', () => {
     expect(bad.body.message).toMatch(/unknown value \{\{madeUp\}\}/);
     const incomplete = await a.post('/admin/templates/preview', { body: '# Mkataba\n{{amount}}' });
     expect(incomplete.body.code).toBe('TEMPLATE_INCOMPLETE');
-    expect(incomplete.body.message).toMatch(/\{\{ref\}\}.*\{\{schedule\}\}/);
+    expect(incomplete.body.message).toMatch(/\{\{ref\}\}/);
+    expect(incomplete.body.message).not.toMatch(/schedule/);
     const ok = await a.post('/admin/templates/preview', { body: await body() });
     expect(ok.status).toBe(200);
     expect(ok.body.data.blocks[0]).toMatchObject({ type: 'h1' });
-    expect(ok.body.data.blocks.some((b) => b.type === 'table')).toBe(true);
+    expect(ok.body.data.blocks.some((b) => b.type === 'table')).toBe(false); // D-110: no schedule
+    expect(ok.body.data.format).toBe(2);
     // D-93: {{residence}} is the structured address (house/plot, street, ward, district, region).
     const text = JSON.stringify(ok.body.data.blocks);
     expect(text).toContain('12, Mtaa wa Mfano, Buguruni, Ilala, Dar-Es-Salaam');
@@ -55,7 +58,7 @@ describe('agreement templates (FR-40, D-88)', () => {
     const a = await legal();
     const text = await body();
     const today = localDay();
-    expect((await a.post('/admin/templates', { version: '2026.11', effectiveFrom: today, body: text })).body.code).toBe('VERSION_EXISTS');
+    expect((await a.post('/admin/templates', { version: TEMPLATE_VERSION, effectiveFrom: today, body: text })).body.code).toBe('VERSION_EXISTS');
     expect((await a.post('/admin/templates', { version: 'v2', effectiveFrom: today, body: text })).status).toBe(400);
     // The Head of Legal cannot upload.
     expect((await (await headLegal()).post('/admin/templates', { version: '2027.01', effectiveFrom: today, body: text })).status).toBe(403);
@@ -64,8 +67,8 @@ describe('agreement templates (FR-40, D-88)', () => {
     expect(up.status).toBe(201);
     expect(up.body.data.status).toBe('pending_legal_approval');
     let list = (await a.get('/admin/templates')).body.data.items;
-    expect(list.map((t) => [t.version, t.statusLabel])).toEqual([['2027.01', 'Pending Legal Approval'], ['2026.11', 'Approved']]);
-    expect((await AgreementTemplate.active()).version).toBe('2026.11');
+    expect(list.map((t) => [t.version, t.statusLabel])).toEqual([['2027.01', 'Pending Legal Approval'], [TEMPLATE_VERSION, 'Approved']]);
+    expect((await AgreementTemplate.active()).version).toBe(TEMPLATE_VERSION);
 
     // The Legal Officer cannot approve.
     expect((await a.post(`/admin/templates/${up.body.data.id}/approve`)).status).toBe(403);
@@ -73,7 +76,7 @@ describe('agreement templates (FR-40, D-88)', () => {
     expect((await h.post(`/admin/templates/${up.body.data.id}/approve`)).body.data.status).toBe('approved');
     list = (await a.get('/admin/templates')).body.data.items;
     expect(list.find((t) => t.version === '2027.01').state).toBe('current');
-    expect(list.find((t) => t.version === '2026.11').state).toBe('retired');
+    expect(list.find((t) => t.version === TEMPLATE_VERSION).state).toBe('retired');
     expect(await AuditLog.countDocuments({ action: 'template.upload' })).toBe(1);
     expect(await AuditLog.countDocuments({ action: 'template.approve' })).toBe(1);
 
@@ -89,7 +92,7 @@ describe('agreement templates (FR-40, D-88)', () => {
     await a.post('/admin/templates', { version: '2027.01', effectiveFrom: localDay(), body: await body() });
     const neema = await signIn('LFB0412');
     await applyAndSign(neema, products.PL._id, { amount: 4500000, tenor: 36, purpose: 'Home furniture' });
-    expect((await Agreement.findOne()).templateVersion).toBe('2026.11');
+    expect((await Agreement.findOne()).templateVersion).toBe(TEMPLATE_VERSION);
   });
 
   it('rejection needs a reason; the Legal Officer edits and it waits for approval again', async () => {
@@ -109,13 +112,13 @@ describe('agreement templates (FR-40, D-88)', () => {
 
   it('editing an approved version creates a new version; the approved one stays in use', async () => {
     const a = await legal();
-    const current = await AgreementTemplate.findOne({ version: '2026.11' });
+    const current = await AgreementTemplate.findOne({ version: TEMPLATE_VERSION });
     const text = await body();
     expect((await a.put(`/admin/templates/${current._id}`, { body: text })).body.code).toBe('NEW_VERSION_REQUIRED');
     const next = await a.put(`/admin/templates/${current._id}`, { version: '2027.01', body: text });
     expect(next.body.data).toMatchObject({ version: '2027.01', status: 'pending_legal_approval' });
     expect((await AgreementTemplate.findById(current._id)).body).not.toContain('(TOLEO JIPYA)');
-    expect((await AgreementTemplate.active()).version).toBe('2026.11');
+    expect((await AgreementTemplate.active()).version).toBe(TEMPLATE_VERSION);
   });
 
   it('nobody approves a version they uploaded or edited', async () => {

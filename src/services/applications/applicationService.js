@@ -22,7 +22,7 @@ const rules = require('./rules');
 const { productLabels } = require('../payslip/deductionLines');
 const agreementService = require('../agreement/agreementService');
 const { declarationsOf, allDeclared } = require('../agreement/renderer');
-const { agreementPdf, pdfText } = require('../agreement/pdfService');
+const { agreementPdf } = require('../agreement/pdfService');
 const dataProtection = require('../consent/dataProtection');
 const fileStore = require('../files/fileStore');
 const { completeness } = require('../staff/profileService');
@@ -327,18 +327,17 @@ async function signAndSubmit(req, app, body) {
 
   const number = await nextRef('MKT');
   const language = doc.template.language;
-  const L = pdfText(language);
-  const evidence = [
-    [L.number, number],
-    [L.application, app.ref],
-    [L.staff, `${staffName} (${ctx.staff.staffNo})`],
-    [L.acceptedAt, `${now.toISOString()} (UTC)`],
-    [L.ip, req.ip],
-    [L.template, doc.template.version],
-    [L.fingerprint, doc.textSha256],
-    declarations.length ? [L.declarations, L.of(declarations.length, declarations.length)] : [L.consents, L.consentsValue],
-  ];
-  const pdf = await agreementPdf({ blocks: doc.blocks, title: `${L.agreement} ${number} (${app.ref})`, evidence, dataProtection: dataProtection.pdfSection(dp), language });
+  const pdf = await agreementPdf({
+    blocks: doc.blocks,
+    language,
+    agreementNumber: number,
+    ref: app.ref,
+    templateVersion: doc.template.version,
+    textSha256: doc.textSha256,
+    acceptance: { fullName: staffName, staffNo: ctx.staff.staffNo, at: now, ip: req.ip },
+    consents: !declarations.length,
+    dataProtection: dataProtection.pdfSection(dp),
+  });
 
   await withTransaction(async (session) => {
     const fresh = await Application.findOne({ _id: app._id, status: { $in: EDITABLE } }).session(session);
@@ -360,7 +359,8 @@ async function signAndSubmit(req, app, body) {
           terms: { amount: fresh.amount, tenor: fresh.tenor, instalment: q.instalment, interestBps: q.rates.interestBps, processingFee: q.processingFee, insuranceFee: q.insuranceFee, totalInterest: q.totalInterest, totalRepayable: q.totalRepayable, firstDueDate: q.firstDueDate, repaymentMethod: fresh.repayment.method },
           schedule: q.schedule,
           text: doc.text,
-          blocks: doc.blocks, // as rendered, with bold parts, for the in-force PDF
+          blocks: doc.blocks, // as rendered, with numbers and bold parts, for the in-force PDF
+          format: doc.format, // D-110: 2 when the canonical text carries the numbered structure
           textSha256: doc.textSha256,
           pdfFileId: pdfFile._id,
           pdfSha256: pdfFile.sha256,

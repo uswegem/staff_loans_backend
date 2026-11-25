@@ -20,6 +20,8 @@ const settingsSchema = new mongoose.Schema(
     maxUploadMb: { type: Number, default: 10, min: 1, max: 50 },
     // Explicitly activated only after the live-product readiness report is clear.
     productConfigEnforcementEnabled: { type: Boolean, default: false },
+    // D-110: the logo printed on agreements and schedules; null uses assets/agreement/lfb-logo.png.
+    agreementLogoFileId: { type: mongoose.Schema.Types.ObjectId, ref: 'StoredFile', default: null },
     firstDueDay: { type: Number, default: 25, min: 1, max: 31 }, // instalments fall on this day of the month (D-48)
     inactivityTimeoutMin: { type: Number, default: 10, min: 1 }, // NFR-04: 10 minutes (UAT requirement, 10 Nov 2026)
     lockoutThreshold: { type: Number, default: 5, min: 3, max: 10 },

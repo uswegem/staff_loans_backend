@@ -6,7 +6,7 @@
 const crypto = require('crypto');
 const { app, seed, signIn, authed, request } = require('../helpers');
 const { seedProducts } = require('../fixtures/products');
-const { seedAgreementTemplate } = require('../../seed/agreementTemplate');
+const { seedAgreementTemplate, VERSION: TEMPLATE_VERSION } = require('../../seed/agreementTemplate');
 const { seedLegalNotices } = require('../../seed/legalNotices');
 const Application = require('../../src/models/Application');
 const Agreement = require('../../src/models/Agreement');
@@ -276,7 +276,7 @@ describe('payslip (D-78, D-79)', () => {
 });
 
 describe('agreement preview (FR-33, BRD 8)', () => {
-  it('shows the Swahili agreement pre-filled with the terms, words and schedule', async () => {
+  it('shows the Swahili agreement pre-filled with the terms and words, without a schedule (D-110)', async () => {
     const neema = await signIn('LFB0412');
     const { id } = await draft(neema, PL(), NEEMA_TERMS);
     const res = await api(neema.token).get(`/applications/${id}/agreement/preview`);
@@ -286,11 +286,15 @@ describe('agreement preview (FR-33, BRD 8)', () => {
     expect(text).toMatch(/Tshs 4,500,000/);
     expect(text).toMatch(/Shilingi milioni nne na elfu mia tano tu/);
     expect(text).toMatch(/Neema Mushi/);
-    const table = res.body.data.blocks.find((b) => b.type === 'table');
-    expect(table.rows).toHaveLength(36);
-    expect(table.rows[0][2]).toBe('136,900');
+    // D-110: the Loan Details as a table; the repayment schedule is not part of the agreement.
+    expect(res.body.data.blocks.some((b) => b.type === 'table')).toBe(false);
+    const details = res.body.data.blocks.find((b) => b.type === 'details');
+    const row = (label) => details.rows.find((r) => r.label.map((x) => x.text).join('') === label).value.map((x) => x.text).join('');
+    expect(row('Awamu ya kila mwezi')).toBe('Tshs 136,900');
+    expect(row('Muda')).toBe('miezi 36');
+    expect(res.body.data.blocks.filter((b) => b.type === 'clause').map((b) => b.number).slice(0, 3)).toEqual(['1.1', '1.2', '1.3']);
     expect(res.body.data.terms).toMatchObject({ instalment: 136900, fees: 126000, totalRepayable: 4928351 });
-    expect(res.body.data.template).toMatchObject({ version: '2026.11', sample: true });
+    expect(res.body.data.template).toMatchObject({ version: TEMPLATE_VERSION, sample: true });
   });
 
   it('leaves out a party detail that is not on file instead of printing a dash', async () => {
@@ -299,7 +303,8 @@ describe('agreement preview (FR-33, BRD 8)', () => {
     const neema = await signIn('LFB0412');
     const { id } = await draft(neema, PL(), NEEMA_TERMS);
     const res = await api(neema.token).get(`/applications/${id}/agreement/preview`);
-    const parties = res.body.data.blocks.map((b) => (b.parts || []).map((p) => p.text).join('')).find((t) => t.includes('namba ya mfanyakazi'));
+    const details = res.body.data.blocks.find((b) => b.type === 'details');
+    const parties = details.rows.map((r) => r.value.map((p) => p.text).join('')).find((t) => t.includes('namba ya mfanyakazi'));
     expect(parties).toMatch(/namba ya mfanyakazi LFB0412, Plot/);
     expect(parties).not.toMatch(/—|wa ,|, ,/);
   });
@@ -356,7 +361,7 @@ describe('sign agreement and submit (FR-10, FR-34 to FR-37)', () => {
     expect(ag.acceptance).toMatchObject({ staffNo: 'LFB0412', fullName: 'Neema Mushi' });
     expect(ag.acceptance.ip).toBeTruthy();
     expect(ag.acceptance.at).toBeInstanceOf(Date);
-    expect(ag.templateVersion).toBe('2026.11');
+    expect(ag.templateVersion).toBe(TEMPLATE_VERSION);
     expect(ag.terms).toMatchObject({ amount: 4500000, tenor: 36, instalment: 136900 });
 
     const pdf = await StoredFile.findById(ag.pdfFileId);

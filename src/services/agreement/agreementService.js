@@ -172,7 +172,8 @@ async function build(input, { template, session } = {}) {
   const t = template || (await AgreementTemplate.active(session));
   if (!t) throw notFound('No agreement template is loaded. An administrator must load one.');
   const language = t.language || 'sw';
-  const out = render(t.body, values(input, t.version, language), scheduleTable(input.quote.schedule, language));
+  // D-110: the repayment schedule is not part of the agreement; it is given on request.
+  const out = render(t.body, values(input, t.version, language), { language });
   return { ...out, template: { id: String(t._id), version: t.version, sample: t.sample, language } };
 }
 

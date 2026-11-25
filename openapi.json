@@ -2148,6 +2148,31 @@
         }
       }
     },
+    "/applications/{id}/repayment-schedule.pdf": {
+      "get": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Repayment schedule PDF for an approved or disbursed loan, on request: Operations (disb.confirm) and Credit (review.credit, products.approveCredit); not the applicant; audited (D-110)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF"
+          },
+          "403": {
+            "description": "Not Operations or Credit",
+            "or own loan": null
+          },
+          "409": {
+            "description": "No final approval yet"
+          }
+        }
+      }
+    },
     "/agreements/{id}/pdf": {
       "get": {
         "tags": [
@@ -2196,6 +2221,74 @@
         "responses": {
           "200": {
             "description": "Saved"
+          }
+        }
+      }
+    },
+    "/admin/settings/agreement-logo": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "The logo printed on agreements and repayment schedules: default or replaced (D-110)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logo information"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Replace the agreement logo: PNG or JPG, up to 1 MB, multipart field 'file' (audited, D-110)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replaced"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Go back to the default LFB logo (audited, D-110)",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default restored"
+          }
+        }
+      }
+    },
+    "/admin/settings/agreement-logo/image": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "The logo image in use",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG or JPG"
           }
         }
       }

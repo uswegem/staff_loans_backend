@@ -29,11 +29,13 @@ const mongoose = require('mongoose');
 
 const DIR = path.join(__dirname, '..', 'seed', 'data', 'agreements');
 const LOANS = [
-// 2026.12c and 2026.12d name the Employee in the parties ("(2) JANE DOE, whose personal
-// details ..."); they replace 2026.12a and 2026.12b for new agreements only. Agreements
-// already signed keep the version, text and fingerprint they were signed with.
-  { key: 'personal', label: 'Staff Personal Loan', file: 'staff-personal-loan.en.md', version: '2026.12c', match: /\bpersonal\b/i },
-  { key: 'car', label: 'Staff Car Loan', file: 'staff-car-loan.en.md', version: '2026.12d', match: /\b(car|vehicle|motor)\b/i },
+// 2026.12e and 2026.12f use the numbered markup (D-110): sections and clauses numbered by
+// the system, cross-references by label, the Loan Details as a table, and no repayment
+// schedule (staff get it on request from Operations or Credit). They replace 2026.12c and
+// 2026.12d for new agreements only; agreements already signed keep the version, text and
+// fingerprint they were signed with.
+  { key: 'personal', label: 'Staff Personal Loan', file: 'staff-personal-loan.en.md', version: '2026.12e', match: /\bpersonal\b/i },
+  { key: 'car', label: 'Staff Car Loan', file: 'staff-car-loan.en.md', version: '2026.12f', match: /\b(car|vehicle|motor)\b/i },
 ];
 
 function argsOf(argv) {

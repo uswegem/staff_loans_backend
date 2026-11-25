@@ -65,3 +65,33 @@ shown with a one-line Swahili note. An agreement never mixes languages: the evid
 approvals, title and page footer of its PDFs, and the data protection notice, are in the
 language signed, saved as `Application.agreementLanguage` and `Agreement.language`.
 The interface language stays saved on the account (D-94).
+
+## D-110 – The agreement as a numbered contract; the schedule on request (Nov 2026)
+
+New agreements are laid out as a contract on the LFB letterhead (logo top left, the bank's
+legal name and address top right, a yellow rule; a small logo and "Staff Loan Agreement" on
+later pages; a footer with the agreement number, application reference and "Page X of Y",
+in the agreement's language only). The PDF embeds Source Sans 3 (OFL) instead of Helvetica,
+so Swahili and any name print as written; A4, 20 mm margins, 10 pt body, numbers in their own
+column, a heading never left alone at the bottom of a page, and no single line left alone.
+The logo is stored at assets/agreement/lfb-logo.png; a System Administrator may replace it
+under Settings (audited).
+
+Templates number themselves: "## Heading" is a numbered section, "+ " a numbered clause,
+"(a) " a lettered sub-clause, "##* Heading" an unnumbered section and "| Label | Value" a
+Loan Details row. Cross-references use labels ({#salary-deduction}, {{ref:salary-deduction}}
+prints "clause 4.2"), so renumbering never breaks them; an unknown or repeated label is
+refused. The canonical text of a numbered agreement (format 2) carries its numbers, sections
+and Loan Details table, so the fingerprint covers the structure; the blocks are stored with
+the agreement and the PDF is rebuilt from them.
+
+The repayment schedule is no longer part of the agreement: templates may not contain
+{{schedule}}, and a clause says the schedule is available on request. Operations
+(disb.confirm) and the Credit department (review.credit, products.approveCredit) download it
+for an approved or disbursed loan (`GET /applications/:id/repayment-schedule.pdf`), in the
+language of the signed agreement, with the letterhead, a table whose header repeats on every
+page and a totals row; the applicant cannot download it, and every download is audited.
+
+Agreements signed before keep their text, fingerprint and schedule; legacy templates render
+as before, without the schedule, until Legal approves the numbered versions (2026.12e
+personal, 2026.12f car, loaded by `npm run agreements:load -- --approved-by <username>`).

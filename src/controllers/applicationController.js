@@ -15,7 +15,10 @@ const { STATUS, EDITABLE, OPEN, WITHDRAWABLE, APPROVED_LOAN } = require('../cons
 const rules = require('../services/applications/rules');
 const { localDay } = require('../utils/dates');
 const { withTransaction } = require('../config/db');
-const { badRequest, conflict, notFound } = require('../utils/errors');
+const { badRequest, conflict, forbidden, notFound } = require('../utils/errors');
+const AgreementTemplate = require('../models/AgreementTemplate');
+const agreementService = require('../services/agreement/agreementService');
+const { schedulePdf } = require('../services/agreement/pdfService');
 const workflow = require('../services/workflow/workflowService');
 const payslipReader = require('../services/payslip/payslipReader');
 const { productLabels, readerLabels } = require('../services/payslip/deductionLines');
@@ -195,6 +198,10 @@ const ApplicationController = {
         terms: ag.terms,
         schedule: ag.schedule,
         text: ag.text,
+        // D-110: the blocks as signed (numbers, Loan Details table), so the screen matches the PDF.
+        blocks: ag.blocks || null,
+        format: ag.format || 1,
+        language: ag.language || null,
         textSha256: ag.textSha256,
         acceptance: ag.acceptance,
         effectiveAt: ag.effectiveAt,
@@ -212,6 +219,41 @@ const ApplicationController = {
     const file = await StoredFile.findById(ag.inForcePdfFileId || ag.pdfFileId);
     await audit.record({ req, action: 'agreement.download', description: `Agreement ${ag.number} PDF downloaded`, entity: 'Agreement', entityId: String(ag._id) });
     await fileStore.send(res, file);
+  },
+
+  /**
+   * D-110: the repayment schedule is not part of the agreement; Operations (disb.confirm) and
+   * Credit (review.credit, products.approveCredit) give it on request for an approved or
+   * disbursed loan. In the language the agreement was signed in. Every download is audited.
+   */
+  async repaymentSchedule(req, res) {
+    const app = await Application.findById(req.params.id).lean();
+    if (!app) throw notFound('Application not found.');
+    if (String(app.applicantUserId) === String(req.auth.user._id)) {
+      throw forbidden('You cannot download the schedule of your own loan here. Ask Operations or the Credit department for it.', 'OWN_SCHEDULE');
+    }
+    if (!APPROVED_LOAN.includes(app.status) || !app.schedule?.length) {
+      throw conflict('A repayment schedule is available once the loan has final approval.', 'SCHEDULE_NOT_AVAILABLE');
+    }
+    const [staff, ag] = await Promise.all([Staff.findById(app.applicantStaffId).lean(), Agreement.findById(app.currentAgreementId).lean()]);
+    const language = ag?.language || (ag?.templateId ? (await AgreementTemplate.findById(ag.templateId).select('language').lean())?.language : null) || 'sw';
+    const now = new Date();
+    const pdf = await schedulePdf({
+      language,
+      staff: { name: agreementService.staffName(staff), staffNo: staff.staffNo },
+      ref: app.ref,
+      agreementNumber: ag?.number,
+      amount: app.approved?.amount,
+      interestRate: `${Number.parseFloat(((ag?.terms?.interestBps ?? 0) / 100).toFixed(2))}%`,
+      tenor: app.approved?.tenor,
+      rows: app.schedule,
+      at: now,
+    });
+    await audit.record({ req, action: 'schedule.download', description: `${app.ref}: repayment schedule downloaded (${app.schedule.length} instalments, ${language})`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { scheduleBasis: app.scheduleBasis, language } });
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', `attachment; filename="repayment-schedule-${app.ref}.pdf"`);
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.send(pdf);
   },
 };
 
