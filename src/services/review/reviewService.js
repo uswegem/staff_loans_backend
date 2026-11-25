@@ -19,7 +19,8 @@ const rules = require('../applications/rules');
 const appSvc = require('../applications/applicationService');
 const agreementService = require('../agreement/agreementService');
 const { declarationsOf, allDeclared } = require('../agreement/renderer');
-const { agreementPdf, textBlocks } = require('../agreement/pdfService');
+const { agreementPdf, textBlocks, pdfText } = require('../agreement/pdfService');
+const { translate } = require('../../i18n');
 const dataProtection = require('../consent/dataProtection');
 const fileStore = require('../files/fileStore');
 const workflow = require('../workflow/workflowService');
@@ -31,6 +32,7 @@ const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
 const { AppError, badRequest, conflict, forbidden, notFound } = require('../../utils/errors');
 const StoredFile = require('../../models/StoredFile');
+const AgreementTemplate = require('../../models/AgreementTemplate');
 
 const tzs = (n) => `TZS ${Math.round(n).toLocaleString('en-US')}`;
 const DAY = 24 * 3600 * 1000;
@@ -56,18 +58,22 @@ async function approvalsFor(app, extra, session) {
 
 /** The in-force PDF: the accepted text, the acceptance evidence and the employer's approvals. */
 async function inForcePdf(agreement, app, approvals) {
+  // D-109: in the language it was signed in (older agreements: their template's).
+  const language = agreement.language || (await AgreementTemplate.findById(agreement.templateId).select('language').lean())?.language || 'sw';
+  const L = pdfText(language);
+  const stage = (s) => (language === 'sw' ? translate(s, 'sw') : s);
   const evidence = [
-    ['Namba ya mkataba / Agreement number', agreement.number],
-    ['Maombi / Application', app.ref],
-    ['Mwajiriwa / Staff member', `${agreement.acceptance.fullName} (${agreement.acceptance.staffNo})`],
-    ['Amekubali / Accepted at', `${new Date(agreement.acceptance.at).toISOString()} (UTC), IP ${agreement.acceptance.ip}`],
-    ['Toleo la mkataba / Template version', agreement.templateVersion],
-    ['Alama ya maandishi (SHA-256) / Text fingerprint', agreement.textSha256],
-    ...approvals.map((a, i) => [`Kwa niaba ya Mwajiri ${i + 1} / For the employer`, `${a.name}, ${a.title || ''}${a.onBehalfOf ? ` (kwa niaba ya ${a.onBehalfOf})` : ''}, ${a.stage}, ${new Date(a.at).toISOString()} (UTC)`]),
-    ['Unaanza kutumika / In force from', new Date().toISOString()],
+    [L.number, agreement.number],
+    [L.application, app.ref],
+    [L.staff, `${agreement.acceptance.fullName} (${agreement.acceptance.staffNo})`],
+    [L.acceptedAt, `${new Date(agreement.acceptance.at).toISOString()} (UTC), IP ${agreement.acceptance.ip}`],
+    [L.template, agreement.templateVersion],
+    [L.fingerprint, agreement.textSha256],
+    ...approvals.map((a, i) => [`${L.employer} ${i + 1}`, `${a.name}, ${a.title || ''}${a.onBehalfOf ? ` (${L.onBehalf} ${a.onBehalfOf})` : ''}, ${stage(a.stage)}, ${new Date(a.at).toISOString()} (UTC)`]),
+    [L.inForce, new Date().toISOString()],
   ];
   // Agreements signed since the blocks were kept print as rendered (with bold); earlier ones from their text.
-  return agreementPdf({ blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text), title: `Mkataba ${agreement.number} (${app.ref}) - unatumika`, evidence, dataProtection: dataProtection.pdfSection(agreement.dataProtection) });
+  return agreementPdf({ blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text), title: `${L.agreement} ${agreement.number} (${app.ref}) - ${L.inForceTitle}`, evidence, dataProtection: dataProtection.pdfSection(agreement.dataProtection), language });
 }
 
 /** Repayment schedule from today on the approved terms (FR-24). */
@@ -398,7 +404,7 @@ async function acceptRevised(req, app, body) {
   const approvals = await approvalsFor(app);
   // D-108: the data protection notice accepted at signing stays with the loan.
   const dp = (await Agreement.findById(app.currentAgreementId).select('dataProtection').lean())?.dataProtection;
-  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip }, dataProtection: dp };
+  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, language: doc.template.language, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip }, dataProtection: dp };
   const pdf = await inForcePdf(draft, app, approvals);
 
   await withTransaction(async (session) => {
@@ -413,6 +419,7 @@ async function acceptRevised(req, app, body) {
           kind: 'revised',
           templateId: doc.template.id,
           templateVersion: doc.template.version,
+          language: doc.template.language,
           terms: { amount: app.approved.amount, tenor: app.approved.tenor, instalment: quote.instalment, interestBps: quote.rates.interestBps, processingFee: quote.processingFee, insuranceFee: quote.insuranceFee, totalInterest: quote.totalInterest, totalRepayable: quote.totalRepayable, firstDueDate: quote.firstDueDate, repaymentMethod: app.repayment.method },
           schedule: quote.schedule,
           text: doc.text,

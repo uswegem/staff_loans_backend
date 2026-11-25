@@ -45,7 +45,7 @@ function meta(v, names) {
   };
 }
 
-const values = (fields, v) => Object.fromEntries(fields.map(([f]) => [f, f === 'agreementTemplateId' ? (v[f] ? String(v[f]) : null) : v[f]]));
+const values = (fields, v) => Object.fromEntries(fields.map(([f]) => [f, ['agreementTemplateId', 'agreementTemplateSwId'].includes(f) ? (v[f] ? String(v[f]) : null) : v[f]]));
 const peopleIn = (versions) => versions.flatMap((v) => [v.makerId, v.checkerId, ...v.editors]);
 
 async function loadProduct(id) {

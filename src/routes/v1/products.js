@@ -55,6 +55,7 @@ const productValues = {
   })),
   reapplyCoolingMonths: whole.min(0).max(60),
   agreementTemplateId: objectId.allow(null),
+  agreementTemplateSwId: objectId.allow(null),
 };
 const REQUIRED_ON_CREATE = ['name', 'minAmount', 'maxAmount', 'minTenor', 'maxTenor', 'minServiceMonths', 'maxConcurrent', 'eligibleCategories'];
 const createValues = Joi.object(productValues).fork(REQUIRED_ON_CREATE, (s) => s.required());

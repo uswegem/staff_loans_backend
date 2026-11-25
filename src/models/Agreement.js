@@ -48,6 +48,7 @@ const agreementSchema = new Schema(
       userAgent: String,
     },
     // D-108: the data protection notice accepted with it, printed after the agreement.
+    language: { type: String, enum: ['en', 'sw'] }, // D-109: the language signed in (older ones: the template's)
     dataProtection: { accepted: Boolean, version: String, language: String, title: String, body: String, checkbox: String, at: Date },
     status: { type: String, enum: ['signed', 'in_force', 'void'], default: 'signed' },
     effectiveAt: Date,

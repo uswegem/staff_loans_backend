@@ -52,6 +52,7 @@ const PRODUCT_DEFAULTS = {
   requiredDocuments: [],
   reapplyCoolingMonths: 6,
   agreementTemplateId: null,
+  agreementTemplateSwId: null,
 };
 
 const productChain = (product) => ({

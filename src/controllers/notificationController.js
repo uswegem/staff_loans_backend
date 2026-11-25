@@ -4,10 +4,12 @@
 
 const Notification = require('../models/Notification');
 const { notFound } = require('../utils/errors');
-const { translate } = require('../i18n');
+const { translate, render } = require('../i18n');
 
-// The text is stored in English and shown in the reader's language (D-94).
-const view = (n, lang) => ({ id: String(n._id), type: n.type, text: translate(n.text, lang), href: n.href, read: !!n.readAt, createdAt: n.createdAt });
+// Stored as code and params, rendered in the reader's language when read (D-94, D-109).
+// Notifications kept before codes were stored are matched from their English text.
+const textOf = (n, lang) => (n.code && render(n.code, n.params, lang)) || translate(n.text, lang);
+const view = (n, lang) => ({ id: String(n._id), type: n.type, code: n.code || null, params: n.params || {}, text: textOf(n, lang), href: n.href, read: !!n.readAt, createdAt: n.createdAt });
 
 const NotificationController = {
   async list(req, res) {

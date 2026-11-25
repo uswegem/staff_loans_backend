@@ -26,7 +26,7 @@ function files(dir) {
 
 describe('no internal codes in user-facing text', () => {
   it('Swahili and English message pairs', () => {
-    SW.forEach(([en, sw]) => {
+    SW.forEach(([, en, sw]) => {
       expect([en, CODE.test(en)]).toEqual([en, false]);
       expect([sw, CODE.test(sw)]).toEqual([sw, false]);
     });

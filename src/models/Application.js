@@ -114,6 +114,7 @@ const applicationSchema = new Schema(
     calcSnapshot: Schema.Types.Mixed, // the full quote at submission (BRD 10)
     ruleFlags: { type: [String], default: [] }, // soft rules for reviewers
     currentAgreementId: { type: Schema.Types.ObjectId, ref: 'Agreement', default: null },
+    agreementLanguage: { type: String, enum: ['en', 'sw'] }, // D-109: the language the applicant signed in
     closedAtStage: String,
     closedReason: String,
     closedAt: Date,

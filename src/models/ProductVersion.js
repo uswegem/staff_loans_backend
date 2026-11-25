@@ -60,7 +60,9 @@ const versionSchema = new Schema(
     requiredDocuments: { type: [documentRequirementSchema], default: undefined },
     // Minimum number of months before applying for a top-up of this product (NS-02, D-84).
     reapplyCoolingMonths: { type: Number, default: 6 },
-    agreementTemplateId: { type: Schema.Types.ObjectId, ref: 'AgreementTemplate', default: null }, // null allowed only before product configuration enforcement is activated
+    agreementTemplateId: { type: Schema.Types.ObjectId, ref: 'AgreementTemplate', default: null },
+    // D-109: the same agreement in the other language (normally Swahili); each applicant signs in theirs.
+    agreementTemplateSwId: { type: Schema.Types.ObjectId, ref: 'AgreementTemplate', default: null }, // null allowed only before product configuration enforcement is activated
   },
   { timestamps: true }
 );

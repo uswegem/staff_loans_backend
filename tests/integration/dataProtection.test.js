@@ -14,16 +14,28 @@ const LegalNotice = require('../../src/models/LegalNotice');
 const StoredFile = require('../../src/models/StoredFile');
 const fileStore = require('../../src/services/files/fileStore');
 const { DATA_PROTECTION } = require('../../seed/legalNotices');
+const fs = require('fs');
+const path = require('path');
+const AgreementTemplate = require('../../src/models/AgreementTemplate');
+const ProductVersion = require('../../src/models/ProductVersion');
+const { VERSION: SW_VERSION } = require('../../seed/agreementTemplate');
+
+const PERSONAL = fs.readFileSync(path.join(__dirname, '..', '..', 'seed', 'data', 'agreements', 'staff-personal-loan.en.md'), 'utf8');
 
 jest.setTimeout(180000);
 
 let products;
 beforeEach(async () => {
   ({ products } = await seedAll());
+  // The product's agreement in English, and the seeded Swahili one (D-109).
+  const en = await AgreementTemplate.create({ version: '2026.12c', language: 'en', body: PERSONAL, status: 'approved', sample: false, effectiveFrom: new Date('2026-10-01T00:00:00+03:00'), approvedAt: new Date() });
+  const sw = await AgreementTemplate.findOne({ version: SW_VERSION });
+  await ProductVersion.updateMany({ productId: products.PL._id }, { $set: { agreementTemplateId: en._id, agreementTemplateSwId: sw._id } });
 });
 
 const TERMS = { amount: 3000000, tenor: 24, purpose: 'Home repairs' };
 const CONSENTS = { truth: true, deduct: true, crb: true, sms: true };
+const ticks = (preview) => preview.blocks.filter((b) => b.type === 'declaration').map(() => true);
 
 async function draft(lang = 'en') {
   const neema = await signIn('LFB0412');
@@ -61,7 +73,7 @@ describe('data protection notice before signing (D-108)', () => {
   it('signing is refused until the notice is ticked', async () => {
     const { id, get, post } = await draft();
     const preview = (await get(`/applications/${id}/agreement/preview`)).body.data;
-    const base = { consents: CONSENTS, accepted: true, scrolledToEnd: true, textSha256: preview.textSha256 };
+    const base = { consents: CONSENTS, declarations: ticks(preview), accepted: true, scrolledToEnd: true, textSha256: preview.textSha256 };
     for (const dp of [undefined, false]) {
       // eslint-disable-next-line no-await-in-loop
       const res = await post(`/applications/${id}/sign-and-submit`, { ...base, dataProtection: dp });
@@ -75,7 +87,7 @@ describe('data protection notice before signing (D-108)', () => {
   it('acceptance is stored on the application, shown, audited and printed after the agreement', async () => {
     const { id, get, post, a } = await draft();
     const preview = (await get(`/applications/${id}/agreement/preview`)).body.data;
-    const res = await post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, textSha256: preview.textSha256, dataProtection: true, dataProtectionVersion: 'DP-2026-1' });
+    const res = await post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, declarations: ticks(preview), accepted: true, scrolledToEnd: true, textSha256: preview.textSha256, dataProtection: true, dataProtectionVersion: 'DP-2026-1' });
     expect(res.status).toBe(200);
     const app = await Application.findById(id).lean();
     expect(app.consents.dataProtection).toMatchObject({ accepted: true, version: 'DP-2026-1', language: 'en' });
@@ -89,6 +101,8 @@ describe('data protection notice before signing (D-108)', () => {
 
     const ag = await Agreement.findOne({ applicationId: id }).lean();
     const signed = await pdfText(ag.pdfFileId);
+    expect(signed).toMatch(/Electronic acceptance evidence/);
+    expect(signed).not.toMatch(/Ushahidi|Mwajiriwa|ukurasa/);
     expect(signed).toMatch(/Data protection I consent to Letshego Faidika Bank collecting/);
     expect(signed).toMatch(/Accepted: I have read and accept the data protection notice\. Version DP-2026-1, \d{4}-\d{2}-\d{2}T/);
     // The agreement text and its fingerprint are not changed by the notice.
@@ -107,11 +121,30 @@ describe('data protection notice before signing (D-108)', () => {
     expect((await Application.findById(id).lean()).consents.dataProtection).toMatchObject({ language: 'sw', version: 'DP-2026-1' });
     const ag = await Agreement.findOne({ applicationId: id }).lean();
     const text = await pdfText(ag.pdfFileId);
+    // D-109: the Swahili agreement, signed in Swahili; nothing in English around it.
+    expect(preview).toMatchObject({ language: 'sw', languageNotice: null });
+    expect(await Application.findById(id).lean()).toMatchObject({ agreementLanguage: 'sw' });
+    expect(ag.language).toBe('sw');
+    expect(text).toMatch(/Ushahidi wa kukubali kwa njia ya kielektroniki/);
+    expect(text).not.toMatch(/Electronic acceptance|Agreement number|Staff member| page \d/);
     expect(text).toMatch(/Ulinzi wa taarifa binafsi Ninaridhia Letshego Faidika Bank/);
     expect(text).toMatch(/Imekubaliwa: Nimesoma na ninakubali tamko la ulinzi wa taarifa binafsi\. Toleo DP-2026-1/);
   });
 
-  it('until a Swahili version is approved, the English notice is shown with a one-line Swahili note', async () => {
+  it('until the Swahili agreement is approved, a Swahili applicant gets the English agreement with a one-line Swahili note', async () => {
+    await AgreementTemplate.updateOne({ version: SW_VERSION }, { $set: { status: 'pending_legal_approval' } });
+    const { id, get, post } = await draft('sw');
+    const preview = (await get(`/applications/${id}/agreement/preview`)).body.data;
+    expect(preview.language).toBe('en');
+    expect(preview.languageNotice).toBe('Mkataba huu bado haujaidhinishwa kwa Kiswahili; unaonyeshwa kwa Kiingereza.');
+    // The whole agreement and its notice are English: never mixed.
+    expect(preview.dataProtection).toMatchObject({ language: 'en' });
+    const signBody = { accepted: true, dataProtection: true, scrolledToEnd: true, textSha256: preview.textSha256, declarations: preview.blocks.filter((b) => b.type === 'declaration').map(() => true) };
+    expect((await post(`/applications/${id}/sign-and-submit`, signBody)).status).toBe(200);
+    expect(await Application.findById(id).lean()).toMatchObject({ agreementLanguage: 'en', consents: { dataProtection: { language: 'en' } } });
+  });
+
+  it('until a Swahili notice is approved, the English notice is shown with a one-line Swahili note', async () => {
     await LegalNotice.updateMany({ language: 'sw' }, { $set: { status: 'pending_legal_approval' } });
     const { id, get } = await draft('sw');
     const dp = (await get(`/applications/${id}/agreement/preview`)).body.data.dataProtection;

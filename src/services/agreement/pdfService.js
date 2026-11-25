@@ -138,10 +138,33 @@ class Writer {
 const plain = (parts) => parts.map((p) => p.text).join('');
 
 /**
- * blocks: rendered agreement blocks; evidence: [[label, value]].
+ * D-109: everything the PDF adds around the agreement is in the agreement's language,
+ * so one PDF never mixes English and Swahili.
+ */
+const PDF_TEXT = {
+  sw: {
+    number: 'Namba ya mkataba', application: 'Maombi', staff: 'Mwajiriwa', acceptedAt: 'Tarehe na saa ya kukubali', ip: 'Anwani ya IP',
+    template: 'Toleo la mkataba', fingerprint: 'Alama ya maandishi (SHA-256)', declarations: 'Kauli zilizowekwa alama', consents: 'Idhini',
+    consentsValue: 'Taarifa ni sahihi; makato; ofisi za kumbukumbu za mikopo; SMS', employer: 'Kwa niaba ya Mwajiri', onBehalf: 'kwa niaba ya',
+    inForce: 'Unaanza kutumika', evidenceTitle: 'Ushahidi wa kukubali kwa njia ya kielektroniki', agreement: 'Mkataba', inForceTitle: 'unatumika',
+    of: (a, b) => `${a} kati ya ${b}`, page: (i, n) => `ukurasa ${i} wa ${n}`,
+  },
+  en: {
+    number: 'Agreement number', application: 'Application', staff: 'Staff member', acceptedAt: 'Accepted at', ip: 'IP address',
+    template: 'Template version', fingerprint: 'Text fingerprint (SHA-256)', declarations: 'Declarations ticked', consents: 'Consents',
+    consentsValue: 'Information is correct; deductions; credit reference bureaus; SMS', employer: 'For the employer', onBehalf: 'on behalf of',
+    inForce: 'In force from', evidenceTitle: 'Electronic acceptance evidence', agreement: 'Agreement', inForceTitle: 'in force',
+    of: (a, b) => `${a} of ${b}`, page: (i, n) => `page ${i} of ${n}`,
+  },
+};
+const pdfText = (language) => PDF_TEXT[language === 'en' ? 'en' : 'sw'];
+
+/**
+ * blocks: rendered agreement blocks; evidence: [[label, value]]; language: 'en' or 'sw'.
  * Returns a Buffer.
  */
-async function agreementPdf({ blocks, title, evidence, dataProtection }) {
+async function agreementPdf({ blocks, title, evidence, dataProtection, language = 'sw' }) {
+  const L = pdfText(language);
   const doc = await PDFDocument.create();
   doc.setTitle(title);
   doc.setProducer('LFB Staff Loans');
@@ -175,12 +198,12 @@ async function agreementPdf({ blocks, title, evidence, dataProtection }) {
   }
 
   w.newPage();
-  w.text('Ushahidi wa kukubali kwa njia ya kielektroniki / Electronic acceptance evidence', { size: 12, bold: true, gap: 10 });
+  w.text(L.evidenceTitle, { size: 12, bold: true, gap: 10 });
   evidence.forEach(([k, v]) => w.text(`${k}: ${v}`, { size: 10, gap: 4 }));
 
   const pages = doc.getPages();
   pages.forEach((p, i) => {
-    p.drawText(safe(`${title} - ukurasa ${i + 1} wa ${pages.length}`), { x: MARGIN, y: 25, size: 8, font: fonts.regular, color: rgb(0.42, 0.42, 0.4) });
+    p.drawText(safe(`${title} - ${L.page(i + 1, pages.length)}`), { x: MARGIN, y: 25, size: 8, font: fonts.regular, color: rgb(0.42, 0.42, 0.4) });
   });
   return Buffer.from(await doc.save({ useObjectStreams: false }));
 }
@@ -209,4 +232,4 @@ function textBlocks(text) {
   return blocks;
 }
 
-module.exports = { agreementPdf, textBlocks };
+module.exports = { agreementPdf, textBlocks, pdfText };

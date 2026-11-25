@@ -1,21 +1,29 @@
 'use strict';
 
-// Messages the API shows people, in English or Swahili (D-94). The web app sends
-// Accept-Language: sw when the person has chosen Swahili; English is the default and
-// the fallback for anything not yet translated. Only message fields are translated
-// (never names, staff numbers, figures the person entered or agreement text).
+// Messages the API shows people, in English or Swahili, one language at a time (D-94,
+// D-109). The web app sends Accept-Language: sw when the person has chosen Swahili.
+// Only message fields are translated (never names, staff numbers, figures the person
+// entered, free text as typed, or agreement text).
 //
-// src/i18n/sw.js lists [English, Swahili] pairs. {name} in an entry stands for any
-// text; the matching part is carried into the Swahili, translated itself when it is a
-// known phrase or a comma-separated list of them.
+// src/i18n/sw.js lists [code, English, Swahili]. The code is stable: responses carry it
+// with the params, and notifications are stored as code and params and rendered in the
+// reader's language when read. {name} in an entry stands for any text; the matching part
+// is carried into the Swahili, translated itself when it is a known phrase or message.
+//
+// Every message has a Swahili entry: a CI check (tests/unit/i18nCoverage.test.js) fails
+// when one is missing. If one is missing anyway, the English is shown and the miss is
+// logged as i18n.missing, so it is never silent.
 
-const SW = require('./sw');
+const CATALOGUE = require('./sw');
 
-const exact = new Map();
+const byCode = new Map();
+const exact = new Map(); // English -> entry
 const patterns = [];
-for (const [en, sw] of SW) {
+for (const [code, en, sw] of CATALOGUE) {
+  const entry = { code, en, sw };
+  byCode.set(code, entry);
   if (!/\{\w+\}/.test(en)) {
-    exact.set(en, sw);
+    exact.set(en, entry);
     continue;
   }
   const names = [];
@@ -30,42 +38,93 @@ for (const [en, sw] of SW) {
       return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     })
     .join('');
-  patterns.push({ re: new RegExp(`^${source}$`, 's'), names, sw });
+  patterns.push({ re: new RegExp(`^${source}$`, 's'), names, entry });
 }
+
+const fill = (template, params, lang) =>
+  Object.entries(params || {}).reduce((out, [name, value]) => out.split(`{${name}}`).join(lang === 'sw' ? inner(String(value)) : String(value)), template);
 
 /** A carried-over value: a known phrase or message, or a list of phrases, in Swahili; otherwise as it is. */
 function inner(value) {
-  if (exact.has(value)) return exact.get(value);
+  if (exact.has(value)) return exact.get(value).sw;
   // eslint-disable-next-line no-use-before-define
-  if (/[.!?]$/.test(value) && value.includes(' ')) return translate(value, 'sw');
+  if (/[.!?]$/.test(value) && value.includes(' ')) return translate(value, 'sw', { log: false });
   if (value.includes(', ')) {
     const parts = value.split(', ');
-    if (parts.some((p) => exact.has(p))) return parts.map((p) => exact.get(p) ?? p).join(', ');
+    if (parts.some((p) => exact.has(p))) return parts.map((p) => (exact.has(p) ? exact.get(p).sw : p)).join(', ');
   }
   return value;
 }
 
+/** { code, params } for one whole message, or null. */
 function one(text) {
-  if (exact.has(text)) return exact.get(text);
+  if (exact.has(text)) return { code: exact.get(text).code, params: {} };
   for (const p of patterns) {
     const m = text.match(p.re);
-    if (m) return p.names.reduce((out, name, i) => out.split(`{${name}}`).join(inner(m[i + 1])), p.sw);
+    if (m) return { code: p.entry.code, params: Object.fromEntries(p.names.map((name, i) => [name, m[i + 1]])) };
   }
   return null;
 }
 
-/** text in the language; untranslated text stays in English. Sentences are tried one by one. */
-function translate(text, lang) {
-  if (lang !== 'sw' || typeof text !== 'string' || !text) return text;
+const sentencesOf = (text) => text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [text];
+
+/**
+ * The code and params of an English message: { code, params }, or for a message made of
+ * several catalogue sentences { code: 'COMPOSITE', params: { parts: [{ code, params }] } }.
+ * null when part of it has no entry.
+ */
+function identify(text) {
+  if (typeof text !== 'string' || !text) return null;
   const whole = one(text);
-  if (whole != null) return whole;
-  const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g);
-  if (!sentences || sentences.length < 2) return text;
-  return sentences.map((s) => {
-    const t = s.trim();
-    const done = one(t);
-    return `${done ?? t}${/\s$/.test(s) ? ' ' : ''}`;
-  }).join('').trim();
+  if (whole) return whole;
+  const sentences = sentencesOf(text).map((s) => s.trim()).filter(Boolean);
+  if (sentences.length < 2) return null;
+  const parts = sentences.map(one);
+  return parts.every(Boolean) ? { code: 'COMPOSITE', params: { parts } } : null;
+}
+
+/** A coded message in the language. */
+function render(code, params = {}, lang = 'en') {
+  if (code === 'COMPOSITE') return (params.parts || []).map((p) => render(p.code, p.params, lang)).join(' ');
+  const entry = byCode.get(code);
+  if (!entry) return null;
+  return fill(lang === 'sw' ? entry.sw : entry.en, params, lang);
+}
+
+const logged = new Set();
+const missing = [];
+function reportMissing(text) {
+  missing.push(text);
+  if (logged.has(text)) return;
+  logged.add(text);
+  if (logged.size > 2000) logged.clear();
+  // eslint-disable-next-line global-require
+  require('../utils/logger').warn('i18n.missing', { text: text.slice(0, 300) });
+}
+
+/**
+ * text in the language. A Swahili request for a message with no entry gets the English,
+ * and the miss is logged (never silent).
+ */
+function translate(text, lang, { log = true } = {}) {
+  if (lang !== 'sw' || typeof text !== 'string' || !text) return text;
+  const found = identify(text);
+  if (found) return render(found.code, found.params, 'sw');
+  // Part of a longer message may still be known: translate what is, report the rest.
+  const sentences = sentencesOf(text);
+  let unknown = false;
+  const out = sentences
+    .map((s) => {
+      const t = s.trim();
+      const done = one(t);
+      // Prose only: identifiers, codes and fingerprints in detail fields are data, not messages.
+      if (!done && /[A-Za-z]{2,} [A-Za-z]{2,}/.test(t)) unknown = true;
+      return `${done ? render(done.code, done.params, 'sw') : t}${/\s$/.test(s) ? ' ' : ''}`;
+    })
+    .join('')
+    .trim();
+  if (unknown && log) reportMissing(text);
+  return out;
 }
 
 /** 'sw' when the request asks for Swahili, otherwise 'en'. */
@@ -89,16 +148,26 @@ function translateBody(body, lang, depth = 0) {
   return body;
 }
 
-/** Express middleware: res.json translates message fields for Swahili requests. */
+/**
+ * Express middleware. Every response with a top-level message also carries its stable
+ * messageCode and messageParams (D-109); for Swahili requests the message fields are
+ * translated.
+ */
 function i18nResponses(req, res, next) {
   const lang = langOf(req);
   req.lang = lang;
-  if (lang === 'sw') {
-    const json = res.json.bind(res);
-    // A JSON copy is translated, never the original: bodies may hold shared constants.
-    res.json = (body) => json(body && typeof body === 'object' ? translateBody(JSON.parse(JSON.stringify(body)), lang) : body);
-  }
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json(body);
+    // A JSON copy is changed, never the original: bodies may hold shared constants.
+    const copy = JSON.parse(JSON.stringify(body));
+    if (typeof copy.message === 'string') {
+      const id = identify(copy.message);
+      if (id) Object.assign(copy, { messageCode: id.code, messageParams: id.params });
+    }
+    return json(translateBody(copy, lang));
+  };
   next();
 }
 
-module.exports = { translate, translateBody, langOf, i18nResponses };
+module.exports = { translate, translateBody, langOf, i18nResponses, identify, render, CATALOGUE, missing };

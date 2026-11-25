@@ -23,6 +23,7 @@ const PRODUCT_FIELDS = [
   ['requiredDocuments', 'Required documents'],
   ['reapplyCoolingMonths', 'Minimum number of Months Before Applying for Topup'],
   ['agreementTemplateId', 'Agreement template'],
+  ['agreementTemplateSwId', 'Swahili agreement template'],
 ];
 
 const add = (errors, field, msg) => {

@@ -22,7 +22,7 @@ const rules = require('./rules');
 const { productLabels } = require('../payslip/deductionLines');
 const agreementService = require('../agreement/agreementService');
 const { declarationsOf, allDeclared } = require('../agreement/renderer');
-const { agreementPdf } = require('../agreement/pdfService');
+const { agreementPdf, pdfText } = require('../agreement/pdfService');
 const dataProtection = require('../consent/dataProtection');
 const fileStore = require('../files/fileStore');
 const { completeness } = require('../staff/profileService');
@@ -267,7 +267,7 @@ async function agreementFor(req, app, { session } = {}) {
   }
   const doc = await agreementService.build(
     { ref: app.ref, kind: 'original', staff: ctx.staff, product: ctx.version, fields: app.productFields, quote: result.quote, amount: app.amount, tenor: app.tenor, repayment: app.repayment, topUp: app.topUp },
-    { session, template: await require('../agreement/productTemplate').resolve(ctx.version, { session, enforce: !!ctx.settings.productConfigEnforcementEnabled }) }
+    { session, template: await require('../agreement/productTemplate').resolve(ctx.version, { session, enforce: !!ctx.settings.productConfigEnforcementEnabled, language: req.lang }) }
   );
   return { ctx, result, doc };
 }
@@ -282,8 +282,12 @@ async function preview(req, app) {
     template: doc.template,
     terms: { amount: app.amount, tenor: app.tenor, instalment: q.instalment, fees: q.fees, processingFee: q.processingFee, insuranceFee: q.insuranceFee, totalInterest: q.totalInterest, totalRepayable: q.totalRepayable, firstDueDate: q.firstDueDate },
     replaces: app.currentAgreementId ? String(app.currentAgreementId) : null,
-    // D-108: shown with its own unticked box; signing needs it ticked.
-    dataProtection: await dataProtection.current(req.lang),
+    // D-109: the agreement is in the applicant's language, or in English (with a one-line
+    // note in their language) until Legal approves it in theirs. Never mixed.
+    language: doc.template.language,
+    languageNotice: require('../agreement/productTemplate').languageNotice(doc.template, req.lang),
+    // D-108: shown with its own unticked box, in the agreement's language; signing needs it ticked.
+    dataProtection: await dataProtection.current(doc.template.language),
   };
 }
 
@@ -306,7 +310,7 @@ async function signAndSubmit(req, app, body) {
     : ['truth', 'deduct', 'crb', 'sms'].every((k) => body.consents?.[k] === true);
   if (!consentsGiven) throw badRequest('Tick every statement and the agreement to sign.', undefined, 'CONSENTS_REQUIRED');
   // D-108: the data protection notice, ticked on its own, in the version shown.
-  const notice = await dataProtection.current(req.lang);
+  const notice = await dataProtection.current(doc.template.language);
   if (body.dataProtection !== true) throw badRequest('Tick the data protection notice to sign.', { dataProtection: ['Tick the data protection notice to sign.'] }, 'DATA_PROTECTION_REQUIRED');
   if (body.dataProtectionVersion && body.dataProtectionVersion !== notice.version) {
     throw conflict('The data protection notice changed since you opened it. Read it again before you sign.', 'DATA_PROTECTION_CHANGED', { version: notice.version });
@@ -322,19 +326,19 @@ async function signAndSubmit(req, app, body) {
   const staffName = agreementService.staffName(ctx.staff); // the name the agreement shows
 
   const number = await nextRef('MKT');
+  const language = doc.template.language;
+  const L = pdfText(language);
   const evidence = [
-    ['Namba ya mkataba / Agreement number', number],
-    ['Maombi / Application', app.ref],
-    ['Mwajiriwa / Staff member', `${staffName} (${ctx.staff.staffNo})`],
-    ['Tarehe na saa / Accepted at', `${now.toISOString()} (UTC)`],
-    ['Anwani ya IP / IP address', req.ip],
-    ['Toleo la mkataba / Template version', doc.template.version],
-    ['Alama ya maandishi (SHA-256) / Text fingerprint', doc.textSha256],
-    declarations.length
-      ? ['Idhini / Declarations ticked', `${declarations.length} of ${declarations.length}`]
-      : ['Idhini / Consents', 'Taarifa ni sahihi; makato; ofisi za kumbukumbu za mikopo; SMS'],
+    [L.number, number],
+    [L.application, app.ref],
+    [L.staff, `${staffName} (${ctx.staff.staffNo})`],
+    [L.acceptedAt, `${now.toISOString()} (UTC)`],
+    [L.ip, req.ip],
+    [L.template, doc.template.version],
+    [L.fingerprint, doc.textSha256],
+    declarations.length ? [L.declarations, L.of(declarations.length, declarations.length)] : [L.consents, L.consentsValue],
   ];
-  const pdf = await agreementPdf({ blocks: doc.blocks, title: `Mkataba ${number} (${app.ref})`, evidence, dataProtection: dataProtection.pdfSection(dp) });
+  const pdf = await agreementPdf({ blocks: doc.blocks, title: `${L.agreement} ${number} (${app.ref})`, evidence, dataProtection: dataProtection.pdfSection(dp), language });
 
   await withTransaction(async (session) => {
     const fresh = await Application.findOne({ _id: app._id, status: { $in: EDITABLE } }).session(session);
@@ -362,6 +366,7 @@ async function signAndSubmit(req, app, body) {
           pdfSha256: pdfFile.sha256,
           acceptance: { userId: req.auth.user._id, staffNo: ctx.staff.staffNo, fullName: staffName, at: now, ip: req.ip, userAgent: req.get('User-Agent') },
           dataProtection: dp,
+          language: doc.template.language, // D-109: the language signed in
           status: 'signed',
         },
       ],
@@ -386,6 +391,7 @@ async function signAndSubmit(req, app, body) {
         dataProtection: { accepted: true, version: dp.version, language: dp.language, at: now },
       },
       currentAgreementId: agreement._id,
+      agreementLanguage: doc.template.language, // D-109
       calcSnapshot: q,
       applicantSnapshot: {
         staffNo: ctx.staff.staffNo,
