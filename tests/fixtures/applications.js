@@ -18,7 +18,7 @@ const products = require('../../src/services/products/productService');
 const calc = require('../../src/services/calc/loanCalculator');
 const rules = require('../../src/services/applications/rules');
 const agreementService = require('../../src/services/agreement/agreementService');
-const { agreementPdf, textBlocks } = require('../../src/services/agreement/pdfService');
+const { agreementPdf } = require('../../src/services/agreement/pdfService');
 const fileStore = require('../../src/services/files/fileStore');
 const calendar = require('../../src/services/calendar/calendarService');
 const wt = require('../../src/services/calendar/workingTime');
@@ -155,8 +155,9 @@ async function seedSampleApplications({ users, products: byCode }) {
 
     const doc = await agreementService.build({ ref: s.ref, kind: 'original', staff, product: version, quote: q, amount: s.amount, tenor: s.tenor, repayment, topUp: { on: false } });
     const number = `MKT-${year}-${String(await Counter.next(`MKT-${year}`)).padStart(5, '0')}`;
-    const evidence = [['Namba ya mkataba / Agreement number', number], ['Maombi / Application', s.ref], ['Mwajiriwa / Staff member', `${fullName(staff)} (${staff.staffNo})`], ['Tarehe na saa / Accepted at', submittedAt.toISOString()], ['Alama ya maandishi (SHA-256) / Text fingerprint', doc.textSha256]];
-    const pdf = await fileStore.store(await agreementPdf({ blocks: doc.blocks, title: `Mkataba ${number} (${s.ref})`, evidence }), { kind: 'agreement_pdf', originalName: `${number}.pdf`, applicationId: app._id, ownerUserId: id(s.a), uploadedBy: id(s.a) });
+    const acceptance = { fullName: fullName(staff), staffNo: staff.staffNo, at: submittedAt, ip: ip(s.a) };
+    const pdfInput = { blocks: doc.blocks, language: doc.template.language, agreementNumber: number, ref: s.ref, templateVersion: doc.template.version, textSha256: doc.textSha256, acceptance };
+    const pdf = await fileStore.store(await agreementPdf(pdfInput), { kind: 'agreement_pdf', originalName: `${number}.pdf`, applicationId: app._id, ownerUserId: id(s.a), uploadedBy: id(s.a) });
     const agreement = await Agreement.create({
       number,
       applicationId: app._id,
@@ -166,6 +167,9 @@ async function seedSampleApplications({ users, products: byCode }) {
       terms: { amount: s.amount, tenor: s.tenor, instalment: q.instalment, interestBps: q.rates.interestBps, processingFee: q.processingFee, insuranceFee: q.insuranceFee, totalInterest: q.totalInterest, totalRepayable: q.totalRepayable, firstDueDate: q.firstDueDate, repaymentMethod: repayment.method },
       schedule: q.schedule,
       text: doc.text,
+      blocks: doc.blocks,
+      format: doc.format,
+      language: doc.template.language,
       textSha256: doc.textSha256,
       pdfFileId: pdf._id,
       pdfSha256: pdf.sha256,
@@ -206,7 +210,7 @@ async function seedSampleApplications({ users, products: byCode }) {
     if (['pending_disbursement', 'disbursed'].includes(s.status)) {
       const rows = calc.schedule(s.amount, s.tenor, pricing.interestBps, pricing.instalmentRounding, calc.firstDueDate(localDay(enteredAt), settings.firstDueDay));
       Object.assign(app, { approved: { amount: s.amount, tenor: s.tenor, instalment: q.instalment }, finalApprovedAt: enteredAt, schedule: rows, scheduleBasis: 'final_approval' });
-      const inForce = await fileStore.store(await agreementPdf({ blocks: textBlocks(doc.text), title: `Mkataba ${number} (${s.ref}) - unatumika`, evidence: [...evidence, ...approvals.map((x, i) => [`Kwa niaba ya Mwajiri ${i + 1}`, `${x.name}, ${x.title}, ${x.stage}, ${x.at.toISOString()}`])] }), { kind: 'agreement_pdf', originalName: `${number}-in-force.pdf`, applicationId: app._id, ownerUserId: id(s.a), uploadedBy: id('LFB0002') });
+      const inForce = await fileStore.store(await agreementPdf({ ...pdfInput, approvals, inForceAt: enteredAt }), { kind: 'agreement_pdf', originalName: `${number}-in-force.pdf`, applicationId: app._id, ownerUserId: id(s.a), uploadedBy: id('LFB0002') });
       Object.assign(agreement, { status: 'in_force', effectiveAt: enteredAt, inForcePdfFileId: inForce._id, approvals });
       await Staff.updateOne({ _id: staff._id }, { $push: { loanHistory: { productId: product._id, applicationId: app._id, ref: s.ref, appliedAt: submittedAt, approvedAt: enteredAt } } });
     }

@@ -6,6 +6,8 @@ const SettingsController = require('../../controllers/settingsController');
 const AuditController = require('../../controllers/auditController');
 const { requireAll } = require('../../middleware/permission');
 const { validate } = require('../../middleware/validate');
+const multer = require('multer');
+const brand = require('../../services/agreement/brandAssets');
 const { asyncHandler } = require('../../utils/errors');
 
 const router = express.Router();
@@ -17,6 +19,12 @@ const objectId = Joi.string().hex().length(24);
  * /admin/settings:
  *   get: { tags: [Admin], summary: "Workflow targets, working calendar, holidays", security: [{ bearer: [] }], responses: { 200: { description: Settings } } }
  *   put: { tags: [Admin], summary: Change workflow settings (audited), security: [{ bearer: [] }], responses: { 200: { description: Saved } } }
+ * /admin/settings/agreement-logo:
+ *   get: { tags: [Admin], summary: "The logo printed on agreements and repayment schedules: default or replaced (D-110)", security: [{ bearer: [] }], responses: { 200: { description: Logo information } } }
+ *   put: { tags: [Admin], summary: "Replace the agreement logo: PNG or JPG, up to 1 MB, multipart field 'file' (audited, D-110)", security: [{ bearer: [] }], responses: { 200: { description: Replaced } } }
+ *   delete: { tags: [Admin], summary: "Go back to the default LFB logo (audited, D-110)", security: [{ bearer: [] }], responses: { 200: { description: Default restored } } }
+ * /admin/settings/agreement-logo/image:
+ *   get: { tags: [Admin], summary: "The logo image in use", security: [{ bearer: [] }], responses: { 200: { description: PNG or JPG } } }
  * /admin/holidays:
  *   post: { tags: [Admin], summary: Add a public holiday, security: [{ bearer: [] }], responses: { 201: { description: Added } } }
  * /admin/holidays/{id}:
@@ -27,6 +35,20 @@ const objectId = Joi.string().hex().length(24);
  *   get: { tags: [Audit], summary: Staff to filter the audit log by (name or staff number), security: [{ bearer: [] }], responses: { 200: { description: People } } }
  */
 router.get('/admin/settings', requireAll('admin.workflow'), asyncHandler(SettingsController.get));
+// D-110: the agreement logo (System Administrator).
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 + 1, files: 1 } }).single('file');
+router.get('/admin/settings/agreement-logo', requireAll('admin.workflow'), asyncHandler(async (req, res) => res.json({ success: true, data: await brand.logoInfo() })));
+router.get('/admin/settings/agreement-logo/image', requireAll('admin.workflow'), asyncHandler(async (req, res) => {
+  const bytes = await brand.logoBytes();
+  res.set('Content-Type', bytes[0] === 0x89 ? 'image/png' : 'image/jpeg');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.send(bytes);
+}));
+router.put('/admin/settings/agreement-logo', requireAll('admin.workflow'), (req, res, next) => logoUpload(req, res, (err) => {
+  if (err?.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ success: false, code: 'FILE_TOO_LARGE', message: 'The logo must be 1 MB or smaller.' });
+  return next(err);
+}), asyncHandler(async (req, res) => res.json({ success: true, message: 'Agreement logo replaced.', data: await brand.replaceLogo(req, req.file) })));
+router.delete('/admin/settings/agreement-logo', requireAll('admin.workflow'), asyncHandler(async (req, res) => res.json({ success: true, message: 'Agreement logo set back to the default.', data: await brand.resetLogo(req) })));
 router.put(
   '/admin/settings',
   requireAll('admin.workflow'),

@@ -9,6 +9,8 @@ Release the API first (with `npm run upgrade:2026-12 -- --dry-run`, then `npm ru
 - Booking: after final approval People and Culture (`loan.book`) record the core banking loan account and booking date, then OPS disburse; booker and disburser are different people (D-107).
 - Data protection notice DP-2026-1 with its own box before signing; acceptance stored, audited and printed in the agreement PDFs (D-108).
 - One language at a time: message codes and params, coded notifications, Swahili coverage check in CI, agreements per language with the signed language saved (D-109).
+- The agreement as a numbered contract on the LFB letterhead: automatic section and clause numbers, cross-references by label, Loan Details table, Source Sans 3, signature and acceptance page, footer in one language; the logo can be replaced under Settings (D-110).
+- The repayment schedule is no longer part of the agreement; Operations and Credit download it on request (`GET /applications/:id/repayment-schedule.pdf`, audited). New templates 2026.12e (personal) and 2026.12f (car) for Legal approval (D-110).
 
 ## Unreleased – UAT readiness (7 Nov 2026)
 

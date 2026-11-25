@@ -19,7 +19,7 @@ const rules = require('../applications/rules');
 const appSvc = require('../applications/applicationService');
 const agreementService = require('../agreement/agreementService');
 const { declarationsOf, allDeclared } = require('../agreement/renderer');
-const { agreementPdf, textBlocks, pdfText } = require('../agreement/pdfService');
+const { agreementPdf, textBlocks } = require('../agreement/pdfService');
 const { translate } = require('../../i18n');
 const dataProtection = require('../consent/dataProtection');
 const fileStore = require('../files/fileStore');
@@ -57,23 +57,23 @@ async function approvalsFor(app, extra, session) {
 }
 
 /** The in-force PDF: the accepted text, the acceptance evidence and the employer's approvals. */
-async function inForcePdf(agreement, app, approvals) {
+async function inForcePdf(agreement, app, approvals, at = new Date()) {
   // D-109: in the language it was signed in (older agreements: their template's).
   const language = agreement.language || (await AgreementTemplate.findById(agreement.templateId).select('language').lean())?.language || 'sw';
-  const L = pdfText(language);
   const stage = (s) => (language === 'sw' ? translate(s, 'sw') : s);
-  const evidence = [
-    [L.number, agreement.number],
-    [L.application, app.ref],
-    [L.staff, `${agreement.acceptance.fullName} (${agreement.acceptance.staffNo})`],
-    [L.acceptedAt, `${new Date(agreement.acceptance.at).toISOString()} (UTC), IP ${agreement.acceptance.ip}`],
-    [L.template, agreement.templateVersion],
-    [L.fingerprint, agreement.textSha256],
-    ...approvals.map((a, i) => [`${L.employer} ${i + 1}`, `${a.name}, ${a.title || ''}${a.onBehalfOf ? ` (${L.onBehalf} ${a.onBehalfOf})` : ''}, ${stage(a.stage)}, ${new Date(a.at).toISOString()} (UTC)`]),
-    [L.inForce, new Date().toISOString()],
-  ];
-  // Agreements signed since the blocks were kept print as rendered (with bold); earlier ones from their text.
-  return agreementPdf({ blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text), title: `${L.agreement} ${agreement.number} (${app.ref}) - ${L.inForceTitle}`, evidence, dataProtection: dataProtection.pdfSection(agreement.dataProtection), language });
+  // D-110: printed from the blocks kept with it; agreements stored before blocks were kept, from their text.
+  return agreementPdf({
+    blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text),
+    language,
+    agreementNumber: agreement.number,
+    ref: app.ref,
+    templateVersion: agreement.templateVersion,
+    textSha256: agreement.textSha256,
+    acceptance: agreement.acceptance,
+    approvals: approvals.map((a) => ({ ...a, stage: stage(a.stage) })),
+    inForceAt: at,
+    dataProtection: dataProtection.pdfSection(agreement.dataProtection),
+  });
 }
 
 /** Repayment schedule from today on the approved terms (FR-24). */
@@ -95,7 +95,7 @@ async function recordSuccess(app, now, session) {
 
 /** Puts the agreement in force (FR-18, FR-56) and sends the application to booking (D-107). */
 async function putInForce(req, app, agreement, terms, now, session, approvals) {
-  const pdf = await inForcePdf(agreement, app, approvals);
+  const pdf = await inForcePdf(agreement, app, approvals, now);
   const file = await fileStore.store(pdf, { kind: 'agreement_pdf', originalName: `${agreement.number}-in-force.pdf`, applicationId: app._id, ownerUserId: app.applicantUserId, uploadedBy: req.auth.user._id }, { session });
   await Agreement.updateOne({ _id: agreement._id }, { $set: { status: 'in_force', effectiveAt: now, inForcePdfFileId: file._id, approvals } }, { session });
   const sched = await scheduleFrom(app, terms, localDay(now));
@@ -404,8 +404,8 @@ async function acceptRevised(req, app, body) {
   const approvals = await approvalsFor(app);
   // D-108: the data protection notice accepted at signing stays with the loan.
   const dp = (await Agreement.findById(app.currentAgreementId).select('dataProtection').lean())?.dataProtection;
-  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, language: doc.template.language, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip }, dataProtection: dp };
-  const pdf = await inForcePdf(draft, app, approvals);
+  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, language: doc.template.language, format: doc.format, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip }, dataProtection: dp };
+  const pdf = await inForcePdf(draft, app, approvals, now);
 
   await withTransaction(async (session) => {
     const fresh = await Application.findOneAndUpdate({ _id: app._id, status: 'pending_reaccept' }, { $set: { status: 'pending_booking' } }, { new: true, session });
@@ -420,6 +420,7 @@ async function acceptRevised(req, app, body) {
           templateId: doc.template.id,
           templateVersion: doc.template.version,
           language: doc.template.language,
+          format: doc.format,
           terms: { amount: app.approved.amount, tenor: app.approved.tenor, instalment: quote.instalment, interestBps: quote.rates.interestBps, processingFee: quote.processingFee, insuranceFee: quote.insuranceFee, totalInterest: quote.totalInterest, totalRepayable: quote.totalRepayable, firstDueDate: quote.firstDueDate, repaymentMethod: app.repayment.method },
           schedule: quote.schedule,
           text: doc.text,

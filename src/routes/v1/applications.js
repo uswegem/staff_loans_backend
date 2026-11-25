@@ -4,7 +4,7 @@ const express = require('express');
 const Joi = require('joi');
 const multer = require('multer');
 const ApplicationController = require('../../controllers/applicationController');
-const { requireAll } = require('../../middleware/permission');
+const { requireAll, requireAny } = require('../../middleware/permission');
 const { validate } = require('../../middleware/validate');
 const { badRequest, asyncHandler } = require('../../utils/errors');
 
@@ -46,6 +46,8 @@ const uploadOne = (req, res, next) => upload.single('file')(req, res, (err) => n
  *   get: { tags: [Applications], summary: "Download my document or agreement PDF (audited)", security: [{ bearer: [] }], responses: { 200: { description: File } } }
  * /agreements/{id}:
  *   get: { tags: [Applications], summary: "My signed agreement: text, schedule and acceptance evidence (FR-25)", security: [{ bearer: [] }], responses: { 200: { description: Agreement } } }
+ * /applications/{id}/repayment-schedule.pdf:
+ *   get: { tags: [Applications], summary: "Repayment schedule PDF for an approved or disbursed loan, on request: Operations (disb.confirm) and Credit (review.credit, products.approveCredit); not the applicant; audited (D-110)", security: [{ bearer: [] }], responses: { 200: { description: PDF }, 403: { description: Not Operations or Credit, or own loan }, 409: { description: No final approval yet } } }
  * /agreements/{id}/pdf:
  *   get: { tags: [Applications], summary: "The locked PDF (FR-37)", security: [{ bearer: [] }], responses: { 200: { description: PDF } } }
  */
@@ -99,5 +101,7 @@ router.delete('/applications/:id/documents/:fileId', requireAll('loan.apply'), v
 router.get('/files/:id', validate(idParams), asyncHandler(ApplicationController.file));
 router.get('/agreements/:id', validate(idParams), asyncHandler(ApplicationController.agreement));
 router.get('/agreements/:id/pdf', validate(idParams), asyncHandler(ApplicationController.agreementPdf));
+// D-110: the repayment schedule on request, for Operations and the Credit department (not the applicant).
+router.get('/applications/:id/repayment-schedule.pdf', requireAny('disb.confirm', 'review.credit', 'products.approveCredit'), validate(idParams), asyncHandler(ApplicationController.repaymentSchedule));
 
 module.exports = router;

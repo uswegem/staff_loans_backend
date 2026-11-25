@@ -586,4 +586,18 @@ module.exports = [
   ['STAGE_PEOPLE_CULTURE', 'People and Culture', 'Rasilimali Watu'],
   ['ROLE_HEAD_PC_SHORT', 'Head of P&C', 'Mkuu wa Rasilimali Watu'],
   ['STAGE_PEOPLE_CULTURE_BY', 'People and Culture ({a})', 'Rasilimali Watu ({a})'],
+  // ---------- D-110: agreement layout, logo and repayment schedule on request ----------
+  ['LOGO_MAX_1MB', 'The logo must be 1 MB or smaller.', 'Nembo lazima iwe MB 1 au chini.'],
+  ['LOGO_PNG_OR_JPG', 'The logo must be a PNG or JPG image.', 'Nembo lazima iwe picha ya PNG au JPG.'],
+  ['LOGO_REPLACED', 'Agreement logo replaced.', 'Nembo ya mkataba imebadilishwa.'],
+  ['LOGO_RESET', 'Agreement logo set back to the default.', 'Nembo ya mkataba imerudishwa kuwa ya kawaida.'],
+  ['TEMPLATE_SCHEDULE_NOT_ALLOWED', 'The repayment schedule is not part of the agreement. Remove {{schedule}} and its heading: staff get the schedule on request from Operations or Credit.', 'Jedwali la marejesho si sehemu ya mkataba. Ondoa {{schedule}} na kichwa chake: wafanyakazi hupata jedwali kwa kuliomba kutoka Uendeshaji au Mikopo.'],
+  ['TEMPLATE_UNKNOWN_LABEL', 'The text refers to an unknown label {a}.', 'Maandishi yanataja lebo isiyojulikana {a}.'],
+  ['TEMPLATE_LABEL_TWICE', 'The text uses the label {a} twice.', 'Maandishi yanatumia lebo {a} mara mbili.'],
+  ['TEMPLATE_UNNUMBERED_LABEL', 'An unnumbered heading cannot carry a label ({a}).', 'Kichwa kisicho na namba hakiwezi kuwa na lebo ({a}).'],
+  ['TEMPLATE_CLAUSE_NEEDS_HEADING', 'A numbered clause must follow a numbered heading: {a}.', 'Kifungu chenye namba lazima kifuate kichwa chenye namba: {a}.'],
+  ['TEMPLATE_SUBCLAUSE_NEEDS_CLAUSE', 'A lettered sub-clause must follow a numbered clause: {a}.', 'Kifungu kidogo chenye herufi lazima kifuate kifungu chenye namba: {a}.'],
+  ['TEMPLATE_DETAILS_ROW', 'A details row needs a label and a value: {a}.', 'Mstari wa maelezo unahitaji jina na thamani: {a}.'],
+  ['OWN_SCHEDULE_NOT_HERE', 'You cannot download the schedule of your own loan here. Ask Operations or the Credit department for it.', 'Huwezi kupakua jedwali la mkopo wako mwenyewe hapa. Liombe kutoka Idara ya Uendeshaji au Idara ya Mikopo.'],
+  ['SCHEDULE_AFTER_FINAL_APPROVAL', 'A repayment schedule is available once the loan has final approval.', 'Jedwali la marejesho linapatikana mkopo ukishapata idhini ya mwisho.'],
 ];

@@ -101,7 +101,7 @@ describe('data protection notice before signing (D-108)', () => {
 
     const ag = await Agreement.findOne({ applicationId: id }).lean();
     const signed = await pdfText(ag.pdfFileId);
-    expect(signed).toMatch(/Electronic acceptance evidence/);
+    expect(signed).toMatch(/Signatures and acceptance/);
     expect(signed).not.toMatch(/Ushahidi|Mwajiriwa|ukurasa/);
     expect(signed).toMatch(/Data protection I consent to Letshego Faidika Bank collecting/);
     expect(signed).toMatch(/Accepted: I have read and accept the data protection notice\. Version DP-2026-1, \d{4}-\d{2}-\d{2}T/);
@@ -125,7 +125,7 @@ describe('data protection notice before signing (D-108)', () => {
     expect(preview).toMatchObject({ language: 'sw', languageNotice: null });
     expect(await Application.findById(id).lean()).toMatchObject({ agreementLanguage: 'sw' });
     expect(ag.language).toBe('sw');
-    expect(text).toMatch(/Ushahidi wa kukubali kwa njia ya kielektroniki/);
+    expect(text).toMatch(/Sahihi na ushahidi wa kukubali/);
     expect(text).not.toMatch(/Electronic acceptance|Agreement number|Staff member| page \d/);
     expect(text).toMatch(/Ulinzi wa taarifa binafsi Ninaridhia Letshego Faidika Bank/);
     expect(text).toMatch(/Imekubaliwa: Nimesoma na ninakubali tamko la ulinzi wa taarifa binafsi\. Toleo DP-2026-1/);

@@ -13,7 +13,7 @@ const AgreementTemplate = require('../../models/AgreementTemplate');
 const Agreement = require('../../models/Agreement');
 const audit = require('../audit/auditService');
 const calc = require('../calc/loanCalculator');
-const { values, scheduleTable, LANGUAGES } = require('./agreementService');
+const { values, LANGUAGES } = require('./agreementService');
 const { render, declarationsOf } = require('./renderer');
 const { livePricing } = require('../products/productService');
 const { namesOf } = require('../review/reviewView');
@@ -48,21 +48,27 @@ async function sampleInput() {
   };
 }
 
-/** Renders the body with the sample; returns { blocks, textSha256 } or throws 400 with the problems. */
-async function check(body, version = 'preview', language = 'sw') {
+/**
+ * Renders the body with the sample; returns { blocks, textSha256 } or throws 400 with the
+ * problems. forSave: a new or edited text, which may not contain the repayment schedule
+ * (D-110); versions saved earlier are still listed and shown.
+ */
+async function check(body, version = 'preview', language = 'sw', { forSave = false } = {}) {
   if (!LANGUAGES.includes(language)) throw badRequest('Choose English or Swahili.', { language: ['Choose English or Swahili.'] }, 'LANGUAGE_INVALID');
+  if (forSave && /\{\{\s*schedule\s*\}\}/.test(body)) {
+    throw badRequest('The repayment schedule is not part of the agreement. Remove {{schedule}} and its heading: staff get the schedule on request from Operations or Credit.', { body: ['Remove {{schedule}}.'] }, 'SCHEDULE_NOT_ALLOWED');
+  }
   const input = await sampleInput();
   let out;
   try {
-    out = render(body, values(input, version, language), scheduleTable(input.quote.schedule, language));
+    out = render(body, values(input, version, language), { language });
   } catch (err) {
     throw badRequest(err.message.replace('Agreement template uses an unknown value', 'The text uses an unknown value'), { body: [err.message] }, 'TEMPLATE_INVALID');
   }
   const used = new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]));
   const missing = REQUIRED.filter((k) => !used.has(k));
-  if (!used.has('schedule')) missing.push('schedule');
   if (missing.length) throw badRequest(`The text must include ${missing.map((k) => `{{${k}}}`).join(', ')}.`, { body: missing.map((k) => `Missing {{${k}}}`) }, 'TEMPLATE_INCOMPLETE');
-  return { blocks: out.blocks, textSha256: out.textSha256, placeholders: [...used].sort(), declarations: declarationsOf(out.blocks) };
+  return { blocks: out.blocks, format: out.format, textSha256: out.textSha256, placeholders: [...used].sort(), declarations: declarationsOf(out.blocks) };
 }
 
 const preview = (body, language) => check(body, 'preview', language);
@@ -118,7 +124,7 @@ async function upload(req, body) {
   if (await AgreementTemplate.exists({ version: body.version })) throw conflict(`Version ${body.version} already exists. Use a new version number.`, 'VERSION_EXISTS');
   checkDate(body.effectiveFrom);
   const language = body.language || 'sw';
-  const checked = await check(body.body, body.version, language);
+  const checked = await check(body.body, body.version, language, { forSave: true });
   const t = await AgreementTemplate.create({ version: body.version, language, status: 'pending_legal_approval', body: body.body, effectiveFrom: localMidnight(body.effectiveFrom), loadedBy: req.auth.user._id, editors: [req.auth.user._id], note: body.note || '' });
   await audit.record({ req, action: 'template.upload', description: `Agreement template ${t.version} uploaded; pending Legal approval`, entity: 'AgreementTemplate', entityId: String(t._id), after: { version: t.version, language, status: t.status, effectiveFrom: body.effectiveFrom, sampleSha256: checked.textSha256 } });
   return t;
@@ -134,7 +140,7 @@ async function edit(req, id, body) {
   if (!t) throw notFound('Template not found.');
   if (body.effectiveFrom) checkDate(body.effectiveFrom);
   const language = body.language || t.language || 'sw';
-  const checked = await check(body.body, body.version || t.version, language);
+  const checked = await check(body.body, body.version || t.version, language, { forSave: true });
   if (t.status === 'approved') {
     if (!body.version || body.version === t.version) throw badRequest('Give the edited text a new version number. The approved version stays in use until the new one is approved.', { version: ['A new version number is required.'] }, 'NEW_VERSION_REQUIRED');
     if (await AgreementTemplate.exists({ version: body.version })) throw conflict(`Version ${body.version} already exists. Use a new version number.`, 'VERSION_EXISTS');

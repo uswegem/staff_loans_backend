@@ -23,8 +23,8 @@ jest.setTimeout(180000);
 const DIR = path.join(__dirname, '..', '..', 'seed', 'data', 'agreements');
 const PERSONAL = fs.readFileSync(path.join(DIR, 'staff-personal-loan.en.md'), 'utf8');
 const CAR = fs.readFileSync(path.join(DIR, 'staff-car-loan.en.md'), 'utf8');
-// The party line as it was before the name was added (template 2026.12a).
-const OLD_PERSONAL = PERSONAL.replace('(2) {{partyName}}, whose personal details are recorded in the System', '(2) THE EMPLOYEE whose name and personal details are recorded in the System');
+// The party line as it was before the name was added (template 2026.12a), in the markup of the time.
+const OLD_PERSONAL = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'agreements', 'staff-personal-loan-2026.12c.en.md'), 'utf8').replace('(2) {{partyName}}, whose personal details are recorded in the System', '(2) THE EMPLOYEE whose name and personal details are recorded in the System');
 const PARTY = /^\(2\) NEEMA MUSHI, whose personal details are recorded in the System and shown in the Loan Details \(the "Employee"\)\.$/m;
 const TERMS = { amount: 3000000, tenor: 24, purpose: 'Home repairs' };
 
@@ -79,10 +79,11 @@ describe('the Employee party names the staff member', () => {
     const party = preview.blocks.find((b) => b.type === 'p' && b.parts[0]?.text === '(2) ');
     expect(party.parts[1]).toEqual({ text: 'NEEMA MUSHI', fill: true, strong: true });
     expect(party.parts.map((p) => p.text).join('')).toMatch(PARTY);
-    const details = preview.blocks.find((b) => b.type === 'ul' && b.items[0].some((p) => p.text === 'Employee: '));
-    expect(details.items[0].find((p) => p.fill).text).toBe('Neema Mushi');
+    const details = preview.blocks.find((b) => b.type === 'details');
+    expect(details.rows[0].label.map((p) => p.text).join('')).toBe('Employee');
+    expect(details.rows[0].value.find((p) => p.fill).text).toBe('Neema Mushi');
     // Only the parties use the name; the clauses still say "the Employee".
-    const text = preview.blocks.filter((b) => b.type === 'p').map((b) => b.parts.map((p) => p.text).join('')).join('\n');
+    const text = preview.blocks.filter((b) => ['p', 'clause'].includes(b.type)).map((b) => b.parts.map((p) => p.text).join('')).join('\n');
     expect(text).toMatch(/The Employee shall repay the loan/);
     expect(text.match(/NEEMA MUSHI/g)).toHaveLength(1);
   });
@@ -96,13 +97,13 @@ describe('the Employee party names the staff member', () => {
 
     const ag = await Agreement.findOne({ applicationId: id }).lean();
     expect(ag.text).toMatch(PARTY);
-    expect(ag.text).toMatch(/^- Employee: Neema Mushi, staff number LFB0412/m);
+    expect(ag.text).toMatch(/^\| Employee \| Neema Mushi, staff number LFB0412/m);
     expect(ag.acceptance.fullName).toBe('Neema Mushi');
     expect(ag.textSha256).toBe(sha(ag.text));
     expect(ag.blocks.some((b) => b.type === 'p' && b.parts.some((p) => p.strong && p.text === 'NEEMA MUSHI'))).toBe(true);
     const signedPdf = await pdfText(ag.pdfFileId);
     expect(signedPdf).toMatch(/\(2\)\s+NEEMA MUSHI\s*, whose personal details/);
-    expect(signedPdf).toMatch(/Staff member: Neema Mushi\s+\(LFB0412\)/);
+    expect(signedPdf).toMatch(/Name: Neema Mushi\s+Staff number: LFB0412/);
 
     // Through approval: the in-force PDF prints the same text and name.
     await decide(await signIn('LFB0233'), id, { action: 'approve', crb: CRB });

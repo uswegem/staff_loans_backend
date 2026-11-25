@@ -69,6 +69,8 @@ const NO_INPUT = new Set([
   'GET /reference-data/regions',
   // Multipart upload: the file is checked by type and content, and each row by the import service.
   'POST /staff/import',
+  // Multipart upload of the agreement logo (D-110): PNG or JPG by content, up to 1 MB.
+  'PUT /admin/settings/agreement-logo',
 ]);
 
 // Routes any signed-in person may use: their own data, checked in the controller by
