@@ -23,7 +23,8 @@ it('every reviewer sees the prototype queue', async () => {
   expect(q.body.data.counts.overdue).toBeGreaterThanOrEqual(1); // SL-2026-00030 was submitted 9.5 working hours ago
 
   expect(refs((await api((await signIn('LFB0051')).token).get('/queue')).body)).toEqual(['SL-2026-00025', 'SL-2026-00029']);
-  expect(refs((await api((await signIn('LFB0129')).token).get('/queue')).body)).toEqual(['SL-2026-00024']);
+  // D-103: the P&C Manager also sees the People and Culture stage of other routes (not the CEO's).
+  expect(refs((await api((await signIn('LFB0129')).token).get('/queue')).body)).toEqual(['SL-2026-00024', 'SL-2026-00029']);
   expect(refs((await api((await signIn('LFB0002')).token).get('/queue')).body)).toEqual(['SL-2026-00026']);
 });
 

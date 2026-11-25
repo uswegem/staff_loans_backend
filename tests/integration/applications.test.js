@@ -343,7 +343,7 @@ describe('sign agreement and submit (FR-10, FR-34 to FR-37)', () => {
     const res = await signAndSubmit(neema, id);
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ status: 'pending_credit', statusLabel: 'Pending Credit Review', currentStage: 'credit', cycle: 1 });
-    expect(res.body.data.route.stages).toEqual(['credit', 'hr', 'ceo']);
+    expect(res.body.data.route.stages).toEqual(['credit', 'pc', 'ceo']);
 
     const a = await Application.findById(id);
     const ag = await Agreement.findById(a.currentAgreementId);
@@ -405,9 +405,9 @@ describe('sign agreement and submit (FR-10, FR-34 to FR-37)', () => {
 
 describe('routes chosen at submission (BRD 7.3, D-03)', () => {
   it.each([
-    ['LFB0067', 'mgmt', ['credit', 'hr', 'ceo'], ' (limited details)'],
+    ['LFB0067', 'mgmt', ['credit', 'pc', 'ceo'], ' (limited details)'],
     ['LFB0002', 'ceo', ['credit', 'hr'], ' (limited details)'],
-    ['LFB0051', 'hrhead', ['credit', 'pcm', 'ceo'], ' (limited details)'],
+    ['LFB0051', 'hrhead', ['credit', 'pc', 'ceo'], ' (limited details)'],
   ])('%s goes on the %s route', async (staffNo, route, stages, suffix) => {
     const person = await signIn(staffNo);
     const { id } = await draft(person, PL(), { amount: 5000000, tenor: 24, purpose: 'Family needs', repaymentMethod: 'payroll' });

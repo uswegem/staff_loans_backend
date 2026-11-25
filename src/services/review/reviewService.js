@@ -23,8 +23,8 @@ const { agreementPdf, textBlocks } = require('../agreement/pdfService');
 const fileStore = require('../files/fileStore');
 const workflow = require('../workflow/workflowService');
 const { capCheck } = require('../applications/capCheck');
-const { namesOf, stageName, fullName } = require('./reviewView');
-const { STAGES } = require('../workflow/routes');
+const { namesOf, stageName, decisionStage, fullName } = require('./reviewView');
+const { STAGES, PC_STAGES } = require('../workflow/routes');
 const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
 const { AppError, badRequest, conflict, forbidden } = require('../../utils/errors');
@@ -39,9 +39,9 @@ async function notifyOps(text, href, entityId, session, type = 'application.read
 /** Approvals in this cycle, as printed "kwa niaba ya Mwajiri" (FR-36). */
 async function approvalsFor(app, extra, session) {
   const rows = await Decision.find({ applicationId: app._id, cycle: app.cycle, action: 'approve' }).sort({ at: 1 }).session(session || null).lean();
-  const all = [...rows.map((d) => ({ actorId: d.actorId, onBehalfOfId: d.onBehalfOfId, stage: d.stage, at: d.at })), ...(extra ? [extra] : [])];
+  const all = [...rows.map((d) => ({ actorId: d.actorId, onBehalfOfId: d.onBehalfOfId, stage: d.stage, details: d.details, at: d.at })), ...(extra ? [extra] : [])];
   const names = await namesOf(all.flatMap((a) => [a.actorId, a.onBehalfOfId]));
-  return all.map((a) => ({ name: names.get(String(a.actorId))?.name, title: names.get(String(a.actorId))?.title, stage: stageName(a.stage), at: a.at, onBehalfOf: a.onBehalfOfId ? names.get(String(a.onBehalfOfId))?.name : undefined }));
+  return all.map((a) => ({ name: names.get(String(a.actorId))?.name, title: names.get(String(a.actorId))?.title, stage: decisionStage(a), at: a.at, onBehalfOf: a.onBehalfOfId ? names.get(String(a.onBehalfOfId))?.name : undefined }));
 }
 
 /** The in-force PDF: the accepted text, the acceptance evidence and the employer's approvals. */
@@ -146,7 +146,7 @@ async function decide(req, app, body) {
   } else if (body.recommended || body.crb) {
     throw badRequest('Only the Credit Analyst records the bureau result and recommends terms.', undefined, 'NOT_ALLOWED_AT_STAGE');
   }
-  if ((stage === 'hr' || stage === 'pcm') && action === 'approve') {
+  if (PC_STAGES.includes(stage) && action === 'approve') {
     // salary: Basic Pay confirmed from the attached payslip (D-100), not a salary record.
     const c = body.hrChecks || {};
     if (!(c.employment && c.category && c.salary)) throw badRequest('Confirm all three staff record checks before approving.', { hrChecks: ['Confirm all three staff record checks before approving.'] }, 'HR_CHECKS_REQUIRED');
@@ -191,7 +191,7 @@ async function decide(req, app, body) {
     if (!fresh) throw conflict('Someone else has just decided on this application. Reload it.', 'STATE_CHANGED');
 
     await Decision.create(
-      [{ applicationId: app._id, cycle: app.cycle, stage, action, actorId: req.auth.user._id, onBehalfOfId: actor.onBehalfOf || undefined, comment: storedComment, details: { crb: set.crb ? { outcome: set.crb.outcome } : undefined, hrChecks: set.hrChecks, recommended: recommended ? { amount: recommended.amount, tenor: recommended.tenor } : undefined }, at: now, ip: req.ip }],
+      [{ applicationId: app._id, cycle: app.cycle, stage, action, actorId: req.auth.user._id, onBehalfOfId: actor.onBehalfOf || undefined, comment: storedComment, details: { permission: actor.permission, crb: set.crb ? { outcome: set.crb.outcome } : undefined, hrChecks: set.hrChecks, recommended: recommended ? { amount: recommended.amount, tenor: recommended.tenor } : undefined }, at: now, ip: req.ip }],
       { session }
     );
 
