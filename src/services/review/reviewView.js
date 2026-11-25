@@ -219,6 +219,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [] } : null,
     // D-105: every bureau report attached, in order, with who attached it.
     crbReports: crbIdsOf(app).map((id) => docs.find((d) => String(d._id) === id && d.kind === 'crb_report')).filter(Boolean).map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: names.get(String(d.uploadedBy))?.name || null, uploadedById: String(d.uploadedBy) })),
+    dataProtection: app.consents?.dataProtection?.accepted ? app.consents.dataProtection : null, // D-108
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
     history: decisions.map((d) => ({
       action: d.action,

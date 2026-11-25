@@ -5,6 +5,7 @@
 const { app, seed, signIn, authed, PASSWORD, request } = require('./helpers');
 const { seedProducts } = require('./fixtures/products');
 const { seedAgreementTemplate } = require('../seed/agreementTemplate');
+const { seedLegalNotices } = require('../seed/legalNotices');
 const { samplePayslip } = require('../seed/samplePayslip');
 const { PRICING } = require('./fixtures/products');
 const Staff = require('../src/models/Staff');
@@ -25,6 +26,7 @@ async function seedAll() {
   const { users } = await seed();
   const products = await seedProducts(users);
   await seedAgreementTemplate(users);
+  await seedLegalNotices();
   return { users, products };
 }
 
@@ -64,7 +66,7 @@ async function sign(person, id) {
   const a = api(person.token);
   const preview = await a.get(`/applications/${id}/agreement/preview`);
   if (preview.status !== 200) throw new Error(`preview: ${JSON.stringify(preview.body)}`);
-  const res = await a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, textSha256: preview.body.data.textSha256 });
+  const res = await a.post(`/applications/${id}/sign-and-submit`, { consents: CONSENTS, accepted: true, scrolledToEnd: true, textSha256: preview.body.data.textSha256, dataProtection: true });
   if (res.status !== 200) throw new Error(`sign: ${JSON.stringify(res.body)}`);
   return res;
 }

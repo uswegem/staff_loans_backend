@@ -5,6 +5,7 @@
 const { app, seed, signIn, authed, PASSWORD, request } = require('../helpers');
 const { seedProducts } = require('../fixtures/products');
 const { seedAgreementTemplate, BODY } = require('../../seed/agreementTemplate');
+const { seedLegalNotices } = require('../../seed/legalNotices');
 const { attachPayslip } = require('../flows');
 const AgreementTemplate = require('../../src/models/AgreementTemplate');
 const ProductVersion = require('../../src/models/ProductVersion');
@@ -38,6 +39,7 @@ beforeEach(async () => {
   const { users } = await seed();
   products = await seedProducts(users);
   await seedAgreementTemplate(users);
+  await seedLegalNotices();
 });
 
 describe('product configuration readiness and controlled activation', () => {
@@ -130,7 +132,7 @@ describe('product configuration readiness and controlled activation', () => {
     expect(preview.body.data.template.id).toBe(String(legalTemplate._id));
     const submitted = await api(staff.token).post(`/applications/${id}/sign-and-submit`, {
       consents: { truth: true, deduct: true, crb: true, sms: true },
-      accepted: true, scrolledToEnd: true, password: PASSWORD, textSha256: preview.body.data.textSha256,
+      accepted: true, dataProtection: true, scrolledToEnd: true, password: PASSWORD, textSha256: preview.body.data.textSha256,
     });
     expect(submitted.status).toBe(200);
 

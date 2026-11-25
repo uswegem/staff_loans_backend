@@ -141,7 +141,7 @@ const plain = (parts) => parts.map((p) => p.text).join('');
  * blocks: rendered agreement blocks; evidence: [[label, value]].
  * Returns a Buffer.
  */
-async function agreementPdf({ blocks, title, evidence }) {
+async function agreementPdf({ blocks, title, evidence, dataProtection }) {
   const doc = await PDFDocument.create();
   doc.setTitle(title);
   doc.setProducer('LFB Staff Loans');
@@ -164,6 +164,14 @@ async function agreementPdf({ blocks, title, evidence }) {
     // A declaration is printed ticked: the PDF is made only once every one was ticked.
     else if (b.type === 'declaration') w.text(`[X] ${plain(b.parts)}`, { size: 10, indent: 10, gap: 3 });
     else if (b.type === 'table') w.table(b.head, b.rows, [0.1, 0.22, 0.17, 0.17, 0.15, 0.19]);
+  }
+
+  // D-108: the data protection notice accepted with the agreement, and when.
+  if (dataProtection) {
+    w.y -= 6;
+    w.text(dataProtection.title, { size: 11, bold: true, gap: 4 });
+    w.text(dataProtection.body, { size: 10, gap: 6 });
+    w.text(dataProtection.accepted, { size: 10, gap: 6 });
   }
 
   w.newPage();

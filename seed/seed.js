@@ -12,14 +12,16 @@ const { connect } = require('../src/config/db');
 const { seedSystem } = require('./foundation');
 const { seedPricing } = require('./pricing');
 const { seedAgreementTemplate } = require('./agreementTemplate');
+const { seedLegalNotices } = require('./legalNotices');
 
 async function main() {
   await connect(config.mongoUri);
   const roles = await seedSystem();
   const pricing = await seedPricing();
   await seedAgreementTemplate();
+  await seedLegalNotices();
   // eslint-disable-next-line no-console
-  console.log(`System data ready: ${Object.keys(roles).length} roles${pricing ? ', launch pricing' : ''}, agreement template. No people or products are created.`);
+  console.log(`System data ready: ${Object.keys(roles).length} roles${pricing ? ', launch pricing' : ''}, agreement template, data protection notice. No people or products are created.`);
   await mongoose.disconnect();
 }
 

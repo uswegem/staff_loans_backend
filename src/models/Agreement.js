@@ -47,6 +47,8 @@ const agreementSchema = new Schema(
       ip: String,
       userAgent: String,
     },
+    // D-108: the data protection notice accepted with it, printed after the agreement.
+    dataProtection: { accepted: Boolean, version: String, language: String, title: String, body: String, checkbox: String, at: Date },
     status: { type: String, enum: ['signed', 'in_force', 'void'], default: 'signed' },
     effectiveAt: Date,
     voidAt: Date,

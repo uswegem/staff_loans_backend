@@ -23,6 +23,7 @@ const { productLabels } = require('../payslip/deductionLines');
 const agreementService = require('../agreement/agreementService');
 const { declarationsOf, allDeclared } = require('../agreement/renderer');
 const { agreementPdf } = require('../agreement/pdfService');
+const dataProtection = require('../consent/dataProtection');
 const fileStore = require('../files/fileStore');
 const { completeness } = require('../staff/profileService');
 const { routeFor, STAGES } = require('../workflow/routes');
@@ -154,6 +155,7 @@ async function view(req, app) {
     // D-82: the cutoff from the verified date of birth and the longest tenor it allows.
     retirement: { dateOfBirth: ctx.staff.dateOfBirth?.value || null, cutoff: result.cutoff, maxTenor: result.quote.maxTenor, age: ctx.settings.retirementAge ?? 60, bufferDays: ctx.settings.retirementBufferDays ?? 60 },
     documents: docs.map(DOC_VIEW),
+    dataProtection: app.consents?.dataProtection?.accepted ? app.consents.dataProtection : null, // D-108
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
     history: decisions.map((d) => ({ action: d.action, stage: d.stage, returnTo: d.action === 'return' ? d.details?.returnTo || 'applicant' : undefined, comment: d.comment, at: d.at, cycle: d.cycle, mine: String(d.actorId) === String(req.auth.user._id) })),
     checks: { eligibility: result.eligibility, fieldErrors: result.fieldErrors, checks: result.checks, canSubmit: result.canSubmit },
@@ -280,6 +282,8 @@ async function preview(req, app) {
     template: doc.template,
     terms: { amount: app.amount, tenor: app.tenor, instalment: q.instalment, fees: q.fees, processingFee: q.processingFee, insuranceFee: q.insuranceFee, totalInterest: q.totalInterest, totalRepayable: q.totalRepayable, firstDueDate: q.firstDueDate },
     replaces: app.currentAgreementId ? String(app.currentAgreementId) : null,
+    // D-108: shown with its own unticked box; signing needs it ticked.
+    dataProtection: await dataProtection.current(req.lang),
   };
 }
 
@@ -301,8 +305,15 @@ async function signAndSubmit(req, app, body) {
     ? allDeclared(doc.blocks, body.declarations)
     : ['truth', 'deduct', 'crb', 'sms'].every((k) => body.consents?.[k] === true);
   if (!consentsGiven) throw badRequest('Tick every statement and the agreement to sign.', undefined, 'CONSENTS_REQUIRED');
+  // D-108: the data protection notice, ticked on its own, in the version shown.
+  const notice = await dataProtection.current(req.lang);
+  if (body.dataProtection !== true) throw badRequest('Tick the data protection notice to sign.', { dataProtection: ['Tick the data protection notice to sign.'] }, 'DATA_PROTECTION_REQUIRED');
+  if (body.dataProtectionVersion && body.dataProtectionVersion !== notice.version) {
+    throw conflict('The data protection notice changed since you opened it. Read it again before you sign.', 'DATA_PROTECTION_CHANGED', { version: notice.version });
+  }
 
   const now = new Date();
+  const dp = { accepted: true, version: notice.version, language: notice.language, title: notice.title, body: notice.body, checkbox: notice.checkbox, at: now };
   const resubmission = app.status === 'returned';
   const route = app.route ? { key: app.route, stages: app.stages } : routeFor(req.auth.permissions, ctx.staff);
   const firstStage = route.stages[0];
@@ -323,7 +334,7 @@ async function signAndSubmit(req, app, body) {
       ? ['Idhini / Declarations ticked', `${declarations.length} of ${declarations.length}`]
       : ['Idhini / Consents', 'Taarifa ni sahihi; makato; ofisi za kumbukumbu za mikopo; SMS'],
   ];
-  const pdf = await agreementPdf({ blocks: doc.blocks, title: `Mkataba ${number} (${app.ref})`, evidence });
+  const pdf = await agreementPdf({ blocks: doc.blocks, title: `Mkataba ${number} (${app.ref})`, evidence, dataProtection: dataProtection.pdfSection(dp) });
 
   await withTransaction(async (session) => {
     const fresh = await Application.findOne({ _id: app._id, status: { $in: EDITABLE } }).session(session);
@@ -350,6 +361,7 @@ async function signAndSubmit(req, app, body) {
           pdfFileId: pdfFile._id,
           pdfSha256: pdfFile.sha256,
           acceptance: { userId: req.auth.user._id, staffNo: ctx.staff.staffNo, fullName: staffName, at: now, ip: req.ip, userAgent: req.get('User-Agent') },
+          dataProtection: dp,
           status: 'signed',
         },
       ],
@@ -368,7 +380,11 @@ async function signAndSubmit(req, app, body) {
       lastSubmittedAt: now,
       productVersionId: ctx.version._id,
       pricingVersionId: ctx.pricing._id,
-      consents: declarations.length ? { declarations, at: now } : { ...body.consents, at: now },
+      consents: {
+        ...(declarations.length ? { declarations } : body.consents),
+        at: now,
+        dataProtection: { accepted: true, version: dp.version, language: dp.language, at: now },
+      },
       currentAgreementId: agreement._id,
       calcSnapshot: q,
       applicantSnapshot: {
@@ -410,7 +426,7 @@ async function signAndSubmit(req, app, body) {
       { session }
     );
     await audit.record(
-      { req, action: resubmission ? 'application.resubmit' : 'application.submit', description: `${fresh.ref} ${resubmission ? 'resubmitted' : 'submitted'}; agreement ${number} signed (template ${doc.template.version}, fingerprint ${doc.textSha256.slice(0, 16)}…)`, entity: 'Application', entityId: String(fresh._id), appRef: fresh.ref, after: { status: fresh.status, route: fresh.route, agreement: number, textSha256: doc.textSha256, pdfSha256: pdfFile.sha256 } },
+      { req, action: resubmission ? 'application.resubmit' : 'application.submit', description: `${fresh.ref} ${resubmission ? 'resubmitted' : 'submitted'}; agreement ${number} signed (template ${doc.template.version}, fingerprint ${doc.textSha256.slice(0, 16)}…); data protection notice ${dp.version} (${dp.language}) accepted`, entity: 'Application', entityId: String(fresh._id), appRef: fresh.ref, after: { status: fresh.status, route: fresh.route, agreement: number, textSha256: doc.textSha256, pdfSha256: pdfFile.sha256, dataProtection: { version: dp.version, language: dp.language, at: now } } },
       { session }
     );
 

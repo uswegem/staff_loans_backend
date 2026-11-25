@@ -20,6 +20,7 @@ const appSvc = require('../applications/applicationService');
 const agreementService = require('../agreement/agreementService');
 const { declarationsOf, allDeclared } = require('../agreement/renderer');
 const { agreementPdf, textBlocks } = require('../agreement/pdfService');
+const dataProtection = require('../consent/dataProtection');
 const fileStore = require('../files/fileStore');
 const workflow = require('../workflow/workflowService');
 const { capCheck } = require('../applications/capCheck');
@@ -66,7 +67,7 @@ async function inForcePdf(agreement, app, approvals) {
     ['Unaanza kutumika / In force from', new Date().toISOString()],
   ];
   // Agreements signed since the blocks were kept print as rendered (with bold); earlier ones from their text.
-  return agreementPdf({ blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text), title: `Mkataba ${agreement.number} (${app.ref}) - unatumika`, evidence });
+  return agreementPdf({ blocks: agreement.blocks?.length ? agreement.blocks : textBlocks(agreement.text), title: `Mkataba ${agreement.number} (${app.ref}) - unatumika`, evidence, dataProtection: dataProtection.pdfSection(agreement.dataProtection) });
 }
 
 /** Repayment schedule from today on the approved terms (FR-24). */
@@ -395,7 +396,9 @@ async function acceptRevised(req, app, body) {
   const number = await appSvc.nextRef('MKT');
   const name = agreementService.staffName(staff);
   const approvals = await approvalsFor(app);
-  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip } };
+  // D-108: the data protection notice accepted at signing stays with the loan.
+  const dp = (await Agreement.findById(app.currentAgreementId).select('dataProtection').lean())?.dataProtection;
+  const draft = { number, text: doc.text, blocks: doc.blocks, textSha256: doc.textSha256, templateVersion: doc.template.version, acceptance: { fullName: name, staffNo: staff.staffNo, at: now, ip: req.ip }, dataProtection: dp };
   const pdf = await inForcePdf(draft, app, approvals);
 
   await withTransaction(async (session) => {
@@ -420,6 +423,7 @@ async function acceptRevised(req, app, body) {
           inForcePdfFileId: file._id,
           approvals,
           acceptance: { userId: req.auth.user._id, staffNo: staff.staffNo, fullName: name, at: now, ip: req.ip, userAgent: req.get('User-Agent') },
+          dataProtection: dp?.accepted ? dp : undefined,
           status: 'in_force',
           effectiveAt: now,
         },

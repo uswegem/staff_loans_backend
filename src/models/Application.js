@@ -50,7 +50,16 @@ const applicationSchema = new Schema(
       outstanding: { type: Number, min: 0 }, // confirmed by OPS from core banking (BR-09)
     },
     probation: { onProbation: Boolean, reason: String, verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' }, verifiedAt: Date }, // NS-01
-    consents: { truth: Boolean, deduct: Boolean, crb: Boolean, sms: Boolean, declarations: { type: [String], default: undefined }, at: Date },
+    consents: {
+      truth: Boolean,
+      deduct: Boolean,
+      crb: Boolean,
+      sms: Boolean,
+      declarations: { type: [String], default: undefined },
+      at: Date,
+      // D-108: the data protection notice ticked before signing, in the language shown.
+      dataProtection: { accepted: Boolean, version: String, language: String, at: Date, _id: false },
+    },
     documentIds: { type: [{ type: Schema.Types.ObjectId, ref: 'StoredFile' }], default: [] },
     // The latest payslip and the figures read from it (D-78, D-79). Only the reader sets them.
     payslip: {

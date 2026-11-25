@@ -76,7 +76,7 @@ describe('English agreement templates', () => {
     expect(JSON.stringify(preview.blocks)).not.toMatch(SWAHILI);
     expect(JSON.stringify(preview.blocks)).toMatch(/Three million shillings only/);
 
-    const base = { accepted: true, scrolledToEnd: true, textSha256: preview.textSha256 };
+    const base = { accepted: true, dataProtection: true, scrolledToEnd: true, textSha256: preview.textSha256 };
     // The four standard statements are not enough when the agreement has its own.
     let res = await a.post(`/applications/${id}/sign-and-submit`, { ...base, consents: { truth: true, deduct: true, crb: true, sms: true } });
     expect(res.status).toBe(400);
@@ -99,7 +99,7 @@ describe('English agreement templates', () => {
     const juma = await signIn('LFB0233');
     const { a, id, preview } = await draft(juma, products.VL._id, { amount: 18000000, tenor: 48, purpose: 'Family vehicle', productFields: VEHICLE });
     expect(JSON.stringify(preview.blocks)).toMatch(/Make and model: Toyota RAV4; Year of manufacture: 2019; Seller or dealer: Arusha Motors Ltd; Vehicle price \(TZS\): 24,500,000/);
-    const res = await a.post(`/applications/${id}/sign-and-submit`, { accepted: true, scrolledToEnd: true, textSha256: preview.textSha256, declarations: Array(8).fill(true) });
+    const res = await a.post(`/applications/${id}/sign-and-submit`, { accepted: true, dataProtection: true, scrolledToEnd: true, textSha256: preview.textSha256, declarations: Array(8).fill(true) });
     expect(res.status).toBe(200);
   });
 
@@ -107,7 +107,7 @@ describe('English agreement templates', () => {
     const neema = await signIn('LFB0412');
     const { a, id, preview } = await draft(neema, products.PL._id, { amount: 3000000, tenor: 24, purpose: 'Home repairs' });
     expect(preview.blocks.some((b) => b.type === 'declaration')).toBe(false);
-    const res = await a.post(`/applications/${id}/sign-and-submit`, { accepted: true, scrolledToEnd: true, textSha256: preview.textSha256, consents: { truth: true, deduct: true, crb: true, sms: true } });
+    const res = await a.post(`/applications/${id}/sign-and-submit`, { accepted: true, dataProtection: true, scrolledToEnd: true, textSha256: preview.textSha256, consents: { truth: true, deduct: true, crb: true, sms: true } });
     expect(res.status).toBe(200);
   });
 });
