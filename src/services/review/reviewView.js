@@ -19,7 +19,7 @@ const calendar = require('../calendar/calendarService');
 const workingTime = require('../calendar/workingTime');
 const rules = require('../applications/rules');
 const appSvc = require('../applications/applicationService');
-const { STAGES, ROUTES } = require('../workflow/routes');
+const { STAGES, ROUTES, PC_STAGES, PERMISSION_ROLE } = require('../workflow/routes');
 const { STATUS } = require('../../constants/statuses');
 const { formatNida } = require('../staff/profileService');
 const { localDay } = require('../../utils/dates');
@@ -28,6 +28,8 @@ const { retirementDateFor } = require('../staff/retirement');
 const fullName = (s) => (s ? [s.firstName, s.middleName, s.lastName].filter(Boolean).join(' ') : '');
 const MASKED = '********';
 const stageName = (k) => (k ? STAGES[k].short || STAGES[k].label : null);
+/** A decision's stage, naming who acted at a stage several roles share: "People and Culture (P&C Manager)". */
+const decisionStage = (d) => (d.stage && STAGES[d.stage]?.permissions.length > 1 && PERMISSION_ROLE[d.details?.permission] ? `${stageName(d.stage)} (${PERMISSION_ROLE[d.details.permission]})` : stageName(d.stage));
 
 async function namesOf(ids) {
   const users = await User.find({ _id: { $in: ids.filter(Boolean) } }).select('staffId staffNo').lean();
@@ -62,8 +64,8 @@ function panelFor(app, actor) {
     nextStageLabel: stageName(app.stages[i + 1]) || null,
     needsCrb: stage === 'credit',
     canRecommend: false, // the Credit Analyst no longer recommends terms (D-86)
-    needsHrChecks: stage === 'hr' || stage === 'pcm',
-    needsProbationCheck: (stage === 'hr' || stage === 'pcm') && !!app.probation?.onProbation,
+    needsHrChecks: PC_STAGES.includes(stage),
+    needsProbationCheck: PC_STAGES.includes(stage) && !!app.probation?.onProbation,
     crbOutcomes: CRB_OUTCOMES, // D-99
   };
 }
@@ -208,7 +210,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     history: decisions.map((d) => ({
       action: d.action,
       stage: d.stage,
-      stageLabel: stageName(d.stage),
+      stageLabel: decisionStage(d),
       comment: d.comment,
       at: d.at,
       cycle: d.cycle,
@@ -272,4 +274,4 @@ async function queueRow(app, { limited, actor, names }) {
   return { ...base, applicant: { ...base.applicant, title: staff.title, category: staff.category }, product: version?.name, amount: app.recommended?.amount || app.amount, tenor: app.recommended?.tenor || app.tenor };
 }
 
-module.exports = { reviewView, queueRow, namesOf, due, stageName, fullName };
+module.exports = { reviewView, queueRow, namesOf, due, stageName, decisionStage, fullName };

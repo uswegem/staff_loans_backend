@@ -27,7 +27,7 @@ const workflow = require('../workflow/workflowService');
 const calendar = require('../calendar/calendarService');
 const workingTime = require('../calendar/workingTime');
 const { STAGES } = require('../workflow/routes');
-const { fullName, stageName } = require('../review/reviewView');
+const { fullName, stageName, decisionStage } = require('../review/reviewView');
 const { STATUS, PENDING_STAGE } = require('../../constants/statuses');
 const { permById, requiresMfa } = require('../../constants/permissions');
 const env = require('../../config/env');
@@ -176,7 +176,7 @@ async function decisions(viewer, f) {
     const lim = limitedFor(viewer, a);
     if (lim) limitedCount += 1;
     const comment = lim && String(d.actorId) !== viewer.userId ? LIMITED : d.comment || '';
-    return [a.ref, fullName(staffOf(a)), stageName(d.stage), DECISION_LABEL[d.action] || d.action, who.get(String(d.actorId)) || '', d.onBehalfOfId ? who.get(String(d.onBehalfOfId)) || '' : '', dateTime(d.at), comment];
+    return [a.ref, fullName(staffOf(a)), decisionStage(d), DECISION_LABEL[d.action] || d.action, who.get(String(d.actorId)) || '', d.onBehalfOfId ? who.get(String(d.onBehalfOfId)) || '' : '', dateTime(d.at), comment];
   });
   return { columns: [col('Reference'), col('Applicant'), col('Stage'), col('Decision'), col('By'), col('On behalf of'), col('When', 'datetime'), col('Comment')], rows: out, limitedCount };
 }
@@ -369,7 +369,7 @@ async function overview(req) {
 
   const since = new Date(now.getTime() - 90 * DAY);
   const recent = (await stageDecisions(apps)).filter((d) => d.at >= since);
-  const stages = ['credit', 'pcm', 'hr', 'ceo'].map((k) => {
+  const stages = ['credit', 'pc', 'pcm', 'hr', 'ceo'].map((k) => {
     const hours = recent.filter((d) => d.stage === k).map((d) => workingTime.workingHoursBetween(cal, d.enteredAt, d.at));
     return { stage: k, label: stageName(k), average: round1(avg(hours)), decisions: hours.length, target: STAGES[k].target === 'ceo' ? cal.ceoTargetHours : cal.stageTargetHours };
   });

@@ -36,7 +36,7 @@ const SAMPLES = [
   { ref: 'SL-2026-00031', a: 'LFB0451', p: 'PL', amount: 4500000, tenor: 24, purpose: 'Family medical expenses', submittedWh: 2.25, status: 'pending_credit' },
   { ref: 'SL-2026-00030', a: 'LFB0377', p: 'SA', amount: 600000, tenor: 3, purpose: 'School fees top-up for my daughter', submittedWh: 9.5, status: 'pending_credit' },
   {
-    ref: 'SL-2026-00029', a: 'LFB0188', p: 'VL', amount: 18000000, tenor: 48, purpose: 'Family vehicle', fields: { make: 'Toyota RAV4', year: 2019, seller: 'Arusha Motors Ltd', price: 24500000 }, submittedWh: 14, status: 'pending_hr',
+    ref: 'SL-2026-00029', a: 'LFB0188', p: 'VL', amount: 18000000, tenor: 48, purpose: 'Family vehicle', fields: { make: 'Toyota RAV4', year: 2019, seller: 'Arusha Motors Ltd', price: 24500000 }, submittedWh: 14, status: 'pending_pc',
     crb: 'Clear', appraisal: 'Stable repayment history on previous salary advance. Deposit of TZS 6.5m confirmed.',
     steps: [{ by: 'LFB0233', stage: 'credit', wh: 3, comment: 'Affordable at 48 months. CRB clear.' }],
   },
@@ -46,14 +46,14 @@ const SAMPLES = [
     steps: [{ by: 'LFB0233', stage: 'credit', wh: 4, comment: 'Credit bureau clear.' }],
   },
   {
-    ref: 'SL-2026-00024', a: 'LFB0051', p: 'VL', amount: 30000000, tenor: 60, purpose: 'Replacement family vehicle', fields: { make: 'Toyota Prado', year: 2020, seller: 'CFAO Motors', price: 42000000 }, submittedDays: 3, status: 'pending_pcm', crb: 'Clear',
+    ref: 'SL-2026-00024', a: 'LFB0051', p: 'VL', amount: 30000000, tenor: 60, purpose: 'Replacement family vehicle', fields: { make: 'Toyota Prado', year: 2020, seller: 'CFAO Motors', price: 42000000 }, submittedDays: 3, status: 'pending_pc', crb: 'Clear',
     steps: [{ by: 'LFB0233', stage: 'credit', wh: 5, comment: 'Credit bureau clear.' }],
   },
   {
     ref: 'SL-2026-00026', a: 'LFB0377', p: 'HE', amount: 6000000, tenor: 24, purpose: 'Diploma tuition', submittedDays: 4, status: 'pending_ceo', crb: 'Clear',
     steps: [
       { by: 'LFB0233', stage: 'credit', wh: 30, comment: 'Within limits.' },
-      { by: 'LFB0051', stage: 'hr', wh: 20, comment: 'Employment and salary confirmed.' },
+      { by: 'LFB0051', stage: 'pc', wh: 20, comment: 'Employment and salary confirmed.' },
     ],
   },
   {
@@ -65,7 +65,7 @@ const SAMPLES = [
     appraisal: 'Affordable, but recommended at TZS 4.5m to keep headroom for the running CRDB loan.', recommended: { amount: 4500000, tenor: 36, reason: 'To keep headroom for the running CRDB loan.' },
     steps: [
       { by: 'LFB0233', stage: 'credit', days: 8, comment: 'Within limits at a recommended TZS 4,500,000 over 36 months, to keep headroom for the CRDB loan. CRB clear.' },
-      { by: 'LFB0051', stage: 'hr', days: 6, comment: 'Employment confirmed.' },
+      { by: 'LFB0051', stage: 'pc', days: 6, comment: 'Employment confirmed.' },
       { by: 'LFB0002', stage: 'ceo', wh: 2, comment: 'Approved at the recommended TZS 4,500,000.' },
     ],
   },
@@ -73,7 +73,7 @@ const SAMPLES = [
     ref: 'SL-2026-00019', a: 'LFB0188', p: 'SA', amount: 800000, tenor: 3, purpose: 'Medical bill', submittedDays: 12, status: 'pending_disbursement', crb: 'Clear',
     steps: [
       { by: 'LFB0233', stage: 'credit', days: 11 },
-      { by: 'LFB0051', stage: 'hr', days: 10 },
+      { by: 'LFB0051', stage: 'pc', days: 10 },
       { by: 'LFB0002', stage: 'ceo', days: 8 },
     ],
   },
@@ -81,7 +81,7 @@ const SAMPLES = [
     ref: 'SL-2026-00015', a: 'LFB0412', p: 'SA', amount: 500000, tenor: 2, purpose: 'Rent deposit', submittedDays: 70, status: 'disbursed', crb: 'Clear',
     steps: [
       { by: 'LFB0233', stage: 'credit', days: 69 },
-      { by: 'LFB0051', stage: 'hr', days: 68 },
+      { by: 'LFB0051', stage: 'pc', days: 68 },
       { by: 'LFB0002', stage: 'ceo', days: 66 },
     ],
     disbursed: { by: 'LFB0318', days: 64, ref: 'FT26223XK9', comment: 'Loan disbursed to staff account.' },
@@ -90,7 +90,7 @@ const SAMPLES = [
     ref: 'SL-2026-00012', a: 'LFB0451', p: 'VL', amount: 25000000, tenor: 60, purpose: 'Vehicle purchase', fields: { make: 'Nissan X-Trail', year: 2015, seller: 'Private seller', price: 27000000 }, submittedDays: 30, status: 'rejected', crb: 'Clear',
     steps: [
       { by: 'LFB0233', stage: 'credit', days: 29 },
-      { by: 'LFB0051', stage: 'hr', days: 28 },
+      { by: 'LFB0051', stage: 'pc', days: 28 },
       { by: 'LFB0002', stage: 'ceo', days: 26, action: 'reject', comment: 'Vehicle is over 10 years old at the end of the loan. Reapply for a newer vehicle.' },
     ],
   },
@@ -183,7 +183,7 @@ async function seedSampleApplications({ users, products: byCode }) {
     for (const step of s.steps || []) {
       const at = ago(step);
       const action = step.action || 'approve';
-      await Decision.create({ applicationId: app._id, cycle: 1, stage: step.stage, action, actorId: id(step.by), comment: step.comment, at, ip: ip(step.by), details: step.stage === 'credit' && s.crb ? { crb: { outcome: s.crb } } : undefined });
+      await Decision.create({ applicationId: app._id, cycle: 1, stage: step.stage, action, actorId: id(step.by), comment: step.comment, at, ip: ip(step.by), details: step.stage === 'credit' && s.crb ? { crb: { outcome: s.crb } } : step.stage === 'pc' ? { permission: 'review.hr' } : undefined }); // LFB0051 is the Head of P&C
       if (action === 'approve') approvals.push({ name: fullName(await Staff.findById(users[step.by].staffId)), title: (await Staff.findById(users[step.by].staffId)).title, stage: STAGES[step.stage].short || STAGES[step.stage].label, at });
       enteredAt = at;
     }

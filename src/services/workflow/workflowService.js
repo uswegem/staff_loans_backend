@@ -11,7 +11,7 @@ const Decision = require('../../models/Decision');
 const User = require('../../models/User');
 const Staff = require('../../models/Staff');
 const rbac = require('../rbac/rbacService');
-const { STAGES } = require('./routes');
+const { STAGES, stageAccepts } = require('./routes');
 const { PENDING_STAGE } = require('../../constants/statuses');
 
 const LIMITED_ROUTES = ['mgmt', 'ceo', 'hrhead'];
@@ -26,8 +26,10 @@ async function activeUsers(ids, session) {
 }
 
 /**
- * Actors for the application's current stage: [{ userId, onBehalfOf }].
- * onBehalfOf is the holder a delegate covers, or null.
+ * Actors for the application's current stage: [{ userId, onBehalfOf, permission }].
+ * onBehalfOf is the holder a delegate covers, or null; permission is the review
+ * permission they act with (a stage may accept several, D-103). Someone who could act
+ * both in their own right and for another holder acts in their own right.
  */
 async function stageActors(app, { now = new Date(), session } = {}) {
   const stage = STAGES[app.currentStage];
@@ -37,21 +39,27 @@ async function stageActors(app, { now = new Date(), session } = {}) {
   // application only. Whoever approved another stage of it, in any cycle, cannot act here.
   const earlier = await Decision.find({ applicationId: app._id, action: 'approve', stage: { $ne: app.currentStage } }).select('actorId').session(session || null).lean();
   const excluded = new Set([applicant, ...earlier.map((d) => String(d.actorId))]);
-  const holders = (await rbac.holdersOf(stage.permission, { now, session })).filter((id) => !excluded.has(id));
-  const activeHolders = await activeUsers(holders, session);
-  const delegations = await Delegation.find({ delegatorId: { $in: [...activeHolders] }, permissions: stage.permission, ...Delegation.activeFilter(now) })
+  // The permission each holder acts with: the first of the stage's permissions they hold.
+  const permissionOf = new Map();
+  for (const permission of stage.permissions) {
+    // eslint-disable-next-line no-await-in-loop
+    for (const id of await rbac.holdersOf(permission, { now, session })) if (!excluded.has(id) && !permissionOf.has(id)) permissionOf.set(id, permission);
+  }
+  const activeHolders = await activeUsers([...permissionOf.keys()], session);
+  const delegations = await Delegation.find({ delegatorId: { $in: [...activeHolders] }, permissions: { $in: stage.permissions }, ...Delegation.activeFilter(now) })
     .session(session || null)
     .lean();
   const delegates = await activeUsers(delegations.map((d) => d.delegateId), session);
-  const out = [];
+  const out = new Map();
   for (const h of activeHolders) {
-    const d = delegations.find((x) => String(x.delegatorId) === h);
+    const permission = permissionOf.get(h);
+    const d = delegations.find((x) => String(x.delegatorId) === h && x.permissions.includes(permission));
     if (d) {
       const to = String(d.delegateId);
-      if (!excluded.has(to) && delegates.has(to)) out.push({ userId: to, onBehalfOf: h });
-    } else out.push({ userId: h, onBehalfOf: null });
+      if (!excluded.has(to) && delegates.has(to) && !out.has(to)) out.set(to, { userId: to, onBehalfOf: h, permission });
+    } else out.set(h, { userId: h, onBehalfOf: null, permission });
   }
-  return out;
+  return [...out.values()];
 }
 
 async function canAct(userId, app, opts) {
@@ -102,7 +110,7 @@ async function reviewAccess(auth, app, { perms } = {}) {
 /** Applications waiting for this user now (FR-13), with who they act for. */
 async function queueFor(auth, now = new Date()) {
   const perms = await reviewPermissions(auth, now);
-  const stages = Object.values(STAGES).filter((s) => perms.has(s.permission)).map((s) => s.key);
+  const stages = Object.keys(STAGES).filter((k) => stageAccepts(k, perms));
   if (!stages.length) return { items: [], perms };
   const candidates = await Application.find({ status: { $in: PENDING_STAGE }, currentStage: { $in: stages }, applicantUserId: { $ne: auth.user._id } }).sort({ stageDueAt: 1 });
   const items = [];

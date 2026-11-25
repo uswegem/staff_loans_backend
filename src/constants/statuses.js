@@ -1,12 +1,14 @@
 'use strict';
 
-// Application statuses (BRD 7.4; "Pending P&C Manager Review" per DECISIONS D-02).
+// Application statuses (BRD 7.4; "Pending P&C Manager Review" per DECISIONS D-02;
+// "Pending People and Culture Review" per D-103: either the P&C Manager or the Head of P&C).
 
 const STATUS = Object.freeze({
   draft: 'Draft',
   pending_credit: 'Pending Credit Review',
   pending_pcm: 'Pending P&C Manager Review',
   pending_hr: 'Pending HR Review',
+  pending_pc: 'Pending People and Culture Review',
   pending_ceo: 'Pending CEO Approval',
   returned: 'Returned for Correction',
   rejected: 'Rejected',
@@ -18,7 +20,7 @@ const STATUS = Object.freeze({
 });
 
 const STATUSES = Object.keys(STATUS);
-const PENDING_STAGE = ['pending_credit', 'pending_pcm', 'pending_hr', 'pending_ceo'];
+const PENDING_STAGE = ['pending_credit', 'pending_pcm', 'pending_hr', 'pending_pc', 'pending_ceo'];
 /** Open applications count for BR-08 (one open application per product). */
 const OPEN = ['draft', ...PENDING_STAGE, 'returned', 'pending_reaccept', 'pending_disbursement'];
 /** The applicant may change the request in these. */

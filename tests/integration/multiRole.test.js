@@ -140,7 +140,7 @@ describe('two review roles never decide two stages of one application', () => {
     expect((await decide(joseph, id, { action: 'approve' })).status).toBe(200);
 
     const rows = await Decision.find({ applicationId: id, action: 'approve' }).sort({ at: 1 }).lean();
-    expect(rows.map((r) => r.stage)).toEqual(['credit', 'hr', 'ceo']);
+    expect(rows.map((r) => r.stage)).toEqual(['credit', 'pc', 'ceo']);
     expect(new Set(rows.map((r) => String(r.actorId))).size).toBe(3);
   });
 

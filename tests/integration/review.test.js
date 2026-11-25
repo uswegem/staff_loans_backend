@@ -51,7 +51,7 @@ function assertLimited(body) {
   HIDDEN_KEYS.forEach((k) => expect([k, keys.has(k)]).toEqual([k, false]));
 }
 
-describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () => {
+describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1, D-103)', () => {
   it('runs end to end and puts the signed agreement in force at CEO approval', async () => {
     const neema = await signIn('LFB0412');
     const id = await applyAndSign(neema, PL(), NEEMA);
@@ -74,10 +74,12 @@ describe('non-management route: Credit Analyst, Head of HR, CEO (BRD 7.1)', () =
     expect((await decide(juma, id, { action: 'reject', comment: '  ' })).body.code).toBe('COMMENT_REQUIRED');
     const c = await decide(juma, id, { action: 'approve', crb: CRB, comment: 'Affordable, bureau clear.' });
     expect(c.body.data.outcome).toBe('moved');
-    expect((await Application.findById(id)).status).toBe('pending_hr');
-    expect((await notesFor('LFB0051', 'application.stage'))[0].text).toMatch(/waiting for your Head of HR review/);
+    expect((await Application.findById(id)).status).toBe('pending_pc');
+    // D-103: the People and Culture stage goes to both the Head of P&C and the P&C Manager.
+    expect((await notesFor('LFB0051', 'application.stage'))[0].text).toMatch(/waiting for your People and Culture review/);
+    expect((await notesFor('LFB0129', 'application.stage'))[0].text).toMatch(/waiting for your People and Culture review/);
 
-    // FR-17: the Head of HR confirms the staff record, with the full application.
+    // FR-17: the Head of P&C confirms the staff record, with the full application.
     const grace = await signIn('LFB0051');
     const hrView = await api(grace.token).get(`/review/${id}`);
     expect(hrView.body.data).toMatchObject({ limited: false, amount: 4500000 });
@@ -293,7 +295,7 @@ describe('CEO and Head of People and Culture routes (BRD 7.2.1, decision 31, FR-
     await decide(juma, id, { action: 'approve', crb: CRB });
     const upendo = await signIn('LFB0129');
     const v = await api(upendo.token).get(`/review/${id}`);
-    expect(v.body.data).toMatchObject({ limited: false, panel: { stage: 'pcm', needsHrChecks: true, nextStageLabel: 'CEO' } });
+    expect(v.body.data).toMatchObject({ limited: false, panel: { stage: 'pc', needsHrChecks: true, nextStageLabel: 'CEO' } });
     expect((await decide(upendo, id, { action: 'approve' })).body.code).toBe('HR_CHECKS_REQUIRED');
     await decide(upendo, id, { action: 'approve', hrChecks: HR_OK });
     const joseph = await signIn('LFB0002');
