@@ -38,7 +38,7 @@ describe('return to an earlier stage (D-106)', () => {
     const panel = (await api(joseph.token).get(`/review/${id}`)).body.data.panel;
     expect(panel.returnTargets).toEqual([
       { key: 'pc', label: 'People and Culture' },
-      { key: 'credit', label: 'Credit Analyst' },
+      { key: 'credit', label: 'Credit Underwriting' },
       { key: 'applicant', label: 'Applicant (for correction)' },
     ]);
   });
@@ -53,13 +53,13 @@ describe('return to an earlier stage (D-106)', () => {
     expect(a.stageDueAt.getTime()).toBeGreaterThan(Date.now());
 
     // Notified: the Credit Analyst, and the applicant that it went back.
-    expect(await Notification.exists({ userId: await userId('LFB0233'), type: 'application.stage_returned', text: /returned to your Credit Analyst review by CEO: Attach the second bureau report\./ })).toBeTruthy();
-    expect(await Notification.exists({ userId: await userId('LFB0412'), type: 'application.moved', text: /went back to Credit Analyst review/ })).toBeTruthy();
+    expect(await Notification.exists({ userId: await userId('LFB0233'), type: 'application.stage_returned', text: /returned to your Credit Underwriting review by CEO: Attach the second bureau report\./ })).toBeTruthy();
+    expect(await Notification.exists({ userId: await userId('LFB0412'), type: 'application.moved', text: /went back to Credit Underwriting review/ })).toBeTruthy();
     // History: the return names its destination; both earlier approvals are marked superseded.
     const history = (await api(joseph.token).get(`/review/${id}`)).body.data.history;
-    expect(history.find((h) => h.action === 'return')).toMatchObject({ stage: 'ceo', returnTo: 'credit', returnToLabel: 'Credit Analyst', comment: 'Attach the second bureau report.' });
+    expect(history.find((h) => h.action === 'return')).toMatchObject({ stage: 'ceo', returnTo: 'credit', returnToLabel: 'Credit Underwriting', comment: 'Attach the second bureau report.' });
     expect(history.filter((h) => h.action === 'approve').map((h) => [h.stage, h.superseded])).toEqual([['credit', true], ['pc', true]]);
-    expect(await AuditLog.exists({ action: 'review.return', description: /returned by CEO to Credit Analyst: Attach the second bureau report\./ })).toBeTruthy();
+    expect(await AuditLog.exists({ action: 'review.return', description: /returned by CEO to Credit Underwriting: Attach the second bureau report\./ })).toBeTruthy();
 
     // The same people approve again, and it reaches the CEO.
     expect((await decide(juma, id, { action: 'approve', crb: CRB })).body.data.outcome).toBe('moved');

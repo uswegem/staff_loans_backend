@@ -60,7 +60,7 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     const q = await api(juma.token).get('/queue');
     expect(q.body.data.items).toHaveLength(1);
     // D-86, D-102: the Credit Analyst sees identity, product and requested terms, never pay.
-    expect(q.body.data.items[0]).toMatchObject({ ref: expect.stringMatching(/^SL-/), limited: true, applicant: { firstName: 'Neema', lastName: 'Mushi' }, stageLabel: 'Credit Analyst' });
+    expect(q.body.data.items[0]).toMatchObject({ ref: expect.stringMatching(/^SL-/), limited: true, applicant: { firstName: 'Neema', lastName: 'Mushi' }, stageLabel: 'Credit Underwriting' });
     assertLimited(q.body);
     expect(q.body.data.items[0].due.targetHours).toBe(8);
 
@@ -244,7 +244,7 @@ describe('identity-only details for the Credit Analyst (FR-55, D-86)', () => {
 
   it('the notification carries no terms', async () => {
     const [n] = await notesFor('LFB0233', 'application.stage');
-    expect(n.text).toMatch(/from Daniel Mrema is waiting for your Credit Analyst review \(limited details\)$/);
+    expect(n.text).toMatch(/from Daniel Mrema is waiting for your Credit Underwriting review \(limited details\)$/);
     expect(n.text).not.toMatch(/5,000,000|Personal Loan/);
   });
 
