@@ -103,3 +103,34 @@ date, when it is attached and again at submission. 30 days is the default and th
 Settings may set a shorter limit but not a longer one, and a longer value stored before this
 decision (the earlier default was 45 days) counts as 30 and is lowered by
 `npm run upgrade:2026-12`.
+
+## D-112 – The Disbursement queue: papers and "Mark as disbursed" (Nov 2026)
+
+The final queue is called Disbursement (Swahili "Malipo ya Mkopo"): People and Culture
+(`loan.book`) book the loan in core banking and OPS (`disb.confirm`) disburse it. Route
+descriptions end "then Disbursement (People and Culture book, OPS disburse)". The OPS role
+keeps its name; statuses, the booking step and permissions are unchanged.
+
+Both teams download, for any loan with final approval (pending booking, pending
+disbursement or disbursed):
+
+- the Agreement, through `GET /agreements/:id/pdf`, named "<agreement number>.pdf";
+- a one-page Loan Summary, `GET /disbursements/:id/summary.pdf`, on the letterhead and in the
+  agreement's language: reference, agreement number, product, status, final approval (when,
+  by whom); the staff member and the account to credit; the approved terms and payslip
+  deduction label; any top-up (loan cleared, settlement, net to credit); the approval trail
+  without comments; booking and disbursement. No schedule, bureau report or payslip figures.
+  The footer says who generated it and when.
+
+Both downloads are audited (`agreement.download`, `summary.download`) with the application
+reference and the language. The applicant is refused the Loan Summary (403 `OWN_LOAN`) and the
+web app shows no download buttons on their own loan; they keep their own agreement under My
+applications (FR-25).
+
+"Mark as disbursed" is OPS only, and only for a booked loan (pending disbursement; otherwise
+409 `NOT_BOOKED`). It needs a date (not in the future, not before the booking date), a
+transaction reference (unique across loans, ignoring case: 409 `DUPLICATE_TRANSACTION_REF`)
+and a comment of 5 to 1000 characters. The separation of duties checks stay. The loan becomes
+disbursed, the schedule is regenerated from the date, the applicant and People and Culture are
+told, and the audit entry `loan.disbursed` carries the reference and comment. The record is
+read-only once saved; the Disbursed register and its CSV include the comment.

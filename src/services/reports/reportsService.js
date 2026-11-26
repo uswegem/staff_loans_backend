@@ -193,7 +193,7 @@ async function disbursed(viewer, f) {
     const g = ags.get(String(a.currentAgreementId)) || { terms: {} };
     if (limitedFor(viewer, a)) {
       limitedCount += 1;
-      return [a.ref, '', fullName(s), '', LIMITED, '', '', '', '', '', '', '', day(a.disbursement.date), '', '', '', ''];
+      return [a.ref, '', fullName(s), '', LIMITED, '', '', '', '', '', '', '', day(a.disbursement.date), '', '', '', '', ''];
     }
     return [
       a.ref, s.staffNo, fullName(s), s.department || '', productOf(a), a.approved.amount, g.terms.processingFee || 0, g.terms.insuranceFee || 0, a.approved.instalment, a.approved.tenor,
@@ -201,10 +201,11 @@ async function disbursed(viewer, f) {
       a.schedule?.[0]?.due || '', day(a.disbursement.date), a.disbursement.transactionRef || '', g.number || '',
       // D-107: booked in core banking by People and Culture before OPS disbursed.
       a.booking?.loanAccountNumber || '', a.booking?.date ? day(a.booking.date) : '',
+      a.disbursement.comment || '', // D-112
     ];
   });
   return {
-    columns: [col('Reference'), col('Staff number'), col('Staff'), col('Department'), col('Product'), col('Amount', 'money'), col('Processing fee', 'money'), col('Insurance', 'money'), col('Instalment', 'money'), col('Tenor', 'number'), col('Repayment method'), col('First due date', 'date'), col('Disbursed', 'date'), col('Transaction ref'), col('Agreement'), col('Loan account'), col('Booked', 'date')],
+    columns: [col('Reference'), col('Staff number'), col('Staff'), col('Department'), col('Product'), col('Amount', 'money'), col('Processing fee', 'money'), col('Insurance', 'money'), col('Instalment', 'money'), col('Tenor', 'number'), col('Repayment method'), col('First due date', 'date'), col('Disbursed', 'date'), col('Transaction ref'), col('Agreement'), col('Loan account'), col('Booked', 'date'), col('Comment')],
     rows,
     limitedCount,
     excluded,

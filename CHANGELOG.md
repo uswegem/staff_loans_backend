@@ -1,7 +1,11 @@
 # Changelog
 
+## Unreleased – Disbursement queue (D-112)
 
-
+- The final queue is "Disbursement" (People and Culture book, OPS disburse); route descriptions and messages say so.
+- `GET /disbursements/:id/summary.pdf`: a one-page Loan Summary in the agreement's language for `loan.book` and `disb.confirm`, approved loans only, never the applicant (403 `OWN_LOAN`); audited `summary.download`.
+- `GET /agreements/:id/pdf` downloads as "<agreement number>.pdf"; the audit entry carries the application reference and language.
+- Mark as disbursed: comment required (5–1000 characters), date not before the booking date, transaction reference unique (409 `DUPLICATE_TRANSACTION_REF`), refused before booking (409 `NOT_BOOKED`); People and Culture are notified; audited `loan.disbursed`; the Disbursed register CSV has a Comment column.
 ## Unreleased – payslip at most 30 days old
 
 - A payslip may be at most 30 days old (from its pay date), at upload and at submission. 30 days is the default and the ceiling: Settings accept a shorter limit only (`PUT /admin/settings` refuses more than 30). A longer value stored earlier (the default was 45) counts as 30, is saved back as 30, and is lowered by `npm run upgrade:2026-12` (D-111).

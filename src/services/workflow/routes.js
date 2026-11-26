@@ -43,6 +43,7 @@ function routeFor(permissions, staff) {
   return staff.category === 'Management' ? ROUTES.mgmt : ROUTES.nonmgmt;
 }
 
-const describeRoute = (route) => `${route.stages.map((s) => STAGES[s].short || STAGES[s].label).join(', then ')}, then OPS disburses`;
+// D-112: after the last approval the loan goes to Disbursement (People and Culture book, OPS disburse).
+const describeRoute = (route) => `${route.stages.map((s) => STAGES[s].short || STAGES[s].label).join(', then ')}, then Disbursement (People and Culture book, OPS disburse)`;
 
 module.exports = { STAGES, ROUTES, PC_STAGES, PERMISSION_ROLE, routeFor, describeRoute, stageAccepts };

@@ -601,4 +601,13 @@ module.exports = [
   ['OWN_SCHEDULE_NOT_HERE', 'You cannot download the schedule of your own loan here. Ask Operations or the Credit department for it.', 'Huwezi kupakua jedwali la mkopo wako mwenyewe hapa. Liombe kutoka Idara ya Uendeshaji au Idara ya Mikopo.'],
   ['SCHEDULE_AFTER_FINAL_APPROVAL', 'A repayment schedule is available once the loan has final approval.', 'Jedwali la marejesho linapatikana mkopo ukishapata idhini ya mwisho.'],
   ['PAYSLIP_AT_MOST_30_DAYS', 'A payslip may be at most 30 days old.', 'Hati ya mshahara inaweza kuwa na umri wa siku 30 tu au chini.'],
+  // ---------- D-112: Disbursement queue, Loan Summary, mark as disbursed ----------
+  ['NOT_IN_DISBURSEMENT', 'This loan is not in Disbursement.', 'Mkopo huu haupo kwenye Malipo ya Mkopo.'],
+  ['NOT_BOOKED_YET', 'People and Culture have not booked this loan yet. It can be disbursed once it is booked.', 'Rasilimali Watu bado hawajasajili mkopo huu. Unaweza kulipwa baada ya kusajiliwa.'],
+  ['COMMENT_FOR_DISBURSEMENT', 'Add a comment for the disbursement record.', 'Andika maoni kwa kumbukumbu ya malipo.'],
+  ['TRANSACTION_REF_ALREADY_RECORDED', 'This reference is already recorded on {a}.', 'Kumbukumbu hii tayari imerekodiwa kwenye {a}.'],
+  ['DISBURSED_PC_NOTICE', '{a} is disbursed (ref {b}).', '{a} imelipwa (kumbukumbu {b}).'],
+  ['OWN_LOAN_PAPERS', 'You cannot download the papers of your own loan here.', 'Huwezi kupakua nyaraka za mkopo wako mwenyewe hapa.'],
+  ['SUMMARY_AFTER_FINAL_APPROVAL', 'A loan summary is available once the loan has final approval.', 'Muhtasari wa mkopo unapatikana mkopo ukishapata idhini ya mwisho.'],
+  ['ROUTE_THEN_DISBURSEMENT', '{a}, then Disbursement (People and Culture book, OPS disburse)', '{a}, kisha Malipo ya Mkopo (Rasilimali Watu husajili, OPS hulipa)'],
 ];
