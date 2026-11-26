@@ -95,7 +95,11 @@ async function register(viewer, f) {
   const rows = apps.map((a) => {
     const s = staffOf(a);
     const outside = a.status === 'pending_disbursement' && a.stageEnteredAt && now - a.stageEnteredAt >= settings.approvalSlaDays * DAY ? 'Yes' : '';
-    const common = [STATUS[a.status], a.currentStage ? stageName(a.currentStage) : '', day(a.submittedAt), Math.floor((now - new Date(a.submittedAt)) / DAY), outside];
+    // D-113: Credit Underwriting's recommendation and whether the final decision went against it.
+    const rec = a.creditRecommendation?.outcome || null;
+    const final = a.status === 'rejected' && a.closedAtStage !== 'credit' ? 'reject' : APPROVED_LOAN.includes(a.status) ? 'approve' : null;
+    const recommendation = [rec === 'approve' ? 'Approve' : rec === 'reject' ? 'Reject' : '', rec && final ? (rec !== final ? 'Yes' : 'No') : ''];
+    const common = [STATUS[a.status], a.currentStage ? stageName(a.currentStage) : '', day(a.submittedAt), Math.floor((now - new Date(a.submittedAt)) / DAY), outside, ...recommendation];
     if (limitedFor(viewer, a)) {
       limitedCount += 1;
       return [a.ref, '', fullName(s), '', '', '', LIMITED, '', '', ...common];
@@ -103,7 +107,7 @@ async function register(viewer, f) {
     return [a.ref, s.staffNo, fullName(s), s.department || '', s.station || '', s.category || '', productOf(a), a.approved?.amount || a.amount, a.approved?.tenor || a.tenor, ...common];
   });
   return {
-    columns: [col('Reference'), col('Staff number'), col('Applicant'), col('Department'), col('Branch'), col('Category'), col('Product'), col('Amount', 'money'), col('Tenor', 'number'), col('Status'), col('Stage'), col('Submitted', 'date'), col('Age (days)', 'number'), col('Outside SLA')],
+    columns: [col('Reference'), col('Staff number'), col('Applicant'), col('Department'), col('Branch'), col('Category'), col('Product'), col('Amount', 'money'), col('Tenor', 'number'), col('Status'), col('Stage'), col('Submitted', 'date'), col('Age (days)', 'number'), col('Outside SLA'), col('Credit recommendation'), col('Final decision against recommendation')],
     rows,
     limitedCount,
     excluded,
@@ -163,7 +167,9 @@ const round1 = (x) => Math.round(x * 10) / 10;
 
 // ---------- RP-03 approvals, rejections and returns ----------
 
-const DECISION_LABEL = { approve: 'Approved', return: 'Returned', reject: 'Rejected' };
+const DECISION_LABEL = { approve: 'Approved', return: 'Returned', reject: 'Rejected', recommend_approval: 'Recommended approval', recommend_rejection: 'Recommended rejection' };
+// D-113: a decision that went against Credit Underwriting's recommendation says so.
+const decisionLabel = (d) => `${DECISION_LABEL[d.action] || d.action}${d.details?.againstRecommendation ? " (against Credit's recommendation)" : ''}`;
 
 async function decisions(viewer, f) {
   const { apps, staffOf } = await loadApps(viewer, { ...f, from: undefined, to: undefined });
@@ -176,7 +182,7 @@ async function decisions(viewer, f) {
     const lim = limitedFor(viewer, a);
     if (lim) limitedCount += 1;
     const comment = lim && String(d.actorId) !== viewer.userId ? LIMITED : d.comment || '';
-    return [a.ref, fullName(staffOf(a)), decisionStage(d), d.action === 'return' ? `Returned to ${d.details?.returnTo && d.details.returnTo !== 'applicant' ? stageName(d.details.returnTo) : 'the applicant'}` : DECISION_LABEL[d.action] || d.action, who.get(String(d.actorId)) || '', d.onBehalfOfId ? who.get(String(d.onBehalfOfId)) || '' : '', dateTime(d.at), comment];
+    return [a.ref, fullName(staffOf(a)), decisionStage(d), d.action === 'return' ? `Returned to ${d.details?.returnTo && d.details.returnTo !== 'applicant' ? stageName(d.details.returnTo) : 'the applicant'}` : decisionLabel(d), who.get(String(d.actorId)) || '', d.onBehalfOfId ? who.get(String(d.onBehalfOfId)) || '' : '', dateTime(d.at), comment];
   });
   return { columns: [col('Reference'), col('Applicant'), col('Stage'), col('Decision'), col('By'), col('On behalf of'), col('When', 'datetime'), col('Comment')], rows: out, limitedCount };
 }

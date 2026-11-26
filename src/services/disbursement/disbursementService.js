@@ -288,7 +288,7 @@ async function summary(req, id) {
     Staff.findById(app.applicantStaffId).lean(),
     Agreement.findById(app.currentAgreementId).lean(),
     ProductVersion.findById(app.productVersionId).select('name payslipLabel').lean(),
-    Decision.find({ applicationId: app._id, cycle: app.cycle, action: { $in: ['approve', 'return', 'reject'] }, stage: { $ne: null } }).sort({ at: 1 }).lean(),
+    Decision.find({ applicationId: app._id, cycle: app.cycle, action: { $in: ['approve', 'return', 'reject', 'recommend_approval', 'recommend_rejection'] }, stage: { $ne: null } }).sort({ at: 1 }).lean(),
   ]);
   const language = ag?.language || (ag?.templateId ? (await AgreementTemplate.findById(ag.templateId).select('language').lean())?.language : null) || 'sw';
   const tr = (x) => (language === 'sw' ? translate(x, 'sw') : x);
@@ -327,7 +327,7 @@ async function summary(req, id) {
       payslipLabel: version?.payslipLabel || null,
     },
     topUp: app.topUp?.on ? { clears: [app.topUp.loanRef, app.topUp.payslipLine?.label].filter(Boolean).join(', ') || null, settlement, fees, net: amount != null ? amount - fees - (settlement || 0) : null } : null,
-    approvals: decisions.map((d) => ({ stage: tr(decisionStage(d) || stageName(d.stage)), name: nameOf(d.actorId), action: d.action, at: d.at })),
+    approvals: decisions.map((d) => ({ stage: tr(decisionStage(d) || stageName(d.stage)), name: nameOf(d.actorId), action: d.action, against: !!d.details?.againstRecommendation, at: d.at })),
     booking: app.booking?.loanAccountNumber ? { loanAccountNumber: app.booking.loanAccountNumber, date: app.booking.date, by: nameOf(app.booking.bookedBy), note: app.booking.note } : null,
     disbursement: app.disbursement?.date ? { date: app.disbursement.date, transactionRef: app.disbursement.transactionRef, comment: app.disbursement.comment, by: nameOf(app.disbursement.confirmedBy) } : null,
     generatedBy: nameOf(req.auth.user._id) || req.auth.user.staffNo,

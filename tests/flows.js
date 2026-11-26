@@ -83,9 +83,12 @@ const attachCrb = (person, id, name = 'crb-report.pdf') => request(app()).post(`
  */
 async function decide(person, id, body) {
   const { crbFile, ...rest } = body;
-  if (rest.action === 'approve' && rest.crb && crbFile !== false) {
-    const Application = require('../src/models/Application');
-    const a = await Application.findById(id).lean();
+  const Application = require('../src/models/Application');
+  const a = await Application.findById(id).lean();
+  // D-113: Credit Underwriting recommends. Flows that "approve" at the credit stage recommend
+  // approval; tests of the raw action post it directly.
+  if (a?.currentStage === 'credit' && rest.action === 'approve') rest.action = 'recommend_approval';
+  if (['approve', 'recommend_approval', 'recommend_rejection'].includes(rest.action) && rest.crb && crbFile !== false) {
     if (a?.currentStage === 'credit' && !(a.crb?.fileIds?.length || a.crb?.fileId)) await attachCrb(person, id);
   }
   return api(person.token).post(`/review/${id}/decision`, rest);

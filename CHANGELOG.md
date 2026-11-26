@@ -9,6 +9,7 @@ Run `npm run upgrade:2026-12c` (dry run) and then `npm run upgrade:2026-12c -- -
 - sod1 allows exactly the Head of Credit's pair (`products.make`, `products.approveCredit` with `review.credit`); every wider combination still breaches.
 - Messages that named the Credit Analyst as the stage now say Credit Underwriting.
 - `scripts/upgrade-2026-12c.js` updates existing roles, audited and idempotent.
+- Credit Underwriting recommends, People and Culture or the CEO decides: at the credit stage `return`, `recommend_approval` (eligibility checked) and `recommend_rejection` (reason 10–1000 characters); `approve`/`reject` there, or `recommend_*` elsewhere, are 403 `NOT_ALLOWED_AT_STAGE`. Stored as `creditRecommendation`, audited `application.recommended`. Deciding against it needs a reason (400 `COMMENT_REQUIRED_AGAINST_RECOMMENDATION`) and is marked `againstRecommendation`. The applicant never sees it. Register gains "Credit recommendation" and "Final decision against recommendation"; the Loan Summary trail names both.
 
 ## Unreleased – one Disbursement queue (D-112)
 

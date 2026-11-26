@@ -68,10 +68,11 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     expect(view.body.data).toMatchObject({ limited: true, panel: { stage: 'credit', needsCrb: true, canRecommend: false, isFinal: false } });
     assertLimited(view.body);
 
-    // FR-42: the bureau outcome is required to approve; comments to return or reject (FR-15).
-    expect((await decide(juma, id, { action: 'approve' })).body.message).toBe('Record the credit bureau outcome before approving.');
+    // FR-42: the bureau outcome is required to recommend; a comment to return (FR-15). D-113:
+    // Credit Underwriting recommends and cannot reject.
+    expect((await decide(juma, id, { action: 'recommend_approval' })).body.message).toBe('Record the credit bureau outcome before making a recommendation.');
     expect((await decide(juma, id, { action: 'return' })).body.message).toBe('Add a comment so the applicant knows what to do.');
-    expect((await decide(juma, id, { action: 'reject', comment: '  ' })).body.code).toBe('COMMENT_REQUIRED');
+    expect((await decide(juma, id, { action: 'reject', comment: 'Adverse.' })).body.code).toBe('NOT_ALLOWED_AT_STAGE');
     const c = await decide(juma, id, { action: 'approve', crb: CRB, comment: 'Affordable, bureau clear.' });
     expect(c.body.data.outcome).toBe('moved');
     expect((await Application.findById(id)).status).toBe('pending_pc');
@@ -101,14 +102,14 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     const ag = await Agreement.findById(a.currentAgreementId);
     expect(ag.status).toBe('in_force');
     expect(ag.effectiveAt).toBeInstanceOf(Date);
-    expect(ag.approvals.map((x) => x.name)).toEqual(['Juma Kassim', 'Grace Mollel', 'Joseph Mwakalinga']); // FR-36
+    expect(ag.approvals.map((x) => x.name)).toEqual(['Grace Mollel', 'Joseph Mwakalinga']); // FR-36; D-113: Credit Underwriting recommends, it does not approve
     expect((await StoredFile.findById(ag.inForcePdfFileId)).mime).toBe('application/pdf');
     expect((await Staff.findOne({ staffNo: 'LFB0412' })).loanHistory).toHaveLength(1); // NS-02
     // D-112: straight to Disbursement; OPS and People and Culture (disb.confirm) are told.
     expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(1);
     expect(await notesFor('LFB0129', 'application.ready_to_disburse')).toHaveLength(1);
     expect((await notesFor('LFB0412', 'application.approved'))[0].text).toMatch(/now in force/);
-    expect(await Decision.countDocuments({ applicationId: id, action: 'approve' })).toBe(3);
+    expect(await Decision.countDocuments({ applicationId: id, action: { $in: ['approve', 'recommend_approval'] } })).toBe(3);
   });
 
   it('only the current stage acts; others and staff cannot', async () => {
@@ -125,10 +126,12 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     const neema = await signIn('LFB0412');
     const id = await applyAndSign(neema, PL(), NEEMA);
     const juma = await signIn('LFB0233');
-    await decide(juma, id, { action: 'reject', comment: 'Adverse bureau record.' });
+    // D-113: Credit Underwriting recommends rejection; People and Culture rejects.
+    await decide(juma, id, { action: 'recommend_rejection', crb: CRB, comment: 'Adverse bureau record.' });
+    await decide(await signIn('LFB0051'), id, { action: 'reject', comment: 'Adverse bureau record.' });
     const a = await Application.findById(id);
     expect(a.status).toBe('rejected');
-    expect(a.closedAtStage).toBe('credit');
+    expect(a.closedAtStage).toBe('pc');
     expect(await Agreement.findById(a.currentAgreementId)).toMatchObject({ status: 'void', voidReason: 'Application rejected' });
     expect((await notesFor('LFB0412', 'application.rejected'))[0].text).toMatch(/Adverse bureau record/);
   });
@@ -149,7 +152,7 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     expect(a).toMatchObject({ status: 'pending_credit', currentStage: 'credit', cycle: 2 });
     expect((await Agreement.findById(first)).status).toBe('void');
     const view = await api(grace.token).get(`/review/${id}`);
-    expect(view.body.data.history.map((h) => h.action)).toEqual(['create', 'submit', 'approve', 'return', 'resubmit']);
+    expect(view.body.data.history.map((h) => h.action)).toEqual(['create', 'submit', 'recommend_approval', 'return', 'resubmit']);
   });
 
   it('Credit records one of the four outcomes, with no appraisal or arrears note (D-99)', async () => {

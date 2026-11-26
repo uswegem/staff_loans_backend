@@ -12,7 +12,7 @@ const User = require('../../models/User');
 const Staff = require('../../models/Staff');
 const rbac = require('../rbac/rbacService');
 const { STAGES, stageAccepts } = require('./routes');
-const { validApprovals } = require('../review/approvals');
+const { validApprovals, STAGE_ACTIONS } = require('../review/approvals');
 const { PENDING_STAGE } = require('../../constants/statuses');
 
 const LIMITED_ROUTES = ['mgmt', 'ceo', 'hrhead'];
@@ -34,7 +34,7 @@ async function activeUsers(ids, session) {
  */
 /** Users with a valid approval of another stage of this application, in any cycle (D-106). */
 async function otherStageApprovers(app, session) {
-  const rows = await Decision.find({ applicationId: app._id, action: { $in: ['approve', 'return'] } }).select('actorId action stage cycle details at').session(session || null).lean();
+  const rows = await Decision.find({ applicationId: app._id, action: { $in: STAGE_ACTIONS } }).select('actorId action stage cycle details at').session(session || null).lean();
   return validApprovals(rows, app.stages || []).filter((d) => d.stage !== app.currentStage).map((d) => String(d.actorId));
 }
 

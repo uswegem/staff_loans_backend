@@ -80,12 +80,12 @@ async function journey(lang) {
   const grace = await signIn('LFB0051');
   const joseph = await signIn('LFB0002');
   const credit = as(juma, lang);
-  keep(await credit.post(`/review/${id}/decision`, { action: 'approve', crb: CRB })); // refused: no bureau file
+  keep(await credit.post(`/review/${id}/decision`, { action: 'recommend_approval', crb: CRB })); // refused: no bureau file
   await attachCrb(juma, id);
-  keep(await credit.post(`/review/${id}/decision`, { action: 'approve', crb: CRB }));
+  keep(await credit.post(`/review/${id}/decision`, { action: 'recommend_approval', crb: CRB }));
   keep(await as(grace, lang).post(`/review/${id}/decision`, { action: 'approve', hrChecks: HR_OK }));
   keep(await as(joseph, lang).post(`/review/${id}/decision`, { action: 'return', returnTo: 'credit', comment: 'Angalia tena / Check again' }));
-  keep(await credit.post(`/review/${id}/decision`, { action: 'approve', crb: CRB }));
+  keep(await credit.post(`/review/${id}/decision`, { action: 'recommend_approval', crb: CRB }));
   keep(await as(grace, lang).post(`/review/${id}/decision`, { action: 'approve', hrChecks: HR_OK }));
   keep(await as(joseph, lang).post(`/review/${id}/decision`, { action: 'approve' }));
 

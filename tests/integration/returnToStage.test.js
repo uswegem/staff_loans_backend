@@ -58,7 +58,7 @@ describe('return to an earlier stage (D-106)', () => {
     // History: the return names its destination; both earlier approvals are marked superseded.
     const history = (await api(joseph.token).get(`/review/${id}`)).body.data.history;
     expect(history.find((h) => h.action === 'return')).toMatchObject({ stage: 'ceo', returnTo: 'credit', returnToLabel: 'Credit Underwriting', comment: 'Attach the second bureau report.' });
-    expect(history.filter((h) => h.action === 'approve').map((h) => [h.stage, h.superseded])).toEqual([['credit', true], ['pc', true]]);
+    expect(history.filter((h) => ['approve', 'recommend_approval'].includes(h.action)).map((h) => [h.stage, h.superseded])).toEqual([['credit', true], ['pc', true]]);
     expect(await AuditLog.exists({ action: 'review.return', description: /returned by CEO to Credit Underwriting: Attach the second bureau report\./ })).toBeTruthy();
 
     // The same people approve again, and it reaches the CEO.
@@ -66,7 +66,7 @@ describe('return to an earlier stage (D-106)', () => {
     expect((await decide(grace, id, { action: 'approve', hrChecks: HR_OK })).body.data.outcome).toBe('moved');
     expect((await decide(joseph, id, { action: 'approve' })).body.data.outcome).toBe('approved');
     // The in-force agreement lists only the approvals still in force.
-    const approvals = await Decision.find({ applicationId: id, action: 'approve' }).lean();
+    const approvals = await Decision.find({ applicationId: id, action: { $in: ['approve', 'recommend_approval'] } }).lean();
     expect(approvals).toHaveLength(5);
   });
 
@@ -75,7 +75,7 @@ describe('return to an earlier stage (D-106)', () => {
     expect((await decide(joseph, id, { action: 'return', returnTo: 'pc', comment: 'Confirm the employment category.' })).status).toBe(200);
     expect(await Application.findById(id)).toMatchObject({ status: 'pending_pc', currentStage: 'pc' });
     const history = (await api(joseph.token).get(`/review/${id}`)).body.data.history;
-    expect(history.filter((h) => h.action === 'approve').map((h) => [h.stage, h.superseded])).toEqual([['credit', false], ['pc', true]]);
+    expect(history.filter((h) => ['approve', 'recommend_approval'].includes(h.action)).map((h) => [h.stage, h.superseded])).toEqual([['credit', false], ['pc', true]]);
     // The Credit Analyst's approval still counts, so they cannot act at People and Culture.
     expect([403, 404]).toContain((await decide(juma, id, { action: 'approve', hrChecks: HR_OK })).status);
     // The P&C Manager or Head of P&C decides again.

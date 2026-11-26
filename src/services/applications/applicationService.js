@@ -157,7 +157,11 @@ async function view(req, app) {
     documents: docs.map(DOC_VIEW),
     dataProtection: app.consents?.dataProtection?.accepted ? app.consents.dataProtection : null, // D-108
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
-    history: decisions.map((d) => ({ action: d.action, stage: d.stage, returnTo: d.action === 'return' ? d.details?.returnTo || 'applicant' : undefined, comment: d.comment, at: d.at, cycle: d.cycle, mine: String(d.actorId) === String(req.auth.user._id) })),
+    // D-113: the applicant never sees Credit Underwriting's recommendation: such a row reads
+    // "reviewed", with no outcome or reason.
+    history: decisions.map((d) => (['recommend_approval', 'recommend_rejection'].includes(d.action)
+      ? { action: 'reviewed', stage: d.stage, comment: null, at: d.at, cycle: d.cycle, mine: String(d.actorId) === String(req.auth.user._id) }
+      : { action: d.action, stage: d.stage, returnTo: d.action === 'return' ? d.details?.returnTo || 'applicant' : undefined, comment: d.comment, at: d.at, cycle: d.cycle, mine: String(d.actorId) === String(req.auth.user._id) })),
     checks: { eligibility: result.eligibility, fieldErrors: result.fieldErrors, checks: result.checks, canSubmit: result.canSubmit },
     payInputs: result.pay,
     quote: summariseQuote(result.quote),

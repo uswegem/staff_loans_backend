@@ -27,7 +27,7 @@ const workflow = require('../workflow/workflowService');
 const { capCheck } = require('../applications/capCheck');
 const { namesOf, stageName, decisionStage, fullName } = require('./reviewView');
 const { STAGES, PC_STAGES } = require('../workflow/routes');
-const { validApprovals, returnTargets } = require('./approvals');
+const { validApprovals, returnTargets, STAGE_ACTIONS } = require('./approvals');
 const { withTransaction } = require('../../config/db');
 const { localDay, localMidnight } = require('../../utils/dates');
 const { AppError, badRequest, conflict, forbidden, notFound } = require('../../utils/errors');
@@ -44,8 +44,9 @@ async function notifyOps(text, href, entityId, session, type = 'application.read
 /** Approvals in this cycle, as printed "kwa niaba ya Mwajiri" (FR-36). */
 async function approvalsFor(app, extra, session) {
   // Approvals still in force: one cancelled by a return to an earlier stage is not printed (D-106).
-  const history = await Decision.find({ applicationId: app._id, cycle: app.cycle, action: { $in: ['approve', 'return'] } }).sort({ at: 1 }).session(session || null).lean();
-  const rows = validApprovals(history, app.stages || []);
+  const history = await Decision.find({ applicationId: app._id, cycle: app.cycle, action: { $in: STAGE_ACTIONS } }).sort({ at: 1 }).session(session || null).lean();
+  // D-113: Credit Underwriting recommends; the agreement lists the approvals of the deciding stages.
+  const rows = validApprovals(history, app.stages || []).filter((d) => d.action === 'approve');
   const all = [...rows.map((d) => ({ actorId: d.actorId, onBehalfOfId: d.onBehalfOfId, stage: d.stage, details: d.details, at: d.at })), ...(extra ? [extra] : [])];
   const names = await namesOf(all.flatMap((a) => [a.actorId, a.onBehalfOfId]));
   return all.map((a) => ({ name: names.get(String(a.actorId))?.name, title: names.get(String(a.actorId))?.title, stage: decisionStage(a), at: a.at, onBehalfOf: a.onBehalfOfId ? names.get(String(a.onBehalfOfId))?.name : undefined }));
@@ -130,6 +131,15 @@ async function recheckCutoff(app, terms, now, { audience = 'reviewer', limited =
 // ---------- decisions ----------
 
 /**
+ * D-113: Credit Underwriting recommends; People and Culture or the CEO decides. The actions
+ * each stage may take; the server refuses any other.
+ */
+const CREDIT_ACTIONS = ['return', 'recommend_approval', 'recommend_rejection'];
+const DECIDING_ACTIONS = ['approve', 'return', 'reject'];
+const RECOMMENDS = ['recommend_approval', 'recommend_rejection'];
+const AGAINST_MIN = 10;
+
+/**
  * body: { action, comment, crb: { outcome, reportDate, fileId },
  *         recommended: { amount, tenor, reason }, suggested: { amount, tenor }, hrChecks }
  */
@@ -147,13 +157,27 @@ async function decide(req, app, body) {
   const comment = (body.comment || '').trim();
   const isFinal = app.stages.indexOf(stage) === app.stages.length - 1;
 
-  if (action !== 'approve' && !comment) throw badRequest('Add a comment so the applicant knows what to do.', { comment: ['Add a comment so the applicant knows what to do.'] }, 'COMMENT_REQUIRED');
+  // D-113: what each stage may do, whoever acts (a delegate gets the same options).
+  if (stage === 'credit' && !CREDIT_ACTIONS.includes(action)) throw forbidden('Credit Underwriting recommends; People and Culture or the CEO decides.', 'NOT_ALLOWED_AT_STAGE');
+  if (stage !== 'credit' && !DECIDING_ACTIONS.includes(action)) throw forbidden('Only Credit Underwriting recommends. At this stage, approve, return or reject.', 'NOT_ALLOWED_AT_STAGE');
+  const recommends = RECOMMENDS.includes(action);
+
+  if (action === 'recommend_rejection' && comment.length < 10) throw badRequest('Give the reason for recommending rejection.', { comment: ['Give the reason for recommending rejection.'] }, 'COMMENT_REQUIRED');
+  if (action === 'recommend_rejection' && comment.length > 1000) throw badRequest('The reason can be at most 1000 characters.', { comment: ['The reason can be at most 1000 characters.'] }, 'COMMENT_TOO_LONG');
+  // D-113: going against Credit Underwriting's recommendation (this cycle) needs the reason.
+  const rec = stage !== 'credit' && app.creditRecommendation?.outcome && app.creditRecommendation.cycle === app.cycle ? app.creditRecommendation : null;
+  const againstRecommendation = !!rec && ((action === 'approve' && rec.outcome === 'reject') || (action === 'reject' && rec.outcome === 'approve'));
+  if (againstRecommendation && comment.length < AGAINST_MIN) {
+    const msg = action === 'approve' ? "Give the reason for approving against Credit's recommendation." : "Give the reason for rejecting against Credit's recommendation.";
+    throw badRequest(msg, { comment: [msg] }, 'COMMENT_REQUIRED_AGAINST_RECOMMENDATION');
+  }
+  if (['return', 'reject'].includes(action) && !comment) throw badRequest('Add a comment so the applicant knows what to do.', { comment: ['Add a comment so the applicant knows what to do.'] }, 'COMMENT_REQUIRED');
   // D-106: a return goes to the applicant (as before) or to an earlier stage passed in this cycle.
   let returnTo;
   if (action === 'return') {
     returnTo = body.returnTo || 'applicant';
     if (returnTo !== 'applicant') {
-      const history = await Decision.find({ applicationId: app._id, action: { $in: ['approve', 'return'] } }).lean();
+      const history = await Decision.find({ applicationId: app._id, action: { $in: STAGE_ACTIONS } }).lean();
       if (!returnTargets(app, history).includes(returnTo)) {
         throw badRequest('Choose the applicant or an earlier stage this application has already passed.', { returnTo: ['Choose the applicant or an earlier stage this application has already passed.'] }, 'RETURN_TARGET_INVALID');
       }
@@ -162,10 +186,11 @@ async function decide(req, app, body) {
   const set = {};
   let recommended = null;
   if (stage === 'credit') {
-    if (action === 'approve' && !body.crb?.outcome) throw badRequest('Record the credit bureau outcome before approving.', { crb: ['Record the credit bureau outcome before approving.'] }, 'CRB_REQUIRED');
-    if (action === 'approve' && !body.crb?.reportDate) throw badRequest('Enter the credit bureau report date before approving.', { crb: ['Enter the credit bureau report date before approving.'] }, 'CRB_REQUIRED');
-    // D-105: approving needs at least one bureau report file; returning or rejecting does not.
-    if (action === 'approve' && !crbFileIds(app).length) throw badRequest('Attach at least one credit bureau report before approving.', { crb: ['Attach at least one credit bureau report before approving.'] }, 'CRB_FILE_REQUIRED');
+    // D-113: either recommendation needs the bureau outcome, its date and a report file (D-105);
+    // a return does not.
+    if (recommends && !body.crb?.outcome) throw badRequest('Record the credit bureau outcome before making a recommendation.', { crb: ['Record the credit bureau outcome before making a recommendation.'] }, 'CRB_REQUIRED');
+    if (recommends && !body.crb?.reportDate) throw badRequest('Enter the credit bureau report date before making a recommendation.', { crb: ['Enter the credit bureau report date before making a recommendation.'] }, 'CRB_REQUIRED');
+    if (recommends && !crbFileIds(app).length) throw badRequest('Attach at least one credit bureau report before making a recommendation.', { crb: ['Attach at least one credit bureau report before making a recommendation.'] }, 'CRB_FILE_REQUIRED');
     // The outcome and date only: the files are kept as attached (D-105).
     if (body.crb?.outcome) Object.assign(set, { 'crb.outcome': body.crb.outcome, 'crb.reportDate': body.crb.reportDate ? localMidnight(body.crb.reportDate) : null });
     // D-86: the Credit Analyst records the bureau check only; terms are not recommended any more.
@@ -200,6 +225,19 @@ async function decide(req, app, body) {
   const agreement = await Agreement.findById(app.currentAgreementId);
   const termsChanged = !!(recommendedNow && (recommendedNow.amount !== agreement.terms.amount || recommendedNow.tenor !== agreement.terms.tenor));
 
+  // D-113: recommending approval needs the same eligibility as approving; recommending
+  // rejection does not. The reason stays generic: Credit Underwriting sees identity only.
+  if (action === 'recommend_approval') {
+    const terms = agreement.terms;
+    try {
+      await recheckCutoff(app, terms, now, { limited: true });
+    } catch (err) {
+      throw conflict("This application cannot be recommended for approval: the applicant's retirement cutoff no longer allows its terms. Recommend rejection or return it.", err.code);
+    }
+    const cap = await capCheck(app, terms, now);
+    if (!cap.ok) throw conflict("This application cannot be recommended for approval: the applicant's combined loan limit no longer allows it. Recommend rejection or return it.", cap.code);
+  }
+
   // D-82: every approval re-checks the cutoff with the latest verified date of birth.
   if (action === 'approve') {
     const terms = recommendedNow || agreement.terms;
@@ -214,11 +252,14 @@ async function decide(req, app, body) {
 
   let outcome;
   await withTransaction(async (session) => {
+    if (recommends) {
+      set.creditRecommendation = { outcome: action === 'recommend_approval' ? 'approve' : 'reject', reason: comment || undefined, crbOutcome: set['crb.outcome'], by: req.auth.user._id, onBehalfOf: actor.onBehalfOf || undefined, at: now, cycle: app.cycle };
+    }
     const fresh = await Application.findOneAndUpdate({ _id: app._id, status: app.status, currentStage: stage }, { $set: { ...set, ...(recommended ? { recommended } : {}) } }, { new: true, session });
     if (!fresh) throw conflict('Someone else has just decided on this application. Reload it.', 'STATE_CHANGED');
 
     await Decision.create(
-      [{ applicationId: app._id, cycle: app.cycle, stage, action, actorId: req.auth.user._id, onBehalfOfId: actor.onBehalfOf || undefined, comment: storedComment, details: { permission: actor.permission, returnTo: action === 'return' ? returnTo : undefined, crb: set['crb.outcome'] ? { outcome: set['crb.outcome'] } : undefined, hrChecks: set.hrChecks, recommended: recommended ? { amount: recommended.amount, tenor: recommended.tenor } : undefined }, at: now, ip: req.ip }],
+      [{ applicationId: app._id, cycle: app.cycle, stage, action, actorId: req.auth.user._id, onBehalfOfId: actor.onBehalfOf || undefined, comment: storedComment, details: { permission: actor.permission, returnTo: action === 'return' ? returnTo : undefined, crb: set['crb.outcome'] ? { outcome: set['crb.outcome'] } : undefined, hrChecks: set.hrChecks, recommended: recommended ? { amount: recommended.amount, tenor: recommended.tenor } : undefined, againstRecommendation: againstRecommendation || undefined }, at: now, ip: req.ip }],
       { session }
     );
 
@@ -284,18 +325,22 @@ async function decide(req, app, body) {
       outcome = 'approved';
     }
 
+    const against = againstRecommendation ? " against Credit's recommendation" : '';
     await audit.record(
       {
         req,
-        action: `review.${action}`,
-        description: `${app.ref} ${action === 'approve' ? `approved by ${stageName(stage)}${outcome === 'approved' ? ' (final; agreement in force)' : outcome === 'revised' ? ' (final; revised terms to accept)' : ''}` : action === 'return' ? `returned by ${stageName(stage)} to ${returnTo === 'applicant' ? 'the applicant' : stageName(returnTo)}: ${storedComment}` : `rejected by ${stageName(stage)}`}${actor.onBehalfOf ? ' on behalf of the stage holder' : ''}`,
+        // D-113: a recommendation is audited as application.recommended.
+        action: recommends ? 'application.recommended' : `review.${action}`,
+        description: recommends
+          ? `${app.ref} recommended for ${action === 'recommend_approval' ? 'approval' : 'rejection'} by Credit Underwriting${comment ? `: ${comment}` : ''}${actor.onBehalfOf ? ' (on behalf of the stage holder)' : ''}`
+          : `${app.ref} ${action === 'approve' ? `approved by ${stageName(stage)}${outcome === 'approved' ? ' (final; agreement in force)' : outcome === 'revised' ? ' (final; revised terms to accept)' : ''}` : action === 'return' ? `returned by ${stageName(stage)} to ${returnTo === 'applicant' ? 'the applicant' : stageName(returnTo)}: ${storedComment}` : `rejected by ${stageName(stage)}`}${against}${actor.onBehalfOf ? ' on behalf of the stage holder' : ''}`,
         entity: 'Application',
         entityId: String(app._id),
         appRef: app.ref,
         limited,
         onBehalfOfId: actor.onBehalfOf || undefined,
         before: { status: app.status, stage },
-        after: { outcome, returnTo, crb: set['crb.outcome'], recommended: limited ? undefined : recommended && { amount: recommended.amount, tenor: recommended.tenor } },
+        after: { outcome, returnTo, crb: set['crb.outcome'], againstRecommendation: againstRecommendation || undefined, recommendation: recommends ? set.creditRecommendation.outcome : undefined, recommended: limited ? undefined : recommended && { amount: recommended.amount, tenor: recommended.tenor } },
       },
       { session }
     );

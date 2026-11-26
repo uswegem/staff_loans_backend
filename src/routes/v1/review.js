@@ -30,7 +30,7 @@ const crbUpload = multer({
  * /review/{id}:
  *   get: { tags: [Review], summary: "Review screen: full (FR-14) or limited to name, mobile and NIDA (FR-55); audited", security: [{ bearer: [] }], responses: { 200: { description: Review view }, 403: { description: Own application } } }
  * /review/{id}/decision:
- *   post: { tags: [Review], summary: "Approve, return or reject with the stage's checks (FR-15 to FR-18, FR-42, FR-56)", security: [{ bearer: [] }], responses: { 200: { description: Outcome }, 400: { description: Missing comment or checks } } }
+ *   post: { tags: [Review], summary: "Decide at the current stage (FR-15 to FR-18, FR-42, FR-56). D-113: Credit Underwriting returns, recommend_approval (bureau outcome and report file; eligibility checks must pass) or recommend_rejection (bureau outcome and report file; reason of 10 to 1000 characters; eligibility not checked); both move the application to the next stage and are stored as creditRecommendation. The later stages approve, return or reject; going against the recommendation needs a reason of at least 10 characters (400 COMMENT_REQUIRED_AGAINST_RECOMMENDATION) and is marked againstRecommendation. Any other action at a stage is 403 NOT_ALLOWED_AT_STAGE. The applicant never sees the recommendation.", security: [{ bearer: [] }], responses: { 200: { description: Outcome }, 400: { description: Missing comment, reason or checks }, 403: { description: Action not allowed at this stage }, 409: { description: Eligibility no longer allows approval or a recommendation of approval } } }
  * /review/{id}/crb-report/{fileId}:
  *   delete: { tags: [Review], summary: "Remove a credit bureau report file the current Credit Analyst attached, before deciding (D-105); audited", security: [{ bearer: [] }], responses: { 204: { description: Removed }, 403: { description: Not your file or stage } } }
  * /review/{id}/crb-report:
@@ -56,7 +56,8 @@ router.post(
   validate({
     ...idParams,
     body: Joi.object({
-      action: Joi.string().valid('approve', 'return', 'reject').required(),
+      // D-113: Credit Underwriting returns or recommends; the other stages approve, return or reject.
+      action: Joi.string().valid('approve', 'return', 'reject', 'recommend_approval', 'recommend_rejection').required(),
       // D-106: where a return goes: the applicant (default) or an earlier stage passed in this cycle.
       returnTo: Joi.string().valid('applicant', ...Object.keys(STAGES)),
       comment: Joi.string().trim().max(2000).allow(''),
