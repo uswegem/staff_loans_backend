@@ -217,8 +217,11 @@ const ApplicationController = {
     if (!ag || !(await canSee(req, ag.applicationId))) throw notFound('Agreement not found.');
     // Once in force, the PDF that lists the approvers (FR-36).
     const file = await StoredFile.findById(ag.inForcePdfFileId || ag.pdfFileId);
-    await audit.record({ req, action: 'agreement.download', description: `Agreement ${ag.number} PDF downloaded`, entity: 'Agreement', entityId: String(ag._id) });
-    await fileStore.send(res, file);
+    // D-112: with the application reference and the agreement's language.
+    const appRef = (await Application.findById(ag.applicationId).select('ref').lean())?.ref;
+    await audit.record({ req, action: 'agreement.download', description: `Agreement ${ag.number} PDF downloaded`, entity: 'Agreement', entityId: String(ag._id), appRef, after: { language: ag.language || null } });
+    // D-112: "<agreement number>.pdf", in force or as signed.
+    await fileStore.send(res, file, { name: `${ag.number}.pdf` });
   },
 
   /**

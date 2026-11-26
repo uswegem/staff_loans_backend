@@ -51,11 +51,11 @@ async function read(file) {
 }
 
 /** Streams a stored file as a download with safe headers. */
-async function send(res, file, { inline = false } = {}) {
+async function send(res, file, { inline = false, name } = {}) {
   const buffer = await read(file);
   res.set('Content-Type', file.mime);
   res.set('Content-Length', String(buffer.length));
-  res.set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${safeName(file.originalName).replace(/"/g, '')}"`);
+  res.set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${safeName(name || file.originalName).replace(/"/g, '')}"`);
   res.set('X-Content-Type-Options', 'nosniff');
   res.send(buffer);
 }

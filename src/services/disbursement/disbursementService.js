@@ -62,7 +62,9 @@ function bookBlockedReason(userId, app) {
 /** What this person may do on a loan in the queue (D-107). */
 async function actionsFor(req, app) {
   const perms = req.auth.permissions;
-  const out = { canBook: false, canConfirm: false, bookBlockedReason: null, blockedReason: null };
+  // D-112: the applicant never downloads the papers of their own loan here.
+  const ownLoan = String(app.applicantUserId) === String(req.auth.user._id);
+  const out = { canBook: false, canConfirm: false, bookBlockedReason: null, blockedReason: null, ownLoan, canDownload: !ownLoan };
   if (app.status === 'pending_booking' && perms.has('loan.book')) {
     out.bookBlockedReason = bookBlockedReason(req.auth.user._id, app);
     out.canBook = !out.bookBlockedReason;
@@ -103,6 +105,7 @@ function row(app, maps, settings, names) {
     fees,
     repayment: app.repayment,
     agreementNumber: ag?.number,
+    agreementId: ag ? String(ag._id) : null,
     approvedAt: app.stageEnteredAt,
     firstDueDate: app.schedule?.[0]?.due || ag?.terms?.firstDueDate || null,
     booking: app.booking?.loanAccountNumber
@@ -151,7 +154,7 @@ async function list(req, { tab, q } = {}) {
 
 async function load(id) {
   const app = await Application.findById(id);
-  if (!app || !APPROVED_LOAN.includes(app.status)) throw notFound('This loan is not in the final approval queue.');
+  if (!app || !APPROVED_LOAN.includes(app.status)) throw notFound('This loan is not in Disbursement.');
   return app;
 }
 
@@ -167,7 +170,7 @@ async function detail(req, id) {
   const names = await namesOf([app.disbursement?.confirmedBy, app.booking?.bookedBy, ...docs.map((d) => d.uploadedBy)].filter(Boolean));
   const staff = maps.staff.get(String(app.applicantStaffId));
   const ag = maps.agreements.get(String(app.currentAgreementId));
-  await audit.record({ req, action: 'disbursement.view', description: `${app.ref} opened in the final approval queue`, entity: 'Application', entityId: String(app._id), appRef: app.ref });
+  await audit.record({ req, action: 'disbursement.view', description: `${app.ref} opened in Disbursement`, entity: 'Application', entityId: String(app._id), appRef: app.ref });
   return {
     ...row(app.toObject(), maps, settings, names),
     agreement: ag && { id: String(ag._id), number: ag.number, kind: ag.kind, signedAt: ag.acceptance?.at, effectiveAt: ag.effectiveAt, terms: ag.terms },
@@ -177,7 +180,8 @@ async function detail(req, id) {
     staff: { ...row(app.toObject(), maps, settings).staff, mobile: staff.personal?.mobile },
     // D-101: the payslip deduction topped up, and the SLAS loan it settles when there is one.
     topUp: app.topUp?.on ? { loanRef: app.topUp.loanRef || null, payslipLine: app.topUp.payslipLine?.label ? app.topUp.payslipLine : null, outstanding: app.topUp.outstanding ?? null } : null,
-    earliestDate: localDay(app.stageEnteredAt),
+    // D-112: OPS disburse on or after the booking date.
+    earliestDate: localDay(app.booking?.date || app.stageEnteredAt),
     today: localDay(),
     schedule: app.schedule || [],
     scheduleBasis: app.scheduleBasis,
@@ -234,7 +238,10 @@ async function book(req, id, body) {
  */
 async function confirm(req, id, body) {
   const app = await load(id);
+  // D-112: only after People and Culture have booked it (D-107).
+  if (app.status === 'pending_booking') throw conflict('People and Culture have not booked this loan yet. It can be disbursed once it is booked.', 'NOT_BOOKED');
   if (app.status !== 'pending_disbursement') throw conflict('This loan has already been disbursed.', 'ALREADY_DISBURSED');
+  if (!app.booking?.loanAccountNumber) throw conflict('People and Culture have not booked this loan yet. It can be disbursed once it is booked.', 'NOT_BOOKED');
   const blocked = await blockedReason(req.auth.user._id, app);
   if (blocked) throw forbidden(blocked, 'SOD_DISBURSE');
 
@@ -243,12 +250,13 @@ async function confirm(req, id, body) {
   if (!cap.ok) throw conflict(`This loan cannot be disbursed now. ${cap.message} Refer it back to Credit.`, cap.code);
 
   if (app.topUp?.on && body.topUpSettled !== true) throw badRequest('Confirm the old loan balance has been settled.', { topUpSettled: ['Confirm the old loan balance has been settled.'] }, 'TOPUP_NOT_SETTLED');
+  // D-112: a comment of 5 to 1000 characters for the disbursement record.
   const comment = (body.comment || '').trim();
-  if (!comment) throw badRequest('Add a comment confirming the disbursement.', { comment: ['Add a comment confirming the disbursement.'] }, 'COMMENT_REQUIRED');
+  if (comment.length < 5) throw badRequest('Add a comment for the disbursement record.', { comment: ['Add a comment for the disbursement record.'] }, 'COMMENT_REQUIRED');
   const today = localDay();
   if (body.date > today) throw badRequest('The disbursement date cannot be in the future.', { date: ['The disbursement date cannot be in the future.'] }, 'DATE_INVALID');
-  if (body.date < localDay(app.stageEnteredAt)) throw badRequest('The disbursement date cannot be before the final approval.', { date: ['The disbursement date cannot be before the final approval.'] }, 'DATE_INVALID');
-  if (app.booking?.date && body.date < localDay(app.booking.date)) throw badRequest('The disbursement date cannot be before the booking date.', { date: ['The disbursement date cannot be before the booking date.'] }, 'DATE_INVALID');
+  // D-112: the lower bound is the booking date (which is itself on or after final approval).
+  if (body.date < localDay(app.booking.date)) throw badRequest('The disbursement date cannot be before the booking date.', { date: ['The disbursement date cannot be before the booking date.'] }, 'DATE_INVALID');
 
   // FR-21, FR-24: the schedule restarts from the disbursement date.
   const [pricing, settings] = await Promise.all([PricingVersion.findById(app.pricingVersionId).lean(), Settings.get()]);
@@ -264,6 +272,9 @@ async function confirm(req, id, body) {
   const now = new Date();
   const transactionRef = (body.transactionRef || '').trim();
   if (!transactionRef) throw badRequest('Enter the core banking transaction reference.', { transactionRef: ['Enter the core banking transaction reference.'] }, 'TRANSACTION_REF_REQUIRED');
+  // D-112: one transaction reference, one disbursed loan.
+  const sameRef = await Application.findOne({ _id: { $ne: app._id }, 'disbursement.transactionRef': { $regex: `^${transactionRef.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&')}$`, $options: 'i' } }).select('ref').lean();
+  if (sameRef) throw conflict(`This reference is already recorded on ${sameRef.ref}.`, 'DUPLICATE_TRANSACTION_REF', { transactionRef: [`This reference is already recorded on ${sameRef.ref}.`] });
   const disbursement = { date: localMidnight(body.date), transactionRef, comment, topUpSettled: app.topUp?.on ? true : undefined, confirmedBy: req.auth.user._id, confirmedAt: now };
 
   await withTransaction(async (session) => {
@@ -284,16 +295,18 @@ async function confirm(req, id, body) {
     await audit.record(
       {
         req,
-        action: 'disbursement.confirm',
-        description: `${app.ref} disbursed: ${tzs(amount)} on ${body.date}${transactionRef ? `, ref ${transactionRef}` : ''}`,
+        action: 'loan.disbursed', // D-112
+        description: `${app.ref} disbursed: ${tzs(amount)} on ${body.date}, ref ${transactionRef}: ${comment}`,
         entity: 'Application',
         entityId: String(app._id),
         appRef: app.ref,
         before: { status: 'pending_disbursement', scheduleBasis: app.scheduleBasis, firstDue: app.schedule?.[0]?.due },
-        after: { status: 'disbursed', date: body.date, transactionRef, firstDue: schedule[0]?.due },
+        after: { status: 'disbursed', date: body.date, transactionRef, comment, firstDue: schedule[0]?.due },
       },
       { session }
     );
+    // D-112: People and Culture, who booked it, are told too.
+    await notify.notifyPermission('loan.book', { type: 'application.disbursed_pc', text: `${app.ref} is disbursed (ref ${transactionRef}).`, href: '/disburse', entity: 'Application', entityId: String(app._id) }, { session, exclude: [app.applicantUserId] });
     await notify.notifyUsers([app.applicantUserId], { type: 'application.disbursed', text: `${app.ref}: your loan of ${tzs(amount)} has been disbursed. Your first instalment of ${tzs(instalment)} is due on ${schedule[0]?.due}.`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
   });
   return detail(req, app._id);
@@ -310,4 +323,70 @@ async function flagOutsideSla(now = new Date()) {
   return set.modifiedCount + unset.modifiedCount;
 }
 
-module.exports = { list, detail, book, confirm, flagOutsideSla, slaInfo, blockedReason, bookBlockedReason };
+/**
+ * D-112: the Loan Summary PDF for Disbursement, in the agreement's language. People and
+ * Culture and OPS only, approved loans only, never the applicant. Audited (summary.download).
+ */
+async function summary(req, id) {
+  const app = await Application.findById(id);
+  if (!app) throw notFound('Application not found.');
+  if (!APPROVED_LOAN.includes(app.status)) throw forbidden('A loan summary is available once the loan has final approval.', 'NOT_APPROVED');
+  if (String(app.applicantUserId) === String(req.auth.user._id)) throw forbidden('You cannot download the papers of your own loan here.', 'OWN_LOAN');
+  const AgreementTemplate = require('../../models/AgreementTemplate');
+  const { stageName, decisionStage } = require('../review/reviewView');
+  const { summaryPdf } = require('../agreement/pdfService');
+  const { translate } = require('../../i18n');
+  const [staff, ag, version, decisions] = await Promise.all([
+    Staff.findById(app.applicantStaffId).lean(),
+    Agreement.findById(app.currentAgreementId).lean(),
+    ProductVersion.findById(app.productVersionId).select('name payslipLabel').lean(),
+    Decision.find({ applicationId: app._id, cycle: app.cycle, action: { $in: ['approve', 'return', 'reject'] }, stage: { $ne: null } }).sort({ at: 1 }).lean(),
+  ]);
+  const language = ag?.language || (ag?.templateId ? (await AgreementTemplate.findById(ag.templateId).select('language').lean())?.language : null) || 'sw';
+  const tr = (x) => (language === 'sw' ? translate(x, 'sw') : x);
+  const names = await namesOf([...decisions.flatMap((d) => [d.actorId, d.onBehalfOfId]), app.booking?.bookedBy, app.disbursement?.confirmedBy, req.auth.user._id].filter(Boolean));
+  const nameOf = (uid) => names.get(String(uid))?.name || null;
+  const finalApproval = [...decisions].reverse().find((d) => d.action === 'approve');
+  const terms = ag?.terms || {};
+  const fees = (terms.processingFee || 0) + (terms.insuranceFee || 0);
+  const amount = app.approved?.amount;
+  const settlement = app.topUp?.outstanding ?? app.topUp?.payslipLine?.amount ?? null;
+  const at = new Date();
+  const pdf = await summaryPdf({
+    language,
+    ref: app.ref,
+    agreementNumber: ag?.number,
+    product: version?.name,
+    statusLabel: tr(STATUS[app.status]),
+    finalApproval: { at: app.finalApprovedAt || finalApproval?.at, by: finalApproval ? nameOf(finalApproval.actorId) : null },
+    staff: {
+      name: fullName(staff),
+      staffNo: staff.staffNo,
+      title: staff.title,
+      station: staff.station,
+      mobile: staff.personal?.mobile,
+      account: staff.bank?.accountNo ? [staff.bank.accountName || fullName(staff), staff.bank.accountNo, staff.bank.bank].filter(Boolean).join(', ') : null,
+    },
+    terms: {
+      amount,
+      tenor: app.approved?.tenor,
+      rate: `${Number.parseFloat(((terms.interestBps ?? 0) / 100).toFixed(2))}%`,
+      instalment: app.approved?.instalment,
+      totalRepayable: (app.schedule || []).reduce((t, r) => t + (r.payment || 0), 0) || terms.totalRepayable,
+      totalInterest: (app.schedule || []).reduce((t, r) => t + (r.interest || 0), 0) || terms.totalInterest,
+      firstDue: app.schedule?.[0]?.due,
+      lastDue: app.schedule?.at(-1)?.due,
+      payslipLabel: version?.payslipLabel || null,
+    },
+    topUp: app.topUp?.on ? { clears: [app.topUp.loanRef, app.topUp.payslipLine?.label].filter(Boolean).join(', ') || null, settlement, fees, net: amount != null ? amount - fees - (settlement || 0) : null } : null,
+    approvals: decisions.map((d) => ({ stage: tr(decisionStage(d) || stageName(d.stage)), name: nameOf(d.actorId), action: d.action, at: d.at })),
+    booking: app.booking?.loanAccountNumber ? { loanAccountNumber: app.booking.loanAccountNumber, date: app.booking.date, by: nameOf(app.booking.bookedBy), note: app.booking.note } : null,
+    disbursement: app.disbursement?.date ? { date: app.disbursement.date, transactionRef: app.disbursement.transactionRef, comment: app.disbursement.comment, by: nameOf(app.disbursement.confirmedBy) } : null,
+    generatedBy: nameOf(req.auth.user._id) || req.auth.user.staffNo,
+    at,
+  });
+  await audit.record({ req, action: 'summary.download', description: `${app.ref}: loan summary downloaded (${language})`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { language } });
+  return { pdf, ref: app.ref };
+}
+
+module.exports = { list, detail, book, confirm, summary, flagOutsideSla, slaInfo, blockedReason, bookBlockedReason };
