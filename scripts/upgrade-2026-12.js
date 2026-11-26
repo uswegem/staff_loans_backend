@@ -13,6 +13,8 @@
 //  3. Data protection (D-108): the approved notice DP-2026-1 in English and Swahili.
 //  4. Notifications (D-109): existing notifications get their message code and params,
 //     so they are shown in the reader's language.
+//  5. Payslip age (D-111): a payslip may be at most 30 days old; a longer limit in the
+//     settings (the earlier default was 45 days) is lowered to 30.
 //
 // Usage: npm run upgrade:2026-12 [-- --dry-run]
 
@@ -58,6 +60,12 @@ async function run({ dryRun = false } = {}) {
   }
   out.notificationsCoded = ops.length;
   if (!dryRun && ops.length) await notes.bulkWrite(ops, { ordered: false });
+
+  // 5. The payslip age limit: at most 30 days.
+  const settings = db.collection('settings');
+  const longer = { payslipMaxAgeDays: { $gt: 30 } };
+  out.payslipMaxAgeFrom = (await settings.findOne(longer))?.payslipMaxAgeDays ?? null;
+  if (!dryRun && out.payslipMaxAgeFrom) await settings.updateMany(longer, { $set: { payslipMaxAgeDays: 30 } });
   return out;
 }
 
@@ -73,6 +81,7 @@ if (require.main === module) {
       console.log(`Approved loans ${verb} sent to Pending Booking: ${r.toBooking.length}${r.toBooking.length ? ` (${r.toBooking.join(', ')})` : ''}.`);
       console.log(`Data protection notice versions ${verb} loaded: ${r.notices.join(', ') || 'none (already there)'}.`);
       console.log(`Notifications ${verb} given a message code: ${r.notificationsCoded}; left as text (shown as stored): ${r.unmatchedNotifications}.`);
+      console.log(r.payslipMaxAgeFrom ? `Payslip age limit ${verb} lowered from ${r.payslipMaxAgeFrom} to 30 days.` : 'Payslip age limit: already 30 days or less.');
       return mongoose.disconnect();
     })
     .catch(async (err) => {

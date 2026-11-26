@@ -66,7 +66,7 @@ router.put(
       firstDueDay: Joi.number().integer().min(1).max(31),
       inactivityTimeoutMin: Joi.number().integer().min(1).max(240),
       lockoutThreshold: Joi.number().integer().min(3).max(10),
-      payslipMaxAgeDays: Joi.number().integer().min(1).max(120),
+      payslipMaxAgeDays: Joi.number().integer().min(1).max(30).messages({ 'number.max': 'A payslip may be at most 30 days old.' }), // D-111
       retirementAge: Joi.number().integer().min(40).max(75),
       retirementBufferDays: Joi.number().integer().min(0).max(365),
       dobMinAge: Joi.number().integer().min(14).max(30),

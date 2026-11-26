@@ -141,7 +141,7 @@ async function view(req, app) {
     scheduleBasis: app.scheduleBasis || null,
     disbursement: app.disbursement?.date ? { date: localDay(app.disbursement.date), transactionRef: app.disbursement.transactionRef || null } : null,
     payslip: app.payslip?.fileId ? { fileId: String(app.payslip.fileId), originalName: app.payslip.originalName, payDate: app.payslip.payDate, basic: app.payslip.basic, lfbDeductions: app.payslip.lfbDeductions, lfbLines: app.payslip.lfbLines || [], readAt: app.payslip.readAt } : null,
-    payslipMaxAgeDays: ctx.settings.payslipMaxAgeDays || 45,
+    payslipMaxAgeDays: rules.payslipMaxAge(ctx.settings), // D-111: 30 days at most
     // D-101: what Room is worked out from: the payslip's staff loan lines with their product, this
     // product's lines (one is topped up), and the SLAS loans the payslip cannot show yet.
     deductions: {

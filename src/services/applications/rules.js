@@ -97,10 +97,14 @@ function deductions({ apps, appId, today, products = [], productId, payslip, top
 /** Days from one calendar day to another (both 'YYYY-MM-DD'). */
 const daysBetween = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 
-/** D-79: the payslip must be attached and at most payslipMaxAgeDays old. */
+/** D-111: the policy limit on a payslip's age; Settings may set a shorter one, never a longer one. */
+const PAYSLIP_MAX_AGE_DAYS = 30;
+const payslipMaxAge = (settings = {}) => Math.min(settings.payslipMaxAgeDays || PAYSLIP_MAX_AGE_DAYS, PAYSLIP_MAX_AGE_DAYS);
+
+/** D-79, D-111: the payslip must be attached and at most 30 days old (or the shorter limit in Settings). */
 function payslipProblem(payslip, settings, today) {
   if (!payslip?.fileId) return 'Attach your latest payslip. Basic Pay and LFB deductions are read from it.';
-  const maxAge = settings.payslipMaxAgeDays || 45;
+  const maxAge = payslipMaxAge(settings);
   const age = daysBetween(payslip.payDate, today);
   if (age > maxAge) return `Your payslip is dated ${payslip.payDate}, ${age} days ago. Attach one not older than ${maxAge} days.`;
   if (age < -31) return `Your payslip is dated ${payslip.payDate}, in the future. Attach your latest payslip.`;
@@ -278,4 +282,4 @@ function evaluate(ctx, input) {
   };
 }
 
-module.exports = { evaluate, eligibility, fieldErrors, loanChecks, payInputs, deductions, payslipProblem, longestTenor, cutoffFor, cutoffProblem, cutoffCheck, runningLoans, monthsBetweenDays };
+module.exports = { PAYSLIP_MAX_AGE_DAYS, payslipMaxAge, evaluate, eligibility, fieldErrors, loanChecks, payInputs, deductions, payslipProblem, longestTenor, cutoffFor, cutoffProblem, cutoffCheck, runningLoans, monthsBetweenDays };

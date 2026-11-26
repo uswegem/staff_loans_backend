@@ -33,7 +33,8 @@ const settingsSchema = new mongoose.Schema(
     dobMinAge: { type: Number, default: 18, min: 14, max: 30 },
     dobMaxAge: { type: Number, default: 60, min: 40, max: 75 },
     // The payslip attached to an application must be at most this old at submission (D-79).
-    payslipMaxAgeDays: { type: Number, default: 45, min: 1, max: 120 },
+    // D-111: a payslip is at most 30 days old (policy); Settings may set a shorter limit only.
+    payslipMaxAgeDays: { type: Number, default: 30, min: 1, max: 30 },
     // Labels the payslip reader looks for; empty means the reader's defaults (D-79).
     payslipRules: { basicLabels: { type: [String], default: undefined }, lfbLabels: { type: [String], default: undefined }, dateLabels: { type: [String], default: undefined } },
     // Profile fields that must be filled before applying (decision 7, FR-05); keys from PROFILE_FIELDS.
