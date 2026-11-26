@@ -1651,7 +1651,7 @@
         "tags": [
           "Disbursement"
         ],
-        "summary": "Disbursement queue (D-112): to book (People and Culture), ready to disburse (OPS) or disbursed, with Outside SLA flags and what the caller may do on each loan; each item has agreementId and canDownload (false on the caller's own loan) (FR-20, Q3, D-107)",
+        "summary": "Disbursement queue (D-112): ready to disburse or disbursed, with Outside SLA flags and what the caller may do on each loan (canConfirm, blockedReason, canDownload: false on the caller's own loan, agreementId). OPS, Head of People and Culture and P&C Manager (disb.confirm) (FR-20, Q3)",
         "security": [
           {
             "bearer": []
@@ -1669,7 +1669,7 @@
         "tags": [
           "Disbursement"
         ],
-        "summary": "Disbursed loans register as CSV (FR-26); audited",
+        "summary": "Disbursed loans register as CSV, with the comment (FR-26, D-112); audited",
         "security": [
           {
             "bearer": []
@@ -1687,7 +1687,7 @@
         "tags": [
           "Disbursement"
         ],
-        "summary": "Loan summary for disbursement and recovery set-up",
+        "summary": "Loan details for disbursement and recovery set-up; a booking recorded before D-112 is shown read-only",
         "security": [
           {
             "bearer": []
@@ -1700,36 +1700,12 @@
         }
       }
     },
-    "/disbursements/{id}/book": {
-      "post": {
-        "tags": [
-          "Disbursement"
-        ],
-        "summary": "Book a finally approved loan: core banking loan account number, booking date (not future, not before final approval), optional note; moves it to Pending Disbursement (D-107)",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Booked"
-          },
-          "403": {
-            "description": "Own loan (SoD)"
-          },
-          "409": {
-            "description": "Already booked"
-          }
-        }
-      }
-    },
     "/disbursements/{id}/summary.pdf": {
       "get": {
         "tags": [
           "Disbursement"
         ],
-        "summary": "Loan Summary PDF (D-112): reference, agreement, staff and crediting account, approved terms, top-up, approval trail, booking and disbursement; in the agreement's language; no schedule, CRB or payslip figures. disb.confirm or loan.book, approved loans only, not the applicant (403 OWN_LOAN); audited",
+        "summary": "Loan Summary PDF (D-112): reference, agreement, staff and crediting account, approved terms, top-up, approval trail and disbursement; one page in the agreement's language; no schedule, CRB or payslip figures. disb.confirm, Pending Disbursement or Disbursed only, not the applicant (403 OWN_LOAN); audited as summary.download",
         "security": [
           {
             "bearer": []
@@ -1753,7 +1729,7 @@
         "tags": [
           "Disbursement"
         ],
-        "summary": "Mark as disbursed (OPS, D-112): only after People and Culture booked it; date (not future, not before the booking date), unique transaction reference, comment of 5 to 1000 characters, checklist and top-up settlement; regenerates the schedule from the disbursement date; notifies the applicant and People and Culture; audited as loan.disbursed (FR-20 to FR-22, FR-24)",
+        "summary": "Mark as disbursed (D-112), by OPS or People and Culture (disb.confirm): date (not future, not before final approval), unique transaction reference, comment of 5 to 1000 characters, checklist and top-up settlement; not your own loan nor one you approved (also as a delegate or on whose behalf); regenerates the schedule from the disbursement date; notifies the applicant; audited as loan.disbursed (FR-20 to FR-22, FR-24)",
         "security": [
           {
             "bearer": []
@@ -1764,13 +1740,11 @@
             "description": "Disbursed"
           },
           "403": {
-            "description": "Own",
-            "booked or approved loan (SoD)": null
+            "description": "Own or approved loan (SOD_DISBURSE)"
           },
           "409": {
-            "description": "Not booked yet",
-            "already disbursed": null,
-            "or reference already used": null
+            "description": "Already disbursed",
+            "or reference already used (DUPLICATE_TRANSACTION_REF)": null
           }
         }
       }

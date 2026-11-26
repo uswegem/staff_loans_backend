@@ -1,7 +1,7 @@
 'use strict';
 
-// Disbursement (D-112): booking, Loan Summary, OPS disbursements (FR-20 to FR-22) and the
-// disbursed loans register (FR-26).
+// Disbursement (D-112): the queue, the Loan Summary, marking loans as disbursed (FR-20 to
+// FR-22) and the disbursed loans register (FR-26).
 
 const disbursements = require('../services/disbursement/disbursementService');
 const audit = require('../services/audit/auditService');
@@ -19,12 +19,7 @@ const DisbursementController = {
     res.json({ success: true, data: await disbursements.detail(req, req.params.id) });
   },
 
-  async book(req, res) {
-    const data = await disbursements.book(req, req.params.id, req.body);
-    res.json({ success: true, message: `${data.ref} booked. OPS can now disburse it.`, data });
-  },
-
-  /** D-112: the Loan Summary PDF (People and Culture and OPS; not the applicant). */
+  /** D-112: the Loan Summary PDF (disb.confirm; not the applicant). */
   async summaryPdf(req, res) {
     const { pdf, ref } = await disbursements.summary(req, req.params.id);
     res.set('Content-Type', 'application/pdf');

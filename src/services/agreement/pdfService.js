@@ -299,7 +299,7 @@ const SUMMARY_TEXT = {
  * language. s: { language, ref, agreementNumber, product, statusLabel, finalApproval: { at, by },
  * staff: { name, staffNo, title, station, mobile, account }, terms: { amount, tenor, rate, instalment,
  * totalRepayable, totalInterest, firstDue, lastDue, payslipLabel }, topUp?: { clears, settlement, fees, net },
- * approvals: [{ stage, name, action, at }], booking?, disbursement?, generatedBy, at }.
+ * approvals: [{ stage, name, action, at }], booking? (recorded before D-112), disbursement?, generatedBy, at }.
  * No repayment schedule (on request, D-110), no bureau report, no payslip figures.
  */
 async function summaryPdf(s) {
@@ -349,9 +349,11 @@ async function summaryPdf(s) {
   }
   section(S.approvals);
   addTable(lay, [S.stage, S.approver, S.decision, S.date], s.approvals.map((a) => [a.stage, a.name || S.none, S.decisions[a.action] || a.action, when(L, a.at)]), [0.26, 0.3, 0.16, 0.28], { size: 9, alignLeft: [0, 1, 2, 3] });
-  section(S.booking);
-  if (s.booking) rows([[S.loanAccount, s.booking.loanAccountNumber], [S.bookingDate, day(s.booking.date)], [S.bookedBy, s.booking.by], ...(s.booking.note ? [[S.note, s.booking.note]] : [])]);
-  else lay.add({ lines: lay.textLines([{ text: S.notBooked }], { leading: LEADING }) });
+  // D-112: booking happens outside SLAS; one recorded before then is still shown.
+  if (s.booking) {
+    section(S.booking);
+    rows([[S.loanAccount, s.booking.loanAccountNumber], [S.bookingDate, day(s.booking.date)], [S.bookedBy, s.booking.by], ...(s.booking.note ? [[S.note, s.booking.note]] : [])]);
+  }
   section(S.disbursement);
   if (s.disbursement) rows([[S.disbDate, day(s.disbursement.date)], [S.transactionRef, s.disbursement.transactionRef], [S.comment, s.disbursement.comment], [S.confirmedBy, s.disbursement.by]]);
   else lay.add({ lines: lay.textLines([{ text: S.notDisbursed }], { leading: LEADING }) });

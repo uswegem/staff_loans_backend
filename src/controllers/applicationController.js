@@ -37,7 +37,8 @@ async function canSee(req, applicationId, { allowLimitedDocuments = false } = {}
   if (access && !access.limited) return { app, as: access.payHidden ? 'reviewer-without-pay' : 'reviewer' };
   if (access?.limited && allowLimitedDocuments && app.currentStage === 'credit') return { app, as: 'limited-document-reviewer' };
   // D-107: People and Culture booking the loan see what OPS sees.
-  if ((req.auth.permissions.has('disb.confirm') || req.auth.permissions.has('loan.book')) && APPROVED_LOAN.includes(app.status)) return { app, as: 'ops' };
+  // D-112: the Disbursement queue (OPS and People and Culture, disb.confirm).
+  if (req.auth.permissions.has('disb.confirm') && APPROVED_LOAN.includes(app.status)) return { app, as: 'ops' };
   return null;
 }
 

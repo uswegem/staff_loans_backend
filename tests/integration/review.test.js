@@ -96,7 +96,7 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     expect(final.body.data.outcome).toBe('approved');
 
     const a = await Application.findById(id);
-    expect(a).toMatchObject({ status: 'pending_booking', scheduleBasis: 'final_approval', approved: { amount: 4500000, tenor: 36, instalment: 136900 } });
+    expect(a).toMatchObject({ status: 'pending_disbursement', scheduleBasis: 'final_approval', approved: { amount: 4500000, tenor: 36, instalment: 136900 } });
     expect(a.schedule).toHaveLength(36);
     const ag = await Agreement.findById(a.currentAgreementId);
     expect(ag.status).toBe('in_force');
@@ -104,8 +104,9 @@ describe('non-management route: Credit Analyst, People and Culture, CEO (BRD 7.1
     expect(ag.approvals.map((x) => x.name)).toEqual(['Juma Kassim', 'Grace Mollel', 'Joseph Mwakalinga']); // FR-36
     expect((await StoredFile.findById(ag.inForcePdfFileId)).mime).toBe('application/pdf');
     expect((await Staff.findOne({ staffNo: 'LFB0412' })).loanHistory).toHaveLength(1); // NS-02
-    expect(await notesFor('LFB0129', 'application.ready_to_book')).toHaveLength(1); // People and Culture book it (D-107)
-    expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(0); // OPS after booking
+    // D-112: straight to Disbursement; OPS and People and Culture (disb.confirm) are told.
+    expect(await notesFor('LFB0318', 'application.ready_to_disburse')).toHaveLength(1);
+    expect(await notesFor('LFB0129', 'application.ready_to_disburse')).toHaveLength(1);
     expect((await notesFor('LFB0412', 'application.approved'))[0].text).toMatch(/now in force/);
     expect(await Decision.countDocuments({ applicationId: id, action: 'approve' })).toBe(3);
   });
@@ -284,7 +285,7 @@ describe('CEO and Head of People and Culture routes (BRD 7.2.1, decision 31, FR-
     const v = await api(grace.token).get(`/review/${id}`);
     expect(v.body.data.panel).toMatchObject({ stage: 'hr', isFinal: true });
     expect((await decide(grace, id, { action: 'approve', hrChecks: HR_OK })).body.data.outcome).toBe('approved');
-    expect((await Application.findById(id)).status).toBe('pending_booking');
+    expect((await Application.findById(id)).status).toBe('pending_disbursement');
   });
 
   it('Head of P&C: Credit (limited), P&C Manager, then CEO', async () => {
@@ -335,14 +336,15 @@ describe('delegation (FR-19)', () => {
     await decide(await signIn('LFB0051'), id, { action: 'approve', hrChecks: HR_OK });
 
     const joseph = await signIn('LFB0002');
-    const upendo = await User.findOne({ staffNo: 'LFB0129' });
+    // D-112: the P&C Manager now holds disb.confirm, so the CEO delegates to someone without it.
+    const upendo = await User.findOne({ staffNo: 'LFB0377' });
     const d = await api(joseph.token).post('/delegations', { delegateUserId: String(upendo._id), from: today(), until: today(), reason: 'Board meeting abroad' });
     expect(d.status).toBe(201);
     expect(d.body.data.status).toBe('active');
-    expect((await notesFor('LFB0129', 'delegation.set'))).toHaveLength(1);
+    expect((await notesFor('LFB0377', 'delegation.set'))).toHaveLength(1);
     expect((await api(joseph.token).get('/queue')).body.data.items).toEqual([]);
 
-    const upendoSession = await signIn('LFB0129'); // a delegate signs in with MFA
+    const upendoSession = await signIn('LFB0377'); // a delegate signs in with MFA
     expect(upendoSession.body.data.permissions).not.toContain('review.ceo');
     const q = await api(upendoSession.token).get('/queue');
     expect(q.body.data.items[0]).toMatchObject({ onBehalfOf: 'Joseph Mwakalinga', limited: false });
@@ -353,15 +355,20 @@ describe('delegation (FR-19)', () => {
     expect(String(dec.onBehalfOfId)).toBe(String(await userId('LFB0002')));
     const grace = await signIn('LFB0051');
     const h = (await api(grace.token).get(`/review/${id}`)).body.data.history.find((x) => x.stage === 'ceo');
-    expect(h).toMatchObject({ by: 'Upendo Massawe', onBehalfOf: 'Joseph Mwakalinga' });
+    expect(h).toMatchObject({ by: 'Salma Hamisi', onBehalfOf: 'Joseph Mwakalinga' });
   });
 
   it('refuses a delegate that would break segregation of duties, and oneself', async () => {
-    const grace = await signIn('LFB0051');
+    const joseph = await signIn('LFB0002');
     const halima = await User.findOne({ staffNo: 'LFB0318' }); // OPS: disbursement
-    const r = await api(grace.token).post('/delegations', { delegateUserId: String(halima._id), from: today(), until: today() });
+    const r = await api(joseph.token).post('/delegations', { delegateUserId: String(halima._id), from: today(), until: today() });
     expect(r.status).toBe(409);
     expect(r.body.message).toMatch(/approving is kept apart from confirming disbursement/);
+    // D-112: nor to the P&C Manager, who now holds disb.confirm.
+    expect((await api(joseph.token).post('/delegations', { delegateUserId: String(await userId('LFB0129')), from: today(), until: today() })).status).toBe(409);
+    // The People and Culture stage may go to OPS: the check on each loan keeps them from disbursing it.
+    const grace = await signIn('LFB0051');
+    expect((await api(grace.token).post('/delegations', { delegateUserId: String(halima._id), from: today(), until: today() })).status).toBe(201);
     const self = await api(grace.token).post('/delegations', { delegateUserId: String(await userId('LFB0051')), from: today(), until: today() });
     expect(self.status).toBe(400);
   });

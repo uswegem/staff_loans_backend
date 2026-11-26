@@ -28,6 +28,8 @@ may approve again. History, audit and reports read "returned by <stage> to
 
 ## D-107 – People and Culture book the loan; OPS disburses (Nov 2026)
 
+*The booking step in SLAS is superseded by D-112: booking now happens outside SLAS.*
+
 After final approval a loan is Pending Booking. Holders of `loan.book` (added to the
 P&C Manager and Head of P&C system roles) record the core banking loan account number,
 the booking date (not in the future, not before final approval) and an optional note;
@@ -104,33 +106,63 @@ Settings may set a shorter limit but not a longer one, and a longer value stored
 decision (the earlier default was 45 days) counts as 30 and is lowered by
 `npm run upgrade:2026-12`.
 
-## D-112 – The Disbursement queue: papers and "Mark as disbursed" (Nov 2026)
+## D-112 – One Disbursement queue after final approval (Nov 2026)
 
-The final queue is called Disbursement (Swahili "Malipo ya Mkopo"): People and Culture
-(`loan.book`) book the loan in core banking and OPS (`disb.confirm`) disburse it. Route
-descriptions end "then Disbursement (People and Culture book, OPS disburse)". The OPS role
-keeps its name; statuses, the booking step and permissions are unchanged.
+Supersedes the booking step of D-107. People and Culture book the loan in the loan
+management system outside SLAS, so nobody enters booking details here.
 
-Both teams download, for any loan with final approval (pending booking, pending
-disbursement or disbursed):
+**Flow.** Final approval, and acceptance of revised terms, set Pending Disbursement
+directly. Pending Booking, `POST /disbursements/:id/book`, the To book tab and the booking
+form are gone. `npm run upgrade:2026-12b` (dry run by default, `--apply` to change) moves
+any loan still in Pending Booking to Pending Disbursement, keeps the date of final approval
+(stageEnteredAt), and audits each move as `application.status_migrated` ("booking step
+removed, D-112"). It is safe to run again. Bookings recorded before this decision stay on
+the loans and are shown read-only. The status name stays only for old data and audit history.
+The booking part of `upgrade-2026-12` was taken out before the release.
 
-- the Agreement, through `GET /agreements/:id/pdf`, named "<agreement number>.pdf";
-- a one-page Loan Summary, `GET /disbursements/:id/summary.pdf`, on the letterhead and in the
-  agreement's language: reference, agreement number, product, status, final approval (when,
-  by whom); the staff member and the account to credit; the approved terms and payslip
-  deduction label; any top-up (loan cleared, settlement, net to credit); the approval trail
-  without comments; booking and disbursement. No schedule, bureau report or payslip figures.
-  The footer says who generated it and when.
+**Who.** The queue is called Disbursement (Swahili "Malipo ya Mkopo") and has two tabs,
+Ready to disburse and Disbursed. It is open to holders of `disb.confirm`: OPS, the Head of
+People and Culture and the P&C Manager. The two People and Culture system roles get
+`disb.confirm` (also by the upgrade, audited as `role.update`), and `loan.book` is removed
+from the roles and from the permission catalogue. Everyone with `disb.confirm` is told when
+a loan has final approval. Route descriptions end "then Disbursement (People and Culture or
+OPS)".
+
+**Separation of duties.** The role rule "approving is kept apart from confirming
+disbursement" (sod2) no longer counts the two People and Culture review permissions
+(`review.pcm`, `review.hr`), so their roles may hold `disb.confirm`. It still applies to
+Credit and the CEO stage, including through delegation. Instead, on each loan, nobody marks
+as disbursed: their own loan; a loan they approved, themselves or as a delegate; or one
+approved on their behalf. The message names the reason and says "Another People and Culture
+or OPS officer marks it as disbursed." The rule "you booked this loan" and sod4 are gone.
+
+**Papers.** For loans in Pending Disbursement or Disbursed, anyone with `disb.confirm`
+downloads:
+
+- the Agreement (`GET /agreements/:id/pdf`): the in-force PDF, else the signed one, in its
+  language, named "<agreement number>.pdf";
+- the Loan Summary (`GET /disbursements/:id/summary.pdf`): one page on the letterhead in the
+  agreement's language. It has the reference, agreement number, product, status, final
+  approval (when, by whom); the staff member and the account to credit; the approved terms
+  and payslip deduction label; any top-up (loan cleared, settlement, net to credit); the
+  approval trail without comments; the disbursement once done. The footer reads "Generated
+  by <user> on <date/time>" with the page number. It has no schedule (on request, D-110),
+  no bureau report and no payslip figures.
 
 Both downloads are audited (`agreement.download`, `summary.download`) with the application
-reference and the language. The applicant is refused the Loan Summary (403 `OWN_LOAN`) and the
-web app shows no download buttons on their own loan; they keep their own agreement under My
-applications (FR-25).
+reference and the language. The applicant is refused the Loan Summary (403 `OWN_LOAN`), and
+the web app shows no download buttons on their own loan. They keep their own agreement under
+My applications (FR-25).
 
-"Mark as disbursed" is OPS only, and only for a booked loan (pending disbursement; otherwise
-409 `NOT_BOOKED`). It needs a date (not in the future, not before the booking date), a
-transaction reference (unique across loans, ignoring case: 409 `DUPLICATE_TRANSACTION_REF`)
-and a comment of 5 to 1000 characters. The separation of duties checks stay. The loan becomes
-disbursed, the schedule is regenerated from the date, the applicant and People and Culture are
-told, and the audit entry `loan.disbursed` carries the reference and comment. The record is
-read-only once saved; the Disbursed register and its CSV include the comment.
+**Mark as disbursed.** Available in Ready to disburse, subject to the rules above:
+
+- Date: required, not in the future, not before final approval.
+- Transaction reference: letters, digits, / and - only, at most 40 characters, unique across
+  loans ignoring case (409 `DUPLICATE_TRANSACTION_REF`, "This reference is already
+  recorded on <ref>.").
+- Comment: 5 to 1000 characters ("Add a comment for the disbursement record.").
+- The checklist and top-up settlement stay.
+
+The loan becomes Disbursed, the disbursement is saved, and the schedule is regenerated from
+its date. The applicant is told. The audit entry `loan.disbursed` carries the reference and
+comment. The record is read-only, and the Disbursed register and its CSV include the comment.
