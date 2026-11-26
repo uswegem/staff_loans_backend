@@ -55,7 +55,7 @@ describe('RP-01 application register', () => {
   it('shows status, stage, age and Outside SLA, with filters', async () => {
     const grace = await signIn('LFB0051');
     const r = await api(grace.token).get('/reports/register');
-    expect(r.body.data.columns.map((c) => c.label)).toEqual(['Reference', 'Staff number', 'Applicant', 'Department', 'Branch', 'Category', 'Product', 'Amount', 'Tenor', 'Status', 'Stage', 'Submitted', 'Age (days)', 'Outside SLA']);
+    expect(r.body.data.columns.map((c) => c.label)).toEqual(['Reference', 'Staff number', 'Applicant', 'Department', 'Branch', 'Category', 'Product', 'Amount', 'Tenor', 'Status', 'Stage', 'Submitted', 'Age (days)', 'Outside SLA', 'Credit recommendation', 'Final decision against recommendation']);
     expect(r.body.data.total).toBe(12);
     const daniel = r.body.data.rows.find((x) => x[0] === DANIEL.ref);
     expect(daniel).toEqual(expect.arrayContaining([DANIEL.staffNo, 'Daniel Mrema', DANIEL.product, DANIEL.amount, 'Pending Credit Underwriting', 'Credit Underwriting']));
