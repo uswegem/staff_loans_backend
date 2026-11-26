@@ -134,3 +134,32 @@ and a comment of 5 to 1000 characters. The separation of duties checks stay. The
 disbursed, the schedule is regenerated from the date, the applicant and People and Culture are
 told, and the audit entry `loan.disbursed` carries the reference and comment. The record is
 read-only once saved; the Disbursed register and its CSV include the comment.
+
+## D-113 – Credit Underwriting (Nov 2026)
+
+The credit stage, formerly named after the Credit Analyst, is **Credit Underwriting**
+(Swahili "Tathmini ya Mikopo"); its status reads "Pending Credit Underwriting". The stage
+key (`credit`), the status code (`pending_credit`) and the permission (`review.credit`) do
+not change, so stored applications, decisions and notifications are untouched.
+
+Three system roles hold `review.credit` and so see Credit Underwriting in the Review queue
+and decide there (bureau reports, approve, return, reject), each with the identity-only view
+of D-86:
+
+- Credit Analyst (as before);
+- Credit Manager (new role, the same permissions as the Credit Analyst);
+- Head of Credit, who keeps product preparation and first product approval.
+
+The Head of Credit's combination would breach sod1 (administration or product checking kept
+apart from approving loans). The business accepted it: sod1 now lets through exactly
+`products.make` and `products.approveCredit` with `review.credit`, and nothing wider. Any
+other administration or checking permission (for example `products.approveRisk`,
+`admin.users`) with `review.credit`, or those product permissions with any other approval
+or with disbursement, still breaches sod1. The rule that nobody decides two stages of one
+application is unchanged. Because the Head of Credit now holds `review.credit` without a
+full-review permission, reports show them the identity-only rows as for the Credit Analyst.
+
+`npm run upgrade:2026-12c` (dry run by default, `--apply` to change) adds `review.credit`
+and `review.delegate` to an existing Head of Credit role and creates the Credit Manager role
+if missing, each change audited; it is safe to run again. People still need the Credit
+Manager role assigned under Users and roles.

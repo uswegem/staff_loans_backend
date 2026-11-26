@@ -21,6 +21,7 @@
     "reset:staff": "node scripts/reset-staff-and-products.js",
     "upgrade": "node scripts/upgrade-2026-11.js",
     "upgrade:2026-12": "node scripts/upgrade-2026-12.js",
+    "upgrade:2026-12c": "node scripts/upgrade-2026-12c.js",
     "staff:load": "node scripts/load-staff.js",
     "test-staff": "node scripts/test-staff.js",
     "agreements:load": "node scripts/load-agreement-templates.js"

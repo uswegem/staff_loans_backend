@@ -12,7 +12,8 @@
 // route they were submitted on.
 
 const STAGES = Object.freeze({
-  credit: { key: 'credit', label: 'Credit Analyst', permissions: ['review.credit'], status: 'pending_credit', target: 'stage' },
+  // D-113: Credit Underwriting (Credit Analyst, Credit Manager, Head of Credit).
+  credit: { key: 'credit', label: 'Credit Underwriting', permissions: ['review.credit'], status: 'pending_credit', target: 'stage' },
   pcm: { key: 'pcm', label: 'People and Culture Manager', permissions: ['review.pcm'], status: 'pending_pcm', target: 'stage' },
   hr: { key: 'hr', label: 'Head of People and Culture', short: 'Head of HR', permissions: ['review.hr'], status: 'pending_hr', target: 'stage' },
   pc: { key: 'pc', label: 'People and Culture', permissions: ['review.hr', 'review.pcm'], status: 'pending_pc', target: 'stage' },
@@ -23,7 +24,7 @@ const STAGES = Object.freeze({
 const PC_STAGES = Object.freeze(['pc', 'hr', 'pcm']);
 
 /** Who acts with each review permission, for labels ("People and Culture (P&C Manager)"). */
-const PERMISSION_ROLE = Object.freeze({ 'review.credit': 'Credit Analyst', 'review.pcm': 'P&C Manager', 'review.hr': 'Head of P&C', 'review.ceo': 'CEO' });
+const PERMISSION_ROLE = Object.freeze({ 'review.credit': 'Credit Underwriting', 'review.pcm': 'P&C Manager', 'review.hr': 'Head of P&C', 'review.ceo': 'CEO' });
 
 const ROUTES = Object.freeze({
   nonmgmt: { key: 'nonmgmt', label: 'Non-management staff', stages: ['credit', 'pc', 'ceo'], limitedCredit: false },

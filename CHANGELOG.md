@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased – Credit Underwriting (D-113)
+
+Run `npm run upgrade:2026-12c` (dry run) and then `npm run upgrade:2026-12c -- --apply`.
+
+- The credit stage is "Credit Underwriting"; the status label is "Pending Credit Underwriting" (codes unchanged).
+- New system role Credit Manager (`credit_manager`), with the Credit Analyst's permissions. The Head of Credit gets `review.credit` and `review.delegate`.
+- sod1 allows exactly the Head of Credit's pair (`products.make`, `products.approveCredit` with `review.credit`); every wider combination still breaches.
+- Messages that named the Credit Analyst as the stage now say Credit Underwriting.
+- `scripts/upgrade-2026-12c.js` updates existing roles, audited and idempotent.
+
 ## Unreleased – Disbursement queue (D-112)
 
 - The final queue is "Disbursement" (People and Culture book, OPS disburse); route descriptions and messages say so.
