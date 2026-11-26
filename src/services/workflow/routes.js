@@ -45,6 +45,6 @@ function routeFor(permissions, staff) {
 }
 
 // D-112: after the last approval the loan goes to Disbursement (People and Culture book, OPS disburse).
-const describeRoute = (route) => `${route.stages.map((s) => STAGES[s].short || STAGES[s].label).join(', then ')}, then Disbursement (People and Culture book, OPS disburse)`;
+const describeRoute = (route) => `${route.stages.map((s) => STAGES[s].short || STAGES[s].label).join(', then ')}, then Disbursement (People and Culture or OPS)`;
 
 module.exports = { STAGES, ROUTES, PC_STAGES, PERMISSION_ROLE, routeFor, describeRoute, stageAccepts };

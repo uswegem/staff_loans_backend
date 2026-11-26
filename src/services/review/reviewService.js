@@ -41,11 +41,6 @@ async function notifyOps(text, href, entityId, session, type = 'application.read
   return notify.notifyPermission('disb.confirm', { type, text, href, entity: 'Application', entityId }, { session });
 }
 
-/** D-107: a finally approved loan is booked in core banking by People and Culture first. */
-async function notifyBookers(text, href, entityId, session, type = 'application.ready_to_book') {
-  return notify.notifyPermission('loan.book', { type, text, href, entity: 'Application', entityId }, { session });
-}
-
 /** Approvals in this cycle, as printed "kwa niaba ya Mwajiri" (FR-36). */
 async function approvalsFor(app, extra, session) {
   // Approvals still in force: one cancelled by a return to an earlier stage is not printed (D-106).
@@ -93,7 +88,7 @@ async function recordSuccess(app, now, session) {
   );
 }
 
-/** Puts the agreement in force (FR-18, FR-56) and sends the application to booking (D-107). */
+/** Puts the agreement in force (FR-18, FR-56) and sends the application to Disbursement (D-112). */
 async function putInForce(req, app, agreement, terms, now, session, approvals) {
   const pdf = await inForcePdf(agreement, app, approvals, now);
   const file = await fileStore.store(pdf, { kind: 'agreement_pdf', originalName: `${agreement.number}-in-force.pdf`, applicationId: app._id, ownerUserId: app.applicantUserId, uploadedBy: req.auth.user._id }, { session });
@@ -101,7 +96,7 @@ async function putInForce(req, app, agreement, terms, now, session, approvals) {
   const sched = await scheduleFrom(app, terms, localDay(now));
   await Application.updateOne(
     { _id: app._id },
-    { $set: { status: 'pending_booking', currentStage: null, stageEnteredAt: now, stageDueAt: null, approved: { amount: terms.amount, tenor: terms.tenor, instalment: sched.instalment }, schedule: sched.rows, scheduleBasis: 'final_approval' } },
+    { $set: { status: 'pending_disbursement', currentStage: null, stageEnteredAt: now, stageDueAt: null, approved: { amount: terms.amount, tenor: terms.tenor, instalment: sched.instalment }, schedule: sched.rows, scheduleBasis: 'final_approval' } },
     { session }
   );
   await recordSuccess(app, now, session);
@@ -285,7 +280,7 @@ async function decide(req, app, body) {
       await Application.updateOne({ _id: app._id }, { $set: { finalApprovedAt: now } }, { session });
       await putInForce(req, fresh, agreement, { amount: agreement.terms.amount, tenor: agreement.terms.tenor }, now, session, approvals);
       await notify.notifyUsers([app.applicantUserId], { type: 'application.approved', text: `${app.ref} is approved. Your signed agreement ${agreement.number} is now in force. People and Culture will book the loan and OPS will disburse it.`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
-      await notifyBookers(`${app.ref} has final approval. Ready to book in core banking.`, '/disburse', String(app._id), session);
+      await notifyOps(`${app.ref} has final approval. Ready to disburse.`, '/disburse', String(app._id), session);
       outcome = 'approved';
     }
 
@@ -408,7 +403,7 @@ async function acceptRevised(req, app, body) {
   const pdf = await inForcePdf(draft, app, approvals, now);
 
   await withTransaction(async (session) => {
-    const fresh = await Application.findOneAndUpdate({ _id: app._id, status: 'pending_reaccept' }, { $set: { status: 'pending_booking' } }, { new: true, session });
+    const fresh = await Application.findOneAndUpdate({ _id: app._id, status: 'pending_reaccept' }, { $set: { status: 'pending_disbursement' } }, { new: true, session });
     if (!fresh) throw conflict('There are no revised terms to accept.', 'NOT_PENDING_REACCEPT');
     const file = await fileStore.store(pdf, { kind: 'agreement_pdf', originalName: `${number}.pdf`, applicationId: app._id, ownerUserId: app.applicantUserId, uploadedBy: req.auth.user._id }, { session });
     const [revised] = await Agreement.create(
@@ -444,7 +439,7 @@ async function acceptRevised(req, app, body) {
     await recordSuccess(app, now, session);
     await Decision.create([{ applicationId: app._id, cycle: app.cycle, action: 'accept_revised', actorId: req.auth.user._id, comment: `${tzs(app.approved.amount)} over ${app.approved.tenor} months, agreement ${number}`, details: { agreementNumber: number, textSha256: doc.textSha256 }, at: now, ip: req.ip }], { session });
     await audit.record({ req, action: 'agreement.accept_revised', description: `${app.ref}: revised agreement ${number} accepted (fingerprint ${doc.textSha256.slice(0, 16)}…)`, entity: 'Application', entityId: String(app._id), appRef: app.ref, after: { agreement: number, textSha256: doc.textSha256 } }, { session });
-    await notifyBookers(`${app.ref}: revised terms accepted. Ready to book in core banking.`, '/disburse', String(app._id), session);
+    await notifyOps(`${app.ref}: revised terms accepted. Ready to disburse.`, '/disburse', String(app._id), session);
   });
   return Application.findById(app._id);
 }

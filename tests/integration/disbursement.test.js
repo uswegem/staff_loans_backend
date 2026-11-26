@@ -2,7 +2,7 @@
 
 // Disbursement and notifications (BRD 11, 12; FR-20 to FR-22, FR-24 to FR-26; Q3).
 
-const { api, seedAll, applyAndSign, decide, signIn, runningLoan, bookLoan, CRB, HR_OK } = require('../flows');
+const { api, seedAll, applyAndSign, decide, signIn, runningLoan, CRB, HR_OK } = require('../flows');
 const Application = require('../../src/models/Application');
 const Agreement = require('../../src/models/Agreement');
 const Decision = require('../../src/models/Decision');
@@ -36,8 +36,6 @@ async function toOps() {
   await decide(await signIn('LFB0051'), id, { action: 'approve', hrChecks: HR_OK });
   const final = await decide(await signIn('LFB0002'), id, { action: 'approve' });
   expect(final.body.data.outcome).toBe('approved');
-  // D-107: People and Culture book it in core banking first.
-  expect((await bookLoan(id)).status).toBe(200);
   return { id, neema };
 }
 
@@ -68,7 +66,7 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
       expect(res.body.details.comment).toEqual(['Add a comment for the disbursement record.']);
     }
     expect((await ops.post(`/disbursements/${id}/confirm`, { date: tomorrow, transactionRef: 'FTTEST001', comment: 'Done.' })).body.message).toBe('The disbursement date cannot be in the future.');
-    expect((await ops.post(`/disbursements/${id}/confirm`, { date: yesterday, transactionRef: 'FTTEST001', comment: 'Done.' })).body.message).toBe('The disbursement date cannot be before the booking date.');
+    expect((await ops.post(`/disbursements/${id}/confirm`, { date: yesterday, transactionRef: 'FTTEST001', comment: 'Done.' })).body.message).toBe('The disbursement date cannot be before the final approval.');
     expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, comment: 'Done.', transactionRef: '=HYPERLINK(1)' })).status).toBe(400);
 
     expect((await ops.post(`/disbursements/${id}/confirm`, { date: today, comment: 'Done.' })).status).toBe(400);
@@ -119,23 +117,23 @@ describe('OPS confirms disbursement (FR-20 to FR-22)', () => {
     expect((await ops.post(`/disbursements/${id}/confirm`, { ...body, topUpSettled: true })).status).toBe(200);
   });
 
-  it('OPS cannot confirm their own loan or one they approved (FR-48)', async () => {
+  it('OPS cannot mark their own loan, or one approved on their behalf, as disbursed (FR-48, D-112)', async () => {
     const { id } = await toOps();
     const halimaId = await userId('LFB0318');
     const ops = api((await signIn('LFB0318')).token);
 
     await Decision.create({ applicationId: id, cycle: 1, stage: 'ceo', action: 'approve', actorId: await userId('LFB0002'), onBehalfOfId: halimaId, at: new Date() });
     const list = await ops.get('/disbursements');
-    expect(list.body.data.items[0].blockedReason).toBe('You approved this loan, so another OPS officer confirms it.');
+    expect(list.body.data.items[0].blockedReason).toBe('This loan was approved on your behalf. Another People and Culture or OPS officer marks it as disbursed.');
     expect((await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), transactionRef: 'FTTEST001', comment: 'Disbursed.' })).body.code).toBe('SOD_DISBURSE');
 
     await Application.updateOne({ _id: id }, { $set: { applicantUserId: halimaId } });
     const res = await ops.post(`/disbursements/${id}/confirm`, { date: localDay(), transactionRef: 'FTTEST001', comment: 'Disbursed.' });
     expect(res.status).toBe(403);
-    expect(res.body.message).toBe('This is your own loan. Another OPS officer confirms it.');
+    expect(res.body.message).toBe('This is your own loan. Another People and Culture or OPS officer marks it as disbursed.');
   });
 
-  it('only OPS reaches the queue', async () => {
+  it('only disb.confirm (OPS and People and Culture) reaches the queue', async () => {
     const neema = await signIn('LFB0412');
     expect((await api(neema.token).get('/disbursements')).status).toBe(403);
     const juma = await signIn('LFB0233');
@@ -172,7 +170,7 @@ describe('disbursed loans register (FR-26)', () => {
     expect(res.headers['content-type']).toMatch(/text\/csv/);
     const lines = res.text.slice(1).split('\r\n');
     expect(lines[0]).toBe('Reference,Staff number,Staff,Department,Product,Amount,Processing fee,Insurance,Instalment,Tenor,Repayment method,First due date,Disbursed,Transaction ref,Agreement,Loan account,Booked,Comment');
-    expect(lines[1]).toMatch(/^SL-\d{4}-\d{5},LFB0412,Neema Mushi,.*,Personal Loan,4500000,.*,136900,36,Salary deduction,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-\d{2},FT26294AB12,MKT-[^,]*,LN2026000123,\d{4}-\d{2}-\d{2},Disbursed\.$/);
+    expect(lines[1]).toMatch(/^SL-\d{4}-\d{5},LFB0412,Neema Mushi,.*,Personal Loan,4500000,.*,136900,36,Salary deduction,\d{4}-\d{2}-\d{2},\d{4}-\d{2}-\d{2},FT26294AB12,MKT-[^,]*,,,Disbursed\.$/); // no booking in SLAS since D-112
     expect(await AuditLog.countDocuments({ action: 'report.export' })).toBe(1);
 
     expect((await api((await signIn('LFB0051')).token).get('/disbursements/register.csv')).status).toBe(200); // HR (reports.export)

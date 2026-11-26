@@ -154,7 +154,7 @@ describe('two review roles never decide two stages of one application', () => {
     expect((await decide(await signIn('LFB0051'), id, { action: 'approve', hrChecks: HR_OK })).status).toBe(200);
     // Juma (Credit Analyst and CEO) did not touch this application, so the CEO approval is theirs to give.
     expect((await decide(await signIn('LFB0233'), id, { action: 'approve' })).status).toBe(200);
-    expect((await Application.findById(id)).status).toBe('pending_booking');
+    expect((await Application.findById(id)).status).toBe('pending_disbursement');
   });
 
   it('nobody reviews their own application, whatever roles they hold', async () => {

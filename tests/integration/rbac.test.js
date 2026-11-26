@@ -85,9 +85,12 @@ describe('custom roles and the matrix (FR-45)', () => {
   });
 
   it('live SoD check reports conflicts without saving', async () => {
-    const res = await request(app()).post('/api/v1/roles/sod-check').set(authed(admin.token)).send({ permissions: ['review.hr', 'disb.confirm'] });
+    const res = await request(app()).post('/api/v1/roles/sod-check').set(authed(admin.token)).send({ permissions: ['review.ceo', 'disb.confirm'] });
     expect(res.body.data.ok).toBe(false);
     expect(res.body.data.conflicts[0].rule).toBe('sod2');
+    // D-112: the People and Culture review stages may hold disb.confirm (checked on each loan).
+    const pc = await request(app()).post('/api/v1/roles/sod-check').set(authed(admin.token)).send({ permissions: ['review.hr', 'disb.confirm'] });
+    expect(pc.body.data.ok).toBe(true);
   });
 });
 

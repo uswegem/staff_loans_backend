@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { PDFDocument, PDFName } = require('pdf-lib');
-const { api, seedAll, applyAndSign, decide, signIn, bookLoan, CRB, HR_OK } = require('../flows');
+const { api, seedAll, applyAndSign, decide, signIn, CRB, HR_OK } = require('../flows');
 const { pages, raster, diff } = require('../pdfRaster');
 const Application = require('../../src/models/Application');
 const Agreement = require('../../src/models/Agreement');
@@ -208,7 +208,6 @@ describe('repayment schedule on request (Operations and Credit)', () => {
     expect(await AuditLog.countDocuments({ action: 'schedule.download', entityId: id })).toBe(1);
 
     expect((await download('LFB0233', id)).status).toBe(200); // Credit Analyst
-    await bookLoan(id);
     await api((await signIn('LFB0318')).token).post(`/disbursements/${id}/confirm`, { date: localDay(), transactionRef: 'FT1', comment: 'Paid.' });
     expect((await Application.findById(id)).status).toBe('disbursed');
     expect((await download('LFB0318', id)).status).toBe(200);
@@ -222,7 +221,7 @@ describe('repayment schedule on request (Operations and Credit)', () => {
     await decide(await signIn('LFB0051'), id, { action: 'approve', hrChecks: HR_OK });
     await decide(await signIn('LFB0002'), id, { action: 'approve' });
     expect((await download('LFB0412', id)).status).toBe(403); // the applicant
-    expect((await download('LFB0051', id)).status).toBe(403); // Head of P&C
+    expect((await download('LFB0067', id)).status).toBe(403); // Head of Risk (D-112: the Head of P&C now holds disb.confirm)
     expect((await download('LFB0002', id)).status).toBe(403); // CEO
     expect(await AuditLog.countDocuments({ action: 'schedule.download' })).toBe(0);
   });
