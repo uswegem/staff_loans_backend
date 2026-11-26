@@ -185,7 +185,7 @@ describe('every approval re-checks the cutoff (D-82)', () => {
     const res = await decide(grace, id, { action: 'approve', hrChecks: HR_OK });
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('CUTOFF_EXCEEDED');
-    expect(res.body.message).toMatch(/^This application cannot be approved now\. The last instalment would be due on \d{4}-\d{2}-25, after the cutoff of \d{4}-\d{2}-\d{2} \(60 days before you turn 60\)\. The longest tenor allowed is 1\d months; 36 months is too long\. Return it, reject it, or \(Credit Analyst\) recommend a shorter tenor\.$/);
+    expect(res.body.message).toMatch(/^This application cannot be approved now\. The last instalment would be due on \d{4}-\d{2}-25, after the cutoff of \d{4}-\d{2}-\d{2} \(60 days before you turn 60\)\. The longest tenor allowed is 1\d months; 36 months is too long\. Return it, reject it, or \(Credit Underwriting\) recommend a shorter tenor\.$/);
     expect((await Application.findById(id)).status).toBe('pending_pc');
     // Returning still works.
     expect((await decide(grace, id, { action: 'return', comment: 'Apply for a shorter tenor before your retirement cutoff.' })).body.data.outcome).toBe('returned');

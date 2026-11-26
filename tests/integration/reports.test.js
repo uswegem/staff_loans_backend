@@ -58,7 +58,7 @@ describe('RP-01 application register', () => {
     expect(r.body.data.columns.map((c) => c.label)).toEqual(['Reference', 'Staff number', 'Applicant', 'Department', 'Branch', 'Category', 'Product', 'Amount', 'Tenor', 'Status', 'Stage', 'Submitted', 'Age (days)', 'Outside SLA']);
     expect(r.body.data.total).toBe(12);
     const daniel = r.body.data.rows.find((x) => x[0] === DANIEL.ref);
-    expect(daniel).toEqual(expect.arrayContaining([DANIEL.staffNo, 'Daniel Mrema', DANIEL.product, DANIEL.amount, 'Pending Credit Review', 'Credit Analyst']));
+    expect(daniel).toEqual(expect.arrayContaining([DANIEL.staffNo, 'Daniel Mrema', DANIEL.product, DANIEL.amount, 'Pending Credit Underwriting', 'Credit Underwriting']));
 
     const mgmt = await api(grace.token).get('/reports/register?category=Management');
     expect(mgmt.body.data.rows.every((x) => x[5] === 'Management')).toBe(true);
@@ -133,7 +133,7 @@ describe('RP-02 to RP-07 and RP-10', () => {
   it('RP-02 turnaround per stage and approver in working hours', async () => {
     const r = await api((await signIn('LFB0051')).token).get('/reports/turnaround');
     expect(r.body.data.columns.map((c) => c.label)).toEqual(['Stage', 'Approver', 'Decisions', 'Average (working hours)', 'Longest (working hours)', 'Target (working hours)', 'Over target']);
-    const credit = r.body.data.rows.find((x) => x[0] === 'Credit Analyst' && x[1] === 'Juma Kassim');
+    const credit = r.body.data.rows.find((x) => x[0] === 'Credit Underwriting' && x[1] === 'Juma Kassim');
     expect(credit[2]).toBeGreaterThanOrEqual(5);
     expect(credit[5]).toBe(8);
     expect(r.body.data.rows.find((x) => x[0] === 'CEO')[5]).toBe(48);
@@ -200,6 +200,6 @@ describe('exports are safe and consistent', () => {
     const r = await api((await signIn('LFB0002')).token).get('/reports/overview');
     expect(r.body.data).toMatchObject({ pendingDisbursement: 1, disbursedCount: 1, disbursedAmount: 500000 });
     expect(r.body.data.inReview).toBeGreaterThanOrEqual(7);
-    expect(r.body.data.stages.map((s) => s.label)).toEqual(['Credit Analyst', 'People and Culture', 'People and Culture Manager', 'Head of HR', 'CEO']);
+    expect(r.body.data.stages.map((s) => s.label)).toEqual(['Credit Underwriting', 'People and Culture', 'People and Culture Manager', 'Head of HR', 'CEO']);
   });
 });

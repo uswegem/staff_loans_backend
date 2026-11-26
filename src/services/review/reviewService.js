@@ -123,7 +123,7 @@ async function recheckCutoff(app, terms, now, { audience = 'reviewer', limited =
   if (res.ok) return;
   if (limited) throw conflict("This application cannot be approved now: the applicant's retirement cutoff no longer allows its terms. Return or reject it.", res.code);
   const lead = audience === 'applicant' ? 'You cannot accept these terms now.' : 'This application cannot be approved now.';
-  const next = audience === 'applicant' ? 'Decline them, and apply again for a shorter tenor.' : 'Return it, reject it, or (Credit Analyst) recommend a shorter tenor.';
+  const next = audience === 'applicant' ? 'Decline them, and apply again for a shorter tenor.' : 'Return it, reject it, or (Credit Underwriting) recommend a shorter tenor.';
   throw conflict(`${lead} ${res.message} ${next}`, res.code, { cutoff: res.cutoff, maxTenor: res.maxTenor, lastDue: res.lastDue });
 }
 
@@ -169,9 +169,9 @@ async function decide(req, app, body) {
     // The outcome and date only: the files are kept as attached (D-105).
     if (body.crb?.outcome) Object.assign(set, { 'crb.outcome': body.crb.outcome, 'crb.reportDate': body.crb.reportDate ? localMidnight(body.crb.reportDate) : null });
     // D-86: the Credit Analyst records the bureau check only; terms are not recommended any more.
-    if (body.recommended) throw badRequest('The Credit Analyst records the credit bureau check only and cannot recommend terms.', undefined, 'RECOMMENDATION_NOT_ALLOWED');
+    if (body.recommended) throw badRequest('Credit Underwriting records the credit bureau check only and cannot recommend terms.', undefined, 'RECOMMENDATION_NOT_ALLOWED');
   } else if (body.recommended || body.crb) {
-    throw badRequest('Only the Credit Analyst records the bureau result and recommends terms.', undefined, 'NOT_ALLOWED_AT_STAGE');
+    throw badRequest('Only Credit Underwriting records the bureau result.', undefined, 'NOT_ALLOWED_AT_STAGE');
   }
   if (PC_STAGES.includes(stage) && action === 'approve') {
     // salary: Basic Pay confirmed from the attached payslip (D-100), not a salary record.
@@ -183,7 +183,7 @@ async function decide(req, app, body) {
   }
   // BR-10: only applications whose arrears note was recorded before D-99 (no longer entered).
   if (action === 'approve' && stage !== 'credit' && app.arrearsNote && !comment) {
-    throw badRequest('Add a comment: the Credit Analyst recorded arrears.', { comment: ['Add a comment about the arrears.'] }, 'COMMENT_REQUIRED');
+    throw badRequest('Add a comment: Credit Underwriting recorded arrears.', { comment: ['Add a comment about the arrears.'] }, 'COMMENT_REQUIRED');
   }
 
   const now = new Date();
@@ -318,7 +318,7 @@ const CRB_MAX_FILES = 10;
 /** Adds a bureau report file (D-105): files are added, never replaced; at most ten. */
 async function uploadCrbReport(req, app, file) {
   const actor = await workflow.canAct(req.auth.user._id, app);
-  if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Analyst at this stage can attach the bureau report.', 'NOT_YOUR_STAGE');
+  if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Underwriting reviewer at this stage can attach the bureau report.', 'NOT_YOUR_STAGE');
   const existing = crbFileIds(app);
   if (existing.length >= CRB_MAX_FILES) throw badRequest('You can attach up to 10 credit bureau files. Remove one to add another.', { file: ['You can attach up to 10 credit bureau files. Remove one to add another.'] }, 'CRB_FILE_LIMIT');
   const stored = await fileStore.store(file.buffer, { kind: 'crb_report', originalName: file.originalname, applicationId: app._id, ownerUserId: req.auth.user._id, uploadedBy: req.auth.user._id });
@@ -335,7 +335,7 @@ async function uploadCrbReport(req, app, file) {
 /** Removes a bureau report file the current user attached, before the credit decision (D-105). */
 async function removeCrbReport(req, app, fileId) {
   const actor = await workflow.canAct(req.auth.user._id, app);
-  if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Analyst at this stage can remove a bureau report.', 'NOT_YOUR_STAGE');
+  if (!actor || app.currentStage !== 'credit') throw forbidden('Only the Credit Underwriting reviewer at this stage can remove a bureau report.', 'NOT_YOUR_STAGE');
   if (!crbFileIds(app).includes(String(fileId))) throw notFound('That file is not attached to this application.');
   const file = await StoredFile.findOne({ _id: fileId, kind: 'crb_report', removedAt: null });
   if (!file) throw notFound('That file is not attached to this application.');

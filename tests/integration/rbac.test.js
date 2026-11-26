@@ -23,7 +23,7 @@ describe('role catalogue (FR-43, FR-44)', () => {
     const res = await request(app()).get('/api/v1/roles').set(authed(admin.token));
     expect(res.status).toBe(200);
     const system = res.body.data.filter((r) => r.system).map((r) => r.name).sort();
-    expect(system).toEqual(['Auditor', 'CEO', 'Credit Analyst', 'Head of Credit', 'Head of Legal', 'Head of People and Culture', 'Head of Risk and Compliance', 'Legal Officer', 'OPS', 'People and Culture Manager', 'Staff', 'System Administrator']);
+    expect(system).toEqual(['Auditor', 'CEO', 'Credit Analyst', 'Credit Manager', 'Head of Credit', 'Head of Legal', 'Head of People and Culture', 'Head of Risk and Compliance', 'Legal Officer', 'OPS', 'People and Culture Manager', 'Staff', 'System Administrator']);
     expect(res.body.data.find((r) => r.code === 'staff').holders).toBe(13);
   });
 
@@ -117,7 +117,13 @@ describe('assigning roles to users (FR-46, FR-48)', () => {
   it('refuses giving one user both product approval stages (D-89)', async () => {
     const res = await put(admin.token, await userId('LFB0010'), [{ roleId: await roleId('staff') }, { roleId: await roleId('head_credit') }, { roleId: await roleId('head_risk') }]);
     expect(res.status).toBe(409);
-    expect(res.body.message).toMatch(/two product approvals are held by different people/);
+    // D-113: the Head of Credit also decides at Credit Underwriting, so sod1 is named first
+    // (the second product approval with review.credit); sod3 is breached as well.
+    expect(res.body.message).toMatch(/administration is kept apart from approving and disbursing/);
+    const { sodConflicts } = require('../../src/constants/permissions');
+    const { DEFAULT_ROLES } = require('../../src/constants/systemRoles');
+    const both = DEFAULT_ROLES.filter((r) => ['head_credit', 'head_risk'].includes(r.code)).flatMap((r) => r.permissions);
+    expect(sodConflicts(both).map((r) => r.id)).toEqual(expect.arrayContaining(['sod1', 'sod3']));
   });
 
   it('every staff member keeps the Staff role, without an end date', async () => {

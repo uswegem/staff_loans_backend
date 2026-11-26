@@ -186,7 +186,7 @@ describe('notifications (BRD 12)', () => {
 
     expect(await remindOverdue()).toBe(1);
     const [note] = await notesFor('LFB0233', 'application.overdue');
-    expect(note.text).toMatch(/from Neema Mushi is overdue at Credit Analyst review\./);
+    expect(note.text).toMatch(/from Neema Mushi is overdue at Credit Underwriting review\./);
     expect(await remindOverdue()).toBe(0); // once per stage
     expect(await notesFor('LFB0412', 'application.overdue')).toHaveLength(0);
 

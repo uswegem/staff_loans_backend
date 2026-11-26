@@ -616,4 +616,16 @@ module.exports = [
   ['APPROVED_MARKS_DISBURSED', 'You approved this loan. Another People and Culture or OPS officer marks it as disbursed.', 'Uliidhinisha mkopo huu. Afisa mwingine wa Rasilimali Watu au OPS ataweka alama kuwa umelipwa.'],
   ['DELEGATE_MARKS_DISBURSED', 'You approved this loan as a delegate. Another People and Culture or OPS officer marks it as disbursed.', 'Uliidhinisha mkopo huu kama mwakilishi. Afisa mwingine wa Rasilimali Watu au OPS ataweka alama kuwa umelipwa.'],
   ['ON_BEHALF_MARKS_DISBURSED', 'This loan was approved on your behalf. Another People and Culture or OPS officer marks it as disbursed.', 'Mkopo huu uliidhinishwa kwa niaba yako. Afisa mwingine wa Rasilimali Watu au OPS ataweka alama kuwa umelipwa.'],
+  // ---------- D-113: Credit Underwriting ----------
+  ['CREDIT_UNDERWRITING', 'Credit Underwriting', 'Tathmini ya Mikopo'],
+  ['PENDING_CREDIT_UNDERWRITING', 'Pending Credit Underwriting', 'Inasubiri Tathmini ya Mikopo'],
+  ['CREDIT_MANAGER', 'Credit Manager', 'Meneja wa Mikopo'],
+  ['RETURN_REJECT_UNDERWRITING_RECOMMEND', 'Return it, reject it, or (Credit Underwriting) recommend a shorter tenor.', 'Lirudishe, ulikatae, au (Tathmini ya Mikopo) pendekeza muda mfupi zaidi.'],
+  ['UNDERWRITING_RECORDS_BUREAU_ONLY', 'Credit Underwriting records the credit bureau check only and cannot recommend terms.', 'Tathmini ya Mikopo inarekodi ukaguzi wa CRB tu na haiwezi kupendekeza masharti.'],
+  ['ONLY_UNDERWRITING_RECORDS_BUREAU', 'Only Credit Underwriting records the bureau result.', 'Tathmini ya Mikopo tu ndiyo inayorekodi matokeo ya CRB.'],
+  ['COMMENT_UNDERWRITING_ARREARS', 'Add a comment: Credit Underwriting recorded arrears.', 'Andika maoni: Tathmini ya Mikopo imerekodi malimbikizo.'],
+  ['ONLY_UNDERWRITER_ATTACH', 'Only the Credit Underwriting reviewer at this stage can attach the bureau report.', 'Mkaguzi wa Tathmini ya Mikopo wa hatua hii tu ndiye anayeweza kuambatisha ripoti ya CRB.'],
+  ['ONLY_UNDERWRITER_REMOVE', 'Only the Credit Underwriting reviewer at this stage can remove a bureau report.', 'Mkaguzi wa Tathmini ya Mikopo wa hatua hii tu ndiye anayeweza kuondoa ripoti ya CRB.'],
+  ['SOD1_WHY_CREDIT', 'Someone who can change rules or access must not also approve or release money. The Head of Credit may prepare and first-approve products and also decide at Credit Underwriting.', 'Mtu anayeweza kubadilisha kanuni au ruhusa asiidhinishe wala kutoa fedha. Mkuu wa Mikopo anaweza kuandaa na kutoa idhini ya kwanza ya bidhaa, na pia kuamua katika Tathmini ya Mikopo.'],
+  ['HEAD_CREDIT_ROLE_DESCRIPTION', 'Prepares products and pricing, gives the first approval of changes others prepare, and decides at Credit Underwriting.', 'Huandaa bidhaa na bei, hutoa idhini ya kwanza ya mabadiliko yaliyoandaliwa na wengine, na huamua katika Tathmini ya Mikopo.'],
 ];

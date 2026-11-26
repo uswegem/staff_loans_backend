@@ -5,7 +5,7 @@
 
 const STATUS = Object.freeze({
   draft: 'Draft',
-  pending_credit: 'Pending Credit Review',
+  pending_credit: 'Pending Credit Underwriting', // D-113
   pending_pcm: 'Pending P&C Manager Review',
   pending_hr: 'Pending HR Review',
   pending_pc: 'Pending People and Culture Review',

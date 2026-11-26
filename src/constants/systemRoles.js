@@ -11,7 +11,15 @@ const DEFAULT_ROLES = Object.freeze([
     code: 'credit_analyst',
     name: 'Credit Analyst',
     system: true,
-    description: 'Credit bureau check on every application; sees the applicant\'s name, NIDA and mobile only.',
+    description: 'Credit Underwriting: credit bureau check on every application; sees the applicant\'s name, NIDA and mobile only.',
+    permissions: ['review.credit', 'review.delegate', 'reports.view', 'reports.export'],
+  },
+  {
+    // D-113: decides at Credit Underwriting, like the Credit Analyst.
+    code: 'credit_manager',
+    name: 'Credit Manager',
+    system: true,
+    description: 'Credit Underwriting, like the Credit Analyst: credit bureau check; sees the applicant\'s name, NIDA and mobile only.',
     permissions: ['review.credit', 'review.delegate', 'reports.view', 'reports.export'],
   },
   {
@@ -41,8 +49,9 @@ const DEFAULT_ROLES = Object.freeze([
     code: 'head_credit',
     name: 'Head of Credit',
     system: true,
-    description: 'Prepares products and pricing, and gives the first approval of changes others prepare.',
-    permissions: ['products.view', 'products.make', 'products.approveCredit', 'reports.view', 'reports.export'],
+    description: 'Prepares products and pricing, gives the first approval of changes others prepare, and decides at Credit Underwriting.',
+    // D-113: Credit Underwriting too (sod1 allows this pair; see permissions.js).
+    permissions: ['products.view', 'products.make', 'products.approveCredit', 'review.credit', 'review.delegate', 'reports.view', 'reports.export'],
   },
   {
     code: 'head_risk',

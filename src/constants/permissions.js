@@ -52,14 +52,18 @@ const REVIEW_PERMISSIONS = Object.freeze(['review.credit', 'review.pcm', 'review
  * Segregation-of-duties rules (FR-48, FR-60). A rule is breached when a permission
  * set contains a kind from `a` and a kind from `b`, or every permission in `all`.
  * Permissions listed in `aExcept` do not count towards `a`.
+ * `allowOnly` lists the one combination a rule lets through (D-113).
  */
 const SOD_RULES = Object.freeze([
   {
     id: 'sod1',
     name: 'Administration is kept apart from approving and disbursing',
-    why: 'Someone who can change rules or access must not also approve or release money.',
+    why: 'Someone who can change rules or access must not also approve or release money. The Head of Credit may prepare and first-approve products and also decide at Credit Underwriting.',
     a: ['admin', 'check'],
     b: ['approve', 'disburse'],
+    // D-113: the Head of Credit's pair. Allowed only when these are the only permissions on
+    // each side; any other admin or check permission, or any other approval, still breaches.
+    allowOnly: { a: ['products.make', 'products.approveCredit'], b: ['review.credit'] },
   },
   {
     id: 'sod2',
@@ -89,11 +93,20 @@ function kindsOf(permissions, except = []) {
 }
 
 /** Returns the SoD rules breached by a set of permissions. */
+/** The permissions in a set whose kind is one of `kinds`. */
+const withKind = (set, kinds) => [...set].filter((p) => kinds.includes(permById(p)?.kind));
+
+/** D-113: true when the rule's two sides hold only the combination it allows. */
+function allowedPair(set, r) {
+  return withKind(set, r.a).every((p) => r.allowOnly.a.includes(p)) && withKind(set, r.b).every((p) => r.allowOnly.b.includes(p));
+}
+
 function sodConflicts(permissions) {
   const set = new Set(permissions);
   const kinds = kindsOf(set);
   return SOD_RULES.filter((r) => {
     if (r.all) return r.all.every((p) => set.has(p));
+    if (r.allowOnly && allowedPair(set, r)) return false;
     const aKinds = r.aExcept ? kindsOf(set, r.aExcept) : kinds;
     return r.a.some((k) => aKinds.has(k)) && r.b.some((k) => kinds.has(k));
   });

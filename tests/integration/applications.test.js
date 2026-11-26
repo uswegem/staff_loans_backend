@@ -368,7 +368,7 @@ describe('sign agreement and submit (FR-10, FR-34 to FR-37)', () => {
     const preview = await api(neema.token).get(`/applications/${id}/agreement/preview`);
     const res = await signAndSubmit(neema, id);
     expect(res.status).toBe(200);
-    expect(res.body.data).toMatchObject({ status: 'pending_credit', statusLabel: 'Pending Credit Review', currentStage: 'credit', cycle: 1 });
+    expect(res.body.data).toMatchObject({ status: 'pending_credit', statusLabel: 'Pending Credit Underwriting', currentStage: 'credit', cycle: 1 });
     expect(res.body.data.route.stages).toEqual(['credit', 'pc', 'ceo']);
 
     const a = await Application.findById(id);
@@ -403,7 +403,7 @@ describe('sign agreement and submit (FR-10, FR-34 to FR-37)', () => {
     await signAndSubmit(neema, id);
     const juma = await User.findOne({ staffNo: 'LFB0233' });
     const n = await Notification.findOne({ userId: juma._id, type: 'application.stage' });
-    expect(n.text).toMatch(/from Neema Mushi is waiting for your Credit Analyst review \(limited details\)$/);
+    expect(n.text).toMatch(/from Neema Mushi is waiting for your Credit Underwriting review \(limited details\)$/);
     expect(n.text).not.toMatch(/4,500,000|Personal Loan/);
     const me = await User.findOne({ staffNo: 'LFB0412' });
     expect(await Notification.countDocuments({ userId: me._id, type: 'application.submitted' })).toBe(1);
