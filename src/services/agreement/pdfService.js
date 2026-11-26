@@ -273,7 +273,8 @@ const SUMMARY_TEXT = {
     amount: 'Loan amount', tenor: 'Tenor', months: (n) => `${n} months`, rate: 'Interest rate', rateValue: (r) => `${r} per annum, on the reducing balance`, instalment: 'Monthly instalment',
     totalRepayable: 'Total amount repayable', totalInterest: 'Total interest', firstDue: 'First repayment', lastDue: 'Last repayment', payslipLabel: 'Payslip deduction label',
     clears: 'Loan being cleared', settlement: 'Settlement amount', fees: 'Fees deducted', net: 'Net amount to credit',
-    stage: 'Stage', approver: 'Approver', decision: 'Decision', date: 'Date', decisions: { approve: 'Approved', return: 'Returned', reject: 'Rejected' },
+    stage: 'Stage', approver: 'Approver', decision: 'Decision', date: 'Date', decisions: { approve: 'Approved', return: 'Returned', reject: 'Rejected', recommend_approval: 'Recommended approval', recommend_rejection: 'Recommended rejection' },
+    against: (x) => `${x}, against recommendation`,
     loanAccount: 'Core banking loan account', bookingDate: 'Booking date', bookedBy: 'Booked by', note: 'Note',
     disbDate: 'Disbursement date', transactionRef: 'Transaction reference', comment: 'Comment', confirmedBy: 'Confirmed by',
     notBooked: 'Not booked yet.', notDisbursed: 'Not disbursed yet.', none: '—',
@@ -286,7 +287,8 @@ const SUMMARY_TEXT = {
     amount: 'Kiasi cha mkopo', tenor: 'Muda', months: (n) => `miezi ${n}`, rate: 'Riba', rateValue: (r) => `${r} kwa mwaka, kwa salio linalopungua`, instalment: 'Awamu ya kila mwezi',
     totalRepayable: 'Jumla ya kulipa', totalInterest: 'Jumla ya riba', firstDue: 'Rejesho la kwanza', lastDue: 'Rejesho la mwisho', payslipLabel: 'Jina la makato kwenye hati ya mshahara',
     clears: 'Mkopo unaolipwa', settlement: 'Kiasi cha kumaliza mkopo', fees: 'Ada zinazokatwa', net: 'Kiasi halisi cha kuweka',
-    stage: 'Hatua', approver: 'Mwidhinishaji', decision: 'Uamuzi', date: 'Tarehe', decisions: { approve: 'Imeidhinishwa', return: 'Imerudishwa', reject: 'Imekataliwa' },
+    stage: 'Hatua', approver: 'Mwidhinishaji', decision: 'Uamuzi', date: 'Tarehe', decisions: { approve: 'Imeidhinishwa', return: 'Imerudishwa', reject: 'Imekataliwa', recommend_approval: 'Imependekezwa kuidhinishwa', recommend_rejection: 'Imependekezwa kukataliwa' },
+    against: (x) => `${x} kinyume na pendekezo`,
     loanAccount: 'Akaunti ya mkopo kwenye mfumo mkuu wa benki', bookingDate: 'Tarehe ya usajili', bookedBy: 'Imesajiliwa na', note: 'Maelezo',
     disbDate: 'Tarehe ya malipo', transactionRef: 'Kumbukumbu ya muamala', comment: 'Maoni', confirmedBy: 'Imethibitishwa na',
     notBooked: 'Bado haijasajiliwa.', notDisbursed: 'Bado haijalipwa.', none: '—',
@@ -348,7 +350,9 @@ async function summaryPdf(s) {
     rows([[S.clears, s.topUp.clears], [S.settlement, tzs(s.topUp.settlement)], [S.fees, tzs(s.topUp.fees)], [S.net, tzs(s.topUp.net)]]);
   }
   section(S.approvals);
-  addTable(lay, [S.stage, S.approver, S.decision, S.date], s.approvals.map((a) => [a.stage, a.name || S.none, S.decisions[a.action] || a.action, when(L, a.at)]), [0.26, 0.3, 0.16, 0.28], { size: 9, alignLeft: [0, 1, 2, 3] });
+  // D-113: Credit Underwriting's recommendation, and a decision against it, are named.
+  const decision = (a) => (a.against ? S.against(S.decisions[a.action] || a.action) : S.decisions[a.action] || a.action);
+  addTable(lay, [S.stage, S.approver, S.decision, S.date], s.approvals.map((a) => [a.stage, a.name || S.none, decision(a), when(L, a.at)]), [0.19, 0.22, 0.32, 0.27], { size: 8.5, alignLeft: [0, 1, 2, 3] });
   // D-112: booking happens outside SLAS; one recorded before then is still shown.
   if (s.booking) {
     section(S.booking);

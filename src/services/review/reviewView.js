@@ -67,6 +67,8 @@ function panelFor(app, actor, decisions = []) {
     nextStageLabel: stageName(app.stages[i + 1]) || null,
     needsCrb: stage === 'credit',
     canRecommend: false, // the Credit Analyst no longer recommends terms (D-86)
+    // D-113: Credit Underwriting recommends; the other stages decide.
+    actions: stage === 'credit' ? ['return', 'recommend_approval', 'recommend_rejection'] : ['approve', 'return', 'reject'],
     needsHrChecks: PC_STAGES.includes(stage),
     needsProbationCheck: PC_STAGES.includes(stage) && !!app.probation?.onProbation,
     crbOutcomes: CRB_OUTCOMES, // D-99
@@ -146,7 +148,8 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     ProductVersion.findById(app.productVersionId).lean(),
     PricingVersion.findById(app.pricingVersionId).lean(),
   ]);
-  const names = await namesOf([...decisions.flatMap((d) => [d.actorId, d.onBehalfOfId]), ...docs.map((d) => d.uploadedBy), app.recommended?.by]);
+  const rec = app.creditRecommendation?.outcome ? app.creditRecommendation : null;
+  const names = await namesOf([...decisions.flatMap((d) => [d.actorId, d.onBehalfOfId]), ...docs.map((d) => d.uploadedBy), app.recommended?.by, rec?.by, rec?.onBehalfOf]);
   const cancelled = supersededIds(decisions, app.stages || []);
 
   // Fresh rule checks on the pinned versions, with the applicant's current record.
@@ -221,14 +224,18 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     crbReports: crbIdsOf(app).map((id) => docs.find((d) => String(d._id) === id && d.kind === 'crb_report')).filter(Boolean).map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: names.get(String(d.uploadedBy))?.name || null, uploadedById: String(d.uploadedBy) })),
     dataProtection: app.consents?.dataProtection?.accepted ? app.consents.dataProtection : null, // D-108
     agreements: agreements.map((a) => ({ id: String(a._id), number: a.number, kind: a.kind, status: a.status, templateVersion: a.templateVersion, terms: a.terms, signedAt: a.acceptance?.at, effectiveAt: a.effectiveAt, voidAt: a.voidAt, voidReason: a.voidReason })),
+    // D-113: Credit Underwriting's latest recommendation, for the deciding stages. Empty for
+    // applications recommended under the old rules (Credit approved).
+    creditRecommendation: rec && rec.cycle === app.cycle ? { outcome: rec.outcome, reason: rec.reason || null, crbOutcome: rec.crbOutcome || null, by: names.get(String(rec.by))?.name || null, onBehalfOf: rec.onBehalfOf ? names.get(String(rec.onBehalfOf))?.name || null : null, at: rec.at } : null,
     history: decisions.map((d) => ({
       action: d.action,
+      againstRecommendation: !!d.details?.againstRecommendation,
       stage: d.stage,
       stageLabel: decisionStage(d),
       // D-106: a return names where it went; an approval cancelled by a later return is marked.
       returnTo: d.action === 'return' ? d.details?.returnTo || 'applicant' : undefined,
       returnToLabel: d.action === 'return' ? (d.details?.returnTo && d.details.returnTo !== 'applicant' ? stageName(d.details.returnTo) : 'Applicant') : undefined,
-      superseded: d.action === 'approve' && cancelled.has(String(d._id)),
+      superseded: ['approve', 'recommend_approval', 'recommend_rejection'].includes(d.action) && cancelled.has(String(d._id)),
       comment: d.comment,
       at: d.at,
       cycle: d.cycle,

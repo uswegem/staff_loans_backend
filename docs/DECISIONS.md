@@ -195,3 +195,46 @@ full-review permission, reports show them the identity-only rows as for the Cred
 and `review.delegate` to an existing Head of Credit role and creates the Credit Manager role
 if missing, each change audited; it is safe to run again. People still need the Credit
 Manager role assigned under Users and roles.
+
+### D-113 (continued) – Credit Underwriting recommends; People and Culture or the CEO decides
+
+Credit Underwriting no longer approves or rejects. At the credit stage the actions are
+**return** (to the applicant, reason required, as before), **recommend approval** and
+**recommend rejection**. The later stages on every route (People and Culture, the Head of
+P&C, the CEO) keep approve, return and reject. The server enforces this whoever acts,
+delegates included: any other action is 403 `NOT_ALLOWED_AT_STAGE` ("Credit Underwriting
+recommends; People and Culture or the CEO decides.").
+
+- **Recommend approval**: the bureau outcome and report date, at least one report file
+  (D-105), and the eligibility checks of an approval (retirement cutoff, combined loan
+  limit). A failed check is 409 "This application cannot be recommended for approval: <reason>.
+  Recommend rejection or return it." (a generic reason: Credit Underwriting sees identity
+  only). Comment optional.
+- **Recommend rejection**: the bureau outcome, date and file; a reason of 10 to 1000
+  characters. Eligibility does not block it.
+
+Either recommendation moves the application to the next stage, open and signed, exactly as a
+Credit approval did. It is stored as `creditRecommendation` (outcome, reason, bureau outcome,
+by, on behalf of, when, cycle; the latest only, so a return to Credit and a new
+recommendation replace it), as a Decision `recommend_approval` or `recommend_rejection`, and
+audited as `application.recommended`.
+
+The deciding stages see the recommendation (who, when, reason, bureau result) and the
+history. Approving after a recommended rejection, or rejecting after a recommended approval,
+needs a reason of at least 10 characters (400 `COMMENT_REQUIRED_AGAINST_RECOMMENDATION`) from
+every deciding stage that does so; the decision is marked `againstRecommendation` and the
+audit description says "against Credit's recommendation". Approving still runs the
+eligibility checks.
+
+The applicant is never shown or told the recommendation: their history shows the credit
+row as "reviewed" with no outcome or reason, and notifications only say where the
+application moved. The agreement's list of employer approvals (FR-36) holds the deciding
+stages only, not the recommendation.
+
+The approval trail (review history, Loan Summary PDF) names "Recommended approval" or
+"Recommended rejection" and marks decisions against it. The application register and its CSV
+gain "Credit recommendation" and "Final decision against recommendation (Yes/No)".
+
+No migration: applications waiting at Credit get the new actions; an earlier Credit approval
+stays "Approved" in the history, has no `creditRecommendation`, and the deciding stages then
+show no recommendation and need no "against" reason.

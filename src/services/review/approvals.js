@@ -8,6 +8,15 @@
 
 const RETURNED_TO_STAGE = (d) => d.action === 'return' && d.details?.returnTo && d.details.returnTo !== 'applicant';
 
+/**
+ * D-113: decisions that pass a stage. Credit Underwriting recommends (approval or rejection)
+ * and the application moves on either way; the other stages approve.
+ */
+const PASSES = ['approve', 'recommend_approval', 'recommend_rejection'];
+const passes = (d) => PASSES.includes(d.action);
+/** The actions to load when working out valid approvals and return targets. */
+const STAGE_ACTIONS = [...PASSES, 'return'];
+
 /** Ids (strings) of approvals cancelled by a later return to their stage or an earlier one. */
 function supersededIds(decisions, stages) {
   const out = new Set();
@@ -16,16 +25,16 @@ function supersededIds(decisions, stages) {
     const to = order(r.details.returnTo);
     if (to < 0) continue;
     decisions
-      .filter((a) => a.action === 'approve' && a.cycle === r.cycle && a.at <= r.at && order(a.stage) >= to)
+      .filter((a) => passes(a) && a.cycle === r.cycle && a.at <= r.at && order(a.stage) >= to)
       .forEach((a) => out.add(String(a._id)));
   }
   return out;
 }
 
-/** Approvals still in force, oldest first. */
+/** Approvals (and Credit Underwriting recommendations, D-113) still in force, oldest first. */
 function validApprovals(decisions, stages) {
   const gone = supersededIds(decisions, stages);
-  return decisions.filter((d) => d.action === 'approve' && !gone.has(String(d._id))).sort((a, b) => a.at - b.at);
+  return decisions.filter((d) => passes(d) && !gone.has(String(d._id))).sort((a, b) => a.at - b.at);
 }
 
 /**
@@ -39,4 +48,4 @@ function returnTargets(app, decisions) {
   return stages.slice(0, Math.max(here, 0)).filter((s) => passed.has(s)).reverse();
 }
 
-module.exports = { supersededIds, validApprovals, returnTargets };
+module.exports = { supersededIds, validApprovals, returnTargets, passes, PASSES, STAGE_ACTIONS };

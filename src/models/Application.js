@@ -79,6 +79,17 @@ const applicationSchema = new Schema(
     appraisalNote: String,
     arrearsNote: String,
     recommended: { amount: Number, tenor: Number, reason: String, by: { type: Schema.Types.ObjectId, ref: 'User' } },
+    // D-113: Credit Underwriting recommends; People and Culture or the CEO decides. The latest
+    // recommendation only (a new cycle overwrites it); every one stays in Decision.
+    creditRecommendation: {
+      outcome: { type: String, enum: ['approve', 'reject'] },
+      reason: String,
+      crbOutcome: String,
+      by: { type: Schema.Types.ObjectId, ref: 'User' },
+      onBehalfOf: { type: Schema.Types.ObjectId, ref: 'User' },
+      at: Date,
+      cycle: Number,
+    },
     hrChecks: { employment: Boolean, category: Boolean, salary: Boolean, probationReasonVerified: Boolean },
     approved: { amount: Number, tenor: Number, instalment: Number },
     finalApprovedAt: Date,
