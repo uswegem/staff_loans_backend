@@ -600,4 +600,5 @@ module.exports = [
   ['TEMPLATE_DETAILS_ROW', 'A details row needs a label and a value: {a}.', 'Mstari wa maelezo unahitaji jina na thamani: {a}.'],
   ['OWN_SCHEDULE_NOT_HERE', 'You cannot download the schedule of your own loan here. Ask Operations or the Credit department for it.', 'Huwezi kupakua jedwali la mkopo wako mwenyewe hapa. Liombe kutoka Idara ya Uendeshaji au Idara ya Mikopo.'],
   ['SCHEDULE_AFTER_FINAL_APPROVAL', 'A repayment schedule is available once the loan has final approval.', 'Jedwali la marejesho linapatikana mkopo ukishapata idhini ya mwisho.'],
+  ['PAYSLIP_AT_MOST_30_DAYS', 'A payslip may be at most 30 days old.', 'Hati ya mshahara inaweza kuwa na umri wa siku 30 tu au chini.'],
 ];

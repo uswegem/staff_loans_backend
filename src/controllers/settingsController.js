@@ -13,12 +13,15 @@ const ROUTE_VIEW = Object.values(ROUTES).map((r) => ({ key: r.key, label: r.labe
 
 const EDITABLE = ['stageTargetHours', 'ceoTargetHours', 'workingDays', 'dayStartMinutes', 'dayEndMinutes', 'revisedTermsExpiryDays', 'approvalSlaDays', 'probationMonths', 'maxUploadMb', 'firstDueDay', 'inactivityTimeoutMin', 'lockoutThreshold', 'payslipMaxAgeDays', 'retirementAge', 'retirementBufferDays', 'dobMinAge', 'dobMaxAge'];
 const { rulesFrom: payslipRules } = require('../services/payslip/payslipReader');
+const { payslipMaxAge } = require('../services/applications/rules');
 
 function view(s) {
   const out = {};
   EDITABLE.forEach((k) => {
     out[k] = s[k];
   });
+  // D-111: a value stored before the 30-day ceiling is shown (and saved back) as 30.
+  out.payslipMaxAgeDays = payslipMaxAge(s);
   out.payslipRules = payslipRules(s);
   out.version = s.version;
   out.updatedAt = s.updatedAt;
@@ -42,6 +45,7 @@ const SettingsController = {
       if (req.body[k] !== undefined) s[k] = req.body[k];
     });
     if (req.body.payslipRules) s.payslipRules = { ...payslipRules(s), ...req.body.payslipRules };
+    s.payslipMaxAgeDays = payslipMaxAge(s); // D-111: a value stored before the 30-day ceiling is saved as 30
     s.version += 1;
     s.updatedBy = req.auth.user._id;
     await s.save();

@@ -95,3 +95,11 @@ page and a totals row; the applicant cannot download it, and every download is a
 Agreements signed before keep their text, fingerprint and schedule; legacy templates render
 as before, without the schedule, until Legal approves the numbered versions (2026.12e
 personal, 2026.12f car, loaded by `npm run agreements:load -- --approved-by <username>`).
+
+## D-111 – A payslip is at most 30 days old (Nov 2026)
+
+The payslip attached to an application may be at most 30 days old, counted from its pay
+date, when it is attached and again at submission. 30 days is the default and the ceiling:
+Settings may set a shorter limit but not a longer one, and a longer value stored before this
+decision (the earlier default was 45 days) counts as 30 and is lowered by
+`npm run upgrade:2026-12`.

@@ -1,6 +1,10 @@
 # Changelog
 
 
+
+## Unreleased – payslip at most 30 days old
+
+- A payslip may be at most 30 days old (from its pay date), at upload and at submission. 30 days is the default and the ceiling: Settings accept a shorter limit only (`PUT /admin/settings` refuses more than 30). A longer value stored earlier (the default was 45) counts as 30, is saved back as 30, and is lowered by `npm run upgrade:2026-12` (D-111).
 ## Unreleased – sign-out fix
 
 - `POST /auth/logout` and `POST /auth/refresh` no longer parse a request body, so any body (the JSON `null` the web app sent, an empty body, or malformed JSON) still ends the session and deletes the cookies. A 400 there had left the session running, and reloading the page signed the person back in.

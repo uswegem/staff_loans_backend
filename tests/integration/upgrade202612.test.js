@@ -12,6 +12,7 @@ const LegalNotice = require('../../src/models/LegalNotice');
 const Notification = require('../../src/models/Notification');
 const Role = require('../../src/models/Role');
 const User = require('../../src/models/User');
+const Settings = require('../../src/models/Settings');
 
 jest.setTimeout(120000);
 
@@ -28,6 +29,8 @@ async function before() {
   await Role.updateMany({ code: { $in: ['pc_manager', 'head_pc'] } }, { $pull: { permissions: 'loan.book' } });
   await LegalNotice.deleteMany({});
   const user = await User.findOne({ staffNo: 'LFB0412' });
+  await Settings.get();
+  await Settings.collection.updateOne({ _id: 'global' }, { $set: { payslipMaxAgeDays: 45 } });
   await Notification.collection.insertOne({ userId: user._id, type: 'application.moved', text: 'SL-2026-00007 moved to CEO review.', createdAt: new Date() });
   return { waiting, paid, fileId };
 }
@@ -36,7 +39,8 @@ describe('upgrade 2026-12', () => {
   it('--dry-run reports and changes nothing', async () => {
     const { waiting } = await before();
     const r = await run({ dryRun: true });
-    expect(r).toMatchObject({ crbFiles: 1, roles: expect.arrayContaining(['pc_manager', 'head_pc']), toBooking: [waiting.ref], notices: ['DP-2026-1 (en)', 'DP-2026-1 (sw)'], notificationsCoded: 1 });
+    expect(r).toMatchObject({ crbFiles: 1, roles: expect.arrayContaining(['pc_manager', 'head_pc']), toBooking: [waiting.ref], notices: ['DP-2026-1 (en)', 'DP-2026-1 (sw)'], notificationsCoded: 1, payslipMaxAgeFrom: 45 });
+    expect((await Settings.collection.findOne({ _id: 'global' })).payslipMaxAgeDays).toBe(45);
     expect((await Application.findById(waiting._id)).status).toBe('pending_disbursement');
     expect(await LegalNotice.countDocuments()).toBe(0);
     expect((await Role.findOne({ code: 'head_pc' })).permissions).not.toContain('loan.book');
@@ -56,7 +60,8 @@ describe('upgrade 2026-12', () => {
     expect(await LegalNotice.countDocuments({ status: 'approved' })).toBe(2);
     expect(await Notification.findOne({ text: 'SL-2026-00007 moved to CEO review.' }).lean()).toMatchObject({ code: 'MOVED_TO_REVIEW', params: { a: 'SL-2026-00007', b: 'CEO' } });
 
+    expect((await Settings.collection.findOne({ _id: 'global' })).payslipMaxAgeDays).toBe(30);
     const again = await run();
-    expect(again).toMatchObject({ crbFiles: 0, roles: [], toBooking: [], notices: [], notificationsCoded: 0 });
+    expect(again).toMatchObject({ crbFiles: 0, roles: [], toBooking: [], notices: [], notificationsCoded: 0, payslipMaxAgeFrom: null });
   });
 });

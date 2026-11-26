@@ -26,6 +26,7 @@ const api = (token) => ({
   get: (url) => request(app()).get(`/api/v1${url}`).set(authed(token)),
   post: (url, body = {}) => request(app()).post(`/api/v1${url}`).set(authed(token)).send(body),
   patch: (url, body) => request(app()).patch(`/api/v1${url}`).set(authed(token)).send(body),
+  put: (url, body) => request(app()).put(`/api/v1${url}`).set(authed(token)).send(body),
 });
 
 const CONSENTS = { truth: true, deduct: true, crb: true, sms: true };
@@ -234,16 +235,34 @@ describe('payslip (D-78, D-79)', () => {
     expect(await AuditLog.countDocuments({ action: 'payslip.upload' })).toBe(1);
   });
 
-  it('is refused at upload when older than 45 days (configurable)', async () => {
+  it('is refused at upload when older than 30 days (D-111)', async () => {
     const neema = await signIn('LFB0412');
     const { id } = await draft(neema, PL(), NEEMA_TERMS, { payslip: false });
-    const old = await attachPayslip(neema, id, { payDate: localDay(new Date(Date.now() - 80 * 24 * 3600 * 1000)) });
+    // The sample payslip shows its pay month, which counts from its last day: two months back is always over 30 days.
+    const old = await attachPayslip(neema, id, { payDate: localDay(new Date(Date.now() - 65 * 24 * 3600 * 1000)) });
     expect(old.status).toBe(400);
     expect(old.body.code).toBe('PAYSLIP_TOO_OLD');
-    expect(old.body.message).toMatch(/^Your payslip is dated \d{4}-\d{2}-\d{2}, \d+ days ago\. Attach one not older than 45 days\.$/);
+    expect(old.body.message).toMatch(/^Your payslip is dated \d{4}-\d{2}-\d{2}, \d+ days ago\. Attach one not older than 30 days\.$/);
     expect((await Application.findById(id)).payslip?.fileId).toBeFalsy();
-    await Settings.updateOne({ _id: 'global' }, { $set: { payslipMaxAgeDays: 120 } });
-    expect((await attachPayslip(neema, id, { payDate: localDay(new Date(Date.now() - 80 * 24 * 3600 * 1000)) })).status).toBe(201);
+    expect((await attachPayslip(neema, id)).status).toBe(201); // this month's
+    expect((await api(neema.token).get(`/applications/${id}`)).body.data.payslipMaxAgeDays).toBe(30);
+  });
+
+  it('Settings may set a shorter limit but never longer than 30 days; a longer stored value counts as 30 (D-111)', async () => {
+    const admin = api((await signIn('LFB0274')).token);
+    const longer = await admin.put('/admin/settings', { payslipMaxAgeDays: 45 });
+    expect(longer.status).toBe(400);
+    expect((await admin.put('/admin/settings', { payslipMaxAgeDays: 20 })).status).toBe(200);
+    const neema = await signIn('LFB0412');
+    const { id } = await draft(neema, PL(), NEEMA_TERMS, { payslip: false });
+    expect((await api(neema.token).get(`/applications/${id}`)).body.data.payslipMaxAgeDays).toBe(20);
+    // As stored before D-111 (the old default 45): still at most 30 days, and the settings screen shows 30.
+    await Settings.collection.updateOne({ _id: 'global' }, { $set: { payslipMaxAgeDays: 45 } });
+    expect((await api(neema.token).get(`/applications/${id}`)).body.data.payslipMaxAgeDays).toBe(30);
+    const old = await attachPayslip(neema, id, { payDate: localDay(new Date(Date.now() - 65 * 24 * 3600 * 1000)) });
+    expect(old.body.message).toMatch(/not older than 30 days\.$/);
+    expect((await admin.get('/admin/settings')).body.data.settings.payslipMaxAgeDays).toBe(30);
+    expect((await admin.put('/admin/settings', { stageTargetHours: 9 })).status).toBe(200); // saving other settings still works
   });
 
   it('refuses images, someone else\'s payslip, and keeps the previous one when a new one cannot be read', async () => {
