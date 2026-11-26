@@ -94,7 +94,7 @@ async function register(viewer, f) {
   const now = Date.now();
   const rows = apps.map((a) => {
     const s = staffOf(a);
-    const outside = ['pending_booking', 'pending_disbursement'].includes(a.status) && a.stageEnteredAt && now - a.stageEnteredAt >= settings.approvalSlaDays * DAY ? 'Yes' : '';
+    const outside = a.status === 'pending_disbursement' && a.stageEnteredAt && now - a.stageEnteredAt >= settings.approvalSlaDays * DAY ? 'Yes' : '';
     const common = [STATUS[a.status], a.currentStage ? stageName(a.currentStage) : '', day(a.submittedAt), Math.floor((now - new Date(a.submittedAt)) / DAY), outside];
     if (limitedFor(viewer, a)) {
       limitedCount += 1;
@@ -365,7 +365,7 @@ async function overview(req) {
   const [settings, cal] = await Promise.all([Settings.get(), calendar.load()]);
   const open = await Application.find({ status: { $in: PENDING_STAGE } }).select('stageDueAt').lean();
   const now = new Date();
-  const pending = await Application.find({ status: { $in: ['pending_booking', 'pending_disbursement'] } }).select('stageEnteredAt').lean();
+  const pending = await Application.find({ status: 'pending_disbursement' }).select('stageEnteredAt').lean();
   const { apps, productOf } = await loadApps(viewer, {});
   const visible = apps.filter((a) => !limitedFor(viewer, a));
   const disbursedApps = visible.filter((a) => a.status === 'disbursed');

@@ -1,11 +1,16 @@
 # Changelog
 
-## Unreleased – Disbursement queue (D-112)
+## Unreleased – one Disbursement queue (D-112)
 
-- The final queue is "Disbursement" (People and Culture book, OPS disburse); route descriptions and messages say so.
-- `GET /disbursements/:id/summary.pdf`: a one-page Loan Summary in the agreement's language for `loan.book` and `disb.confirm`, approved loans only, never the applicant (403 `OWN_LOAN`); audited `summary.download`.
-- `GET /agreements/:id/pdf` downloads as "<agreement number>.pdf"; the audit entry carries the application reference and language.
-- Mark as disbursed: comment required (5–1000 characters), date not before the booking date, transaction reference unique (409 `DUPLICATE_TRANSACTION_REF`), refused before booking (409 `NOT_BOOKED`); People and Culture are notified; audited `loan.disbursed`; the Disbursed register CSV has a Comment column.
+Run `npm run upgrade:2026-12b` (dry run) and then `npm run upgrade:2026-12b -- --apply` after `upgrade:2026-12`.
+
+- Final approval and acceptance of revised terms go straight to Pending Disbursement. The in-system booking step of D-107 is removed: no Pending Booking, no `POST /disbursements/:id/book`, no `loan.book` permission. Bookings recorded earlier stay on the loans, read-only.
+- The Disbursement queue (`disb.confirm`) is open to OPS, the Head of People and Culture and the P&C Manager; the two People and Culture roles get `disb.confirm`. The role rule sod2 no longer counts the People and Culture review permissions; on each loan nobody marks their own loan, or one they approved (also as a delegate or on whose behalf), as disbursed.
+- `GET /disbursements/:id/summary.pdf`: a one-page Loan Summary in the agreement's language, audited `summary.download`; 403 `OWN_LOAN` for the applicant.
+- `GET /agreements/:id/pdf` downloads as "<agreement number>.pdf"; its audit entry carries the application reference and language.
+- Mark as disbursed: comment required (5 to 1000 characters), date not before final approval, unique transaction reference (409 `DUPLICATE_TRANSACTION_REF`); audited `loan.disbursed`; the register CSV has a Comment column.
+- `scripts/upgrade-2026-12b.js` moves loans in Pending Booking to Pending Disbursement and fixes the roles, with audit entries; `upgrade-2026-12` no longer sends loans to booking.
+
 ## Unreleased – payslip at most 30 days old
 
 - A payslip may be at most 30 days old (from its pay date), at upload and at submission. 30 days is the default and the ceiling: Settings accept a shorter limit only (`PUT /admin/settings` refuses more than 30). A longer value stored earlier (the default was 45) counts as 30, is saved back as 30, and is lowered by `npm run upgrade:2026-12` (D-111).

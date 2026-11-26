@@ -58,7 +58,7 @@ function messagesIn(body, out = []) {
 const ENGLISH = /\b(the|your|is|has|was|cannot|before|approved|ready|review|loan)\b/i;
 const SWAHILI = /\b(mkopo|ombi|imeidhinishwa|tayari|ukaguzi|lazima|kwenye|kwa hiyo|hati)\b/i;
 
-/** The journey: apply and sign, an error, approvals, a return to Credit, booking, disbursement. */
+/** The journey: apply and sign, an error, approvals, a return to Credit, disbursement. */
 async function journey(lang) {
   const seen = [];
   const keep = (res) => {
@@ -91,9 +91,8 @@ async function journey(lang) {
 
   const upendo = as(await signIn('LFB0129'), lang);
   keep(await upendo.get('/disbursements'));
-  keep(await upendo.post(`/disbursements/${id}/book`, { loanAccountNumber: 'LN2026000123', date: localDay(new Date(Date.now() + 86400000)) })); // refused: future
-  keep(await upendo.post(`/disbursements/${id}/book`, { loanAccountNumber: 'LN2026000123', date: localDay() }));
   const halima = as(await signIn('LFB0318'), lang);
+  keep(await halima.post(`/disbursements/${id}/confirm`, { date: localDay(new Date(Date.now() + 86400000)), transactionRef: 'FT26294AB12', comment: 'Imelipwa' })); // refused: future
   keep(await halima.post(`/disbursements/${id}/confirm`, { date: localDay(), transactionRef: 'FT26294AB12', comment: 'Imelipwa' }));
 
   // Every notification anyone got, read in the language.
@@ -131,9 +130,9 @@ describe('one language at a time (D-109)', () => {
 
   it('a notification is rendered in the language of whoever reads it, from its code', async () => {
     await journey('en');
-    const n = await Notification.findOne({ type: 'application.ready_to_book' }).lean();
-    expect(n.code).toBe('FINAL_APPROVAL_READY_TO_BOOK');
+    const n = await Notification.findOne({ type: 'application.ready_to_disburse' }).lean();
+    expect(n.code).toBe('FINAL_APPROVAL_READY_TO_DISBURSE');
     expect(n.params).toEqual({ a: expect.stringMatching(/^SL-/) });
-    expect(i18n.render(n.code, n.params, 'sw')).toBe(`${n.params.a} imepata idhini ya mwisho. Iko tayari kusajiliwa kwenye mfumo mkuu wa benki.`);
+    expect(i18n.render(n.code, n.params, 'sw')).toBe(`${n.params.a} imepata idhini ya mwisho. Iko tayari kulipwa.`);
   });
 });

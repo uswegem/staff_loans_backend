@@ -6,8 +6,7 @@
  *
  * kind drives segregation of duties (FR-48) and MFA (FR-49):
  *   approve  – review stages
- *   book     – People and Culture booking in core banking (D-107)
- *   disburse – OPS confirmation
+ *   disburse – marking a loan as disbursed (OPS and People and Culture, D-112)
  *   admin    – configuration and access management
  *   check    – product / pricing checker (FR-60, DECISIONS D-05)
  */
@@ -20,8 +19,7 @@ const PERMISSIONS = Object.freeze([
   { id: 'review.ceo', group: 'Reviews', label: 'Give final approval (CEO stage)', kind: 'approve' },
   { id: 'review.delegate', group: 'Reviews', label: 'Delegate own reviews during absence' },
   { id: 'loan.viewAll', group: 'Reviews', label: 'View every application and its approvals, read-only (Auditor)' },
-  { id: 'loan.book', group: 'Operations', label: 'Book finally approved loans in core banking (People and Culture)', kind: 'book' },
-  { id: 'disb.confirm', group: 'Operations', label: 'Confirm disbursements', kind: 'disburse' },
+  { id: 'disb.confirm', group: 'Operations', label: 'Disbursement: download the papers and mark loans as disbursed', kind: 'disburse' },
   { id: 'staff.view', group: 'Staff records', label: 'View staff records' },
   { id: 'staff.manage', group: 'Staff records', label: 'Maintain staff records and salaries' },
   { id: 'staff.verifyDob', group: 'Staff records', label: 'Verify staff dates of birth (not their own submissions)' },
@@ -46,13 +44,14 @@ const permById = (id) => PERMISSIONS.find((p) => p.id === id);
 const LOCKED_PERMISSIONS = Object.freeze(PERMISSIONS.filter((p) => p.locked).map((p) => p.id));
 
 /** FR-49: MFA for anyone holding a review, disbursement or administration permission. */
-const MFA_KINDS = Object.freeze(['approve', 'book', 'disburse', 'admin', 'check']);
+const MFA_KINDS = Object.freeze(['approve', 'disburse', 'admin', 'check']);
 
 const REVIEW_PERMISSIONS = Object.freeze(['review.credit', 'review.pcm', 'review.hr', 'review.ceo']);
 
 /**
  * Segregation-of-duties rules (FR-48, FR-60). A rule is breached when a permission
  * set contains a kind from `a` and a kind from `b`, or every permission in `all`.
+ * Permissions listed in `aExcept` do not count towards `a`.
  */
 const SOD_RULES = Object.freeze([
   {
@@ -65,15 +64,11 @@ const SOD_RULES = Object.freeze([
   {
     id: 'sod2',
     name: 'Approving is kept apart from confirming disbursement',
-    why: 'The person who approves a loan must not also confirm that it was paid out.',
+    why: 'The person who approves a loan must not also confirm that it was paid out. People and Culture reviewers may mark loans as disbursed, but never a loan they approved: that is checked on each loan.',
     a: ['approve'],
+    // D-112: the People and Culture stages; the rule on each loan keeps them from their own approvals.
+    aExcept: ['review.pcm', 'review.hr'],
     b: ['disburse'],
-  },
-  {
-    id: 'sod4',
-    name: 'Booking is kept apart from confirming disbursement',
-    why: 'The person who books a loan in core banking must not also confirm that it was paid out.',
-    all: ['loan.book', 'disb.confirm'],
   },
   {
     id: 'sod3',
@@ -83,9 +78,10 @@ const SOD_RULES = Object.freeze([
   },
 ]);
 
-function kindsOf(permissions) {
+function kindsOf(permissions, except = []) {
   const kinds = new Set();
   for (const p of permissions) {
+    if (except.includes(p)) continue;
     const def = permById(p);
     if (def && def.kind) kinds.add(def.kind);
   }
@@ -98,7 +94,8 @@ function sodConflicts(permissions) {
   const kinds = kindsOf(set);
   return SOD_RULES.filter((r) => {
     if (r.all) return r.all.every((p) => set.has(p));
-    return r.a.some((k) => kinds.has(k)) && r.b.some((k) => kinds.has(k));
+    const aKinds = r.aExcept ? kindsOf(set, r.aExcept) : kinds;
+    return r.a.some((k) => aKinds.has(k)) && r.b.some((k) => kinds.has(k));
   });
 }
 

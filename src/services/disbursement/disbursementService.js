@@ -1,14 +1,15 @@
 'use strict';
 
-// OPS disbursement (BRD 11; FR-20 to FR-22, FR-24, FR-26; Q3). Disbursement happens in
-// core banking; OPS confirms it here with the date, a mandatory transaction
-// reference, a mandatory comment and the product's checklist. Confirming ends the
-// application's journey in SLAS and regenerates the schedule from that date.
+// Disbursement (BRD 11; FR-20 to FR-22, FR-24, FR-26; Q3; D-112). After final approval a
+// loan waits in one queue, Disbursement, open to OPS and People and Culture (disb.confirm).
+// People and Culture book the loan in the loan management system outside SLAS; the
+// money goes out in core banking. Here they download the Agreement and the Loan Summary
+// and mark the loan as disbursed with the date, a unique transaction reference, a comment
+// and the product's checklist. That ends the journey in SLAS and regenerates the schedule
+// from that date. Nobody marks their own loan, or one they approved, as disbursed.
 //
-// D-107: before OPS, People and Culture (loan.book) book the finally approved loan in core
-// banking: the loan account number, the booking date and an optional note. Both teams see
-// the whole queue; each acts only on its own step. The person who booked a loan never
-// confirms its disbursement, and nobody books or disburses their own loan.
+// The booking step of D-107 is gone; a booking recorded before D-112 stays on the loan,
+// read-only.
 
 const Application = require('../../models/Application');
 const Agreement = require('../../models/Agreement');
@@ -31,10 +32,10 @@ const { badRequest, conflict, forbidden, notFound } = require('../../utils/error
 const DAY = 24 * 3600 * 1000;
 const tzs = (n) => `TZS ${Math.round(n).toLocaleString('en-US')}`;
 
-const WAITING = ['pending_booking', 'pending_disbursement'];
+const WAITING = ['pending_disbursement'];
 
 /**
- * Q3: a loan waiting after final approval (to be booked or disbursed, D-107) is Outside SLA
+ * Q3: a loan waiting after final approval to be disbursed is Outside SLA
  * after approvalSlaDays from final approval; it never expires.
  */
 function slaInfo(app, settings, now = new Date()) {
@@ -44,31 +45,26 @@ function slaInfo(app, settings, now = new Date()) {
 }
 
 /**
- * SoD (FR-48): OPS cannot confirm their own loan or one they approved, themselves or
- * as a delegate, or one approved on their behalf. Returns the reason, or null.
+ * SoD (FR-48, D-112), for everyone who marks loans as disbursed: not your own loan; not a
+ * loan you approved, yourself or as a delegate; not one approved on your behalf. Returns
+ * the reason, or null.
  */
 async function blockedReason(userId, app) {
-  if (String(app.applicantUserId) === String(userId)) return 'This is your own loan. Another OPS officer confirms it.';
-  if (app.booking?.bookedBy && String(app.booking.bookedBy) === String(userId)) return 'You booked this loan, so an OPS officer confirms its disbursement.';
-  const approved = await Decision.exists({ applicationId: app._id, action: 'approve', $or: [{ actorId: userId }, { onBehalfOfId: userId }] });
-  return approved ? 'You approved this loan, so another OPS officer confirms it.' : null;
+  if (String(app.applicantUserId) === String(userId)) return 'This is your own loan. Another People and Culture or OPS officer marks it as disbursed.';
+  const approvals = await Decision.find({ applicationId: app._id, action: 'approve', $or: [{ actorId: userId }, { onBehalfOfId: userId }] }).select('actorId onBehalfOfId').lean();
+  const mine = approvals.filter((d) => String(d.actorId) === String(userId));
+  if (mine.some((d) => !d.onBehalfOfId)) return 'You approved this loan. Another People and Culture or OPS officer marks it as disbursed.';
+  if (mine.length) return 'You approved this loan as a delegate. Another People and Culture or OPS officer marks it as disbursed.';
+  if (approvals.length) return 'This loan was approved on your behalf. Another People and Culture or OPS officer marks it as disbursed.';
+  return null;
 }
 
-/** D-107: nobody books their own loan. Returns the reason, or null. */
-function bookBlockedReason(userId, app) {
-  return String(app.applicantUserId) === String(userId) ? 'This is your own loan. Another People and Culture officer books it.' : null;
-}
-
-/** What this person may do on a loan in the queue (D-107). */
+/** What this person may do on a loan in the queue (D-112). */
 async function actionsFor(req, app) {
   const perms = req.auth.permissions;
-  // D-112: the applicant never downloads the papers of their own loan here.
+  // The applicant never downloads the papers of their own loan here.
   const ownLoan = String(app.applicantUserId) === String(req.auth.user._id);
-  const out = { canBook: false, canConfirm: false, bookBlockedReason: null, blockedReason: null, ownLoan, canDownload: !ownLoan };
-  if (app.status === 'pending_booking' && perms.has('loan.book')) {
-    out.bookBlockedReason = bookBlockedReason(req.auth.user._id, app);
-    out.canBook = !out.bookBlockedReason;
-  }
+  const out = { canConfirm: false, blockedReason: null, ownLoan, canDownload: !ownLoan };
   if (app.status === 'pending_disbursement' && perms.has('disb.confirm')) {
     out.blockedReason = await blockedReason(req.auth.user._id, app);
     out.canConfirm = !out.blockedReason;
@@ -119,18 +115,17 @@ function row(app, maps, settings, names) {
 }
 
 /**
- * The final approval queue (FR-20, D-107): to book (People and Culture), ready to disburse
- * (OPS), or disbursed. Both teams see every tab; each item says what this person may do.
+ * The Disbursement queue (FR-20, D-112): ready to disburse, or disbursed. Each item says
+ * what this person may do.
  */
 async function list(req, { tab, q } = {}) {
   const settings = await Settings.get();
-  const chosen = tab || (req.auth.permissions.has('disb.confirm') ? 'ready' : 'booking');
-  const [booking, ready, done] = await Promise.all([
-    Application.find({ status: 'pending_booking' }).sort({ stageEnteredAt: 1 }).lean(),
+  const chosen = tab || 'ready';
+  const [ready, done] = await Promise.all([
     Application.find({ status: 'pending_disbursement' }).sort({ stageEnteredAt: 1 }).lean(),
     Application.find({ status: 'disbursed' }).sort({ 'disbursement.date': -1, 'disbursement.confirmedAt': -1 }).limit(500).lean(),
   ]);
-  const apps = { booking, ready, done }[chosen];
+  const apps = { ready, done }[chosen];
   const maps = await loadAll(apps);
   const names = await namesOf(apps.flatMap((a) => [a.disbursement?.confirmedBy, a.booking?.bookedBy]).filter(Boolean));
   let items = apps.map((a) => row(a, maps, settings, names));
@@ -142,15 +137,17 @@ async function list(req, { tab, q } = {}) {
     // eslint-disable-next-line no-await-in-loop
     Object.assign(item, await actionsFor(req, apps.find((a) => String(a._id) === item.id)));
   }
-  const waiting = [...booking, ...ready];
   return {
     tab: chosen,
-    counts: { booking: booking.length, ready: ready.length, done: done.length, outsideSla: waiting.filter((a) => slaInfo(a, settings).outsideSla).length },
+    counts: { ready: ready.length, done: done.length, outsideSla: ready.filter((a) => slaInfo(a, settings).outsideSla).length },
     slaDays: settings.approvalSlaDays,
-    can: { book: req.auth.permissions.has('loan.book'), confirm: req.auth.permissions.has('disb.confirm') },
+    can: { confirm: req.auth.permissions.has('disb.confirm') },
     items,
   };
 }
+
+/** When the loan got final approval (or the revised terms were accepted). */
+const finalApprovalOf = (app) => app.finalApprovedAt || app.stageEnteredAt;
 
 async function load(id) {
   const app = await Application.findById(id);
@@ -180,8 +177,8 @@ async function detail(req, id) {
     staff: { ...row(app.toObject(), maps, settings).staff, mobile: staff.personal?.mobile },
     // D-101: the payslip deduction topped up, and the SLAS loan it settles when there is one.
     topUp: app.topUp?.on ? { loanRef: app.topUp.loanRef || null, payslipLine: app.topUp.payslipLine?.label ? app.topUp.payslipLine : null, outstanding: app.topUp.outstanding ?? null } : null,
-    // D-112: OPS disburse on or after the booking date.
-    earliestDate: localDay(app.booking?.date || app.stageEnteredAt),
+    // D-112: disbursed on or after the date of final approval.
+    earliestDate: localDay(finalApprovalOf(app)),
     today: localDay(),
     schedule: app.schedule || [],
     scheduleBasis: app.scheduleBasis,
@@ -190,58 +187,12 @@ async function detail(req, id) {
 }
 
 /**
- * D-107: People and Culture record the booking in core banking.
- * body: { loanAccountNumber, date: 'YYYY-MM-DD', note? }
- */
-async function book(req, id, body) {
-  const app = await load(id);
-  if (app.status !== 'pending_booking') throw conflict('This loan has already been booked.', 'ALREADY_BOOKED');
-  const blocked = bookBlockedReason(req.auth.user._id, app);
-  if (blocked) throw forbidden(blocked, 'SOD_BOOK');
-  const loanAccountNumber = (body.loanAccountNumber || '').trim();
-  if (!loanAccountNumber) throw badRequest('Enter the core banking loan account number.', { loanAccountNumber: ['Enter the core banking loan account number.'] }, 'LOAN_ACCOUNT_REQUIRED');
-  if (body.date > localDay()) throw badRequest('The booking date cannot be in the future.', { date: ['The booking date cannot be in the future.'] }, 'DATE_INVALID');
-  if (body.date < localDay(app.stageEnteredAt)) throw badRequest('The booking date cannot be before the final approval.', { date: ['The booking date cannot be before the final approval.'] }, 'DATE_INVALID');
-  const note = (body.note || '').trim();
-  const now = new Date();
-  const booking = { loanAccountNumber, date: localMidnight(body.date), note: note || undefined, bookedBy: req.auth.user._id, bookedAt: now };
-
-  await withTransaction(async (session) => {
-    // The waiting time keeps counting from final approval (stageEnteredAt is not changed).
-    const fresh = await Application.findOneAndUpdate({ _id: app._id, status: 'pending_booking' }, { $set: { status: 'pending_disbursement', booking } }, { new: true, session });
-    if (!fresh) throw conflict('Someone else has just booked this loan. Reload the list.', 'STATE_CHANGED');
-    await Decision.create(
-      [{ applicationId: app._id, cycle: app.cycle, action: 'book', actorId: req.auth.user._id, comment: note ? `Loan account ${loanAccountNumber}. ${note}` : `Loan account ${loanAccountNumber}.`, details: { date: body.date, loanAccountNumber }, at: now, ip: req.ip }],
-      { session }
-    );
-    await audit.record(
-      {
-        req,
-        action: 'disbursement.book',
-        description: `${app.ref} booked in core banking: loan account ${loanAccountNumber} on ${body.date}`,
-        entity: 'Application',
-        entityId: String(app._id),
-        appRef: app.ref,
-        before: { status: 'pending_booking' },
-        after: { status: 'pending_disbursement', loanAccountNumber, date: body.date, note: note || undefined },
-      },
-      { session }
-    );
-    await notify.notifyPermission('disb.confirm', { type: 'application.ready_to_disburse', text: `${app.ref} is booked in core banking (loan account ${loanAccountNumber}). Ready to disburse.`, href: '/disburse', entity: 'Application', entityId: String(app._id) }, { session });
-  });
-  return detail(req, app._id);
-}
-
-/**
  * Confirms a disbursement (FR-20 to FR-22).
  * body: { date: 'YYYY-MM-DD', transactionRef, comment, topUpSettled? }
  */
 async function confirm(req, id, body) {
   const app = await load(id);
-  // D-112: only after People and Culture have booked it (D-107).
-  if (app.status === 'pending_booking') throw conflict('People and Culture have not booked this loan yet. It can be disbursed once it is booked.', 'NOT_BOOKED');
   if (app.status !== 'pending_disbursement') throw conflict('This loan has already been disbursed.', 'ALREADY_DISBURSED');
-  if (!app.booking?.loanAccountNumber) throw conflict('People and Culture have not booked this loan yet. It can be disbursed once it is booked.', 'NOT_BOOKED');
   const blocked = await blockedReason(req.auth.user._id, app);
   if (blocked) throw forbidden(blocked, 'SOD_DISBURSE');
 
@@ -255,8 +206,7 @@ async function confirm(req, id, body) {
   if (comment.length < 5) throw badRequest('Add a comment for the disbursement record.', { comment: ['Add a comment for the disbursement record.'] }, 'COMMENT_REQUIRED');
   const today = localDay();
   if (body.date > today) throw badRequest('The disbursement date cannot be in the future.', { date: ['The disbursement date cannot be in the future.'] }, 'DATE_INVALID');
-  // D-112: the lower bound is the booking date (which is itself on or after final approval).
-  if (body.date < localDay(app.booking.date)) throw badRequest('The disbursement date cannot be before the booking date.', { date: ['The disbursement date cannot be before the booking date.'] }, 'DATE_INVALID');
+  if (body.date < localDay(finalApprovalOf(app))) throw badRequest('The disbursement date cannot be before the final approval.', { date: ['The disbursement date cannot be before the final approval.'] }, 'DATE_INVALID');
 
   // FR-21, FR-24: the schedule restarts from the disbursement date.
   const [pricing, settings] = await Promise.all([PricingVersion.findById(app.pricingVersionId).lean(), Settings.get()]);
@@ -305,8 +255,6 @@ async function confirm(req, id, body) {
       },
       { session }
     );
-    // D-112: People and Culture, who booked it, are told too.
-    await notify.notifyPermission('loan.book', { type: 'application.disbursed_pc', text: `${app.ref} is disbursed (ref ${transactionRef}).`, href: '/disburse', entity: 'Application', entityId: String(app._id) }, { session, exclude: [app.applicantUserId] });
     await notify.notifyUsers([app.applicantUserId], { type: 'application.disbursed', text: `${app.ref}: your loan of ${tzs(amount)} has been disbursed. Your first instalment of ${tzs(instalment)} is due on ${schedule[0]?.due}.`, href: `/applications/${app._id}`, entity: 'Application', entityId: String(app._id) }, { session });
   });
   return detail(req, app._id);
@@ -324,8 +272,8 @@ async function flagOutsideSla(now = new Date()) {
 }
 
 /**
- * D-112: the Loan Summary PDF for Disbursement, in the agreement's language. People and
- * Culture and OPS only, approved loans only, never the applicant. Audited (summary.download).
+ * D-112: the Loan Summary PDF for Disbursement, in the agreement's language. disb.confirm
+ * (OPS and People and Culture), approved loans only, never the applicant. Audited (summary.download).
  */
 async function summary(req, id) {
   const app = await Application.findById(id);
@@ -389,4 +337,4 @@ async function summary(req, id) {
   return { pdf, ref: app.ref };
 }
 
-module.exports = { list, detail, book, confirm, summary, flagOutsideSla, slaInfo, blockedReason, bookBlockedReason };
+module.exports = { list, detail, confirm, summary, flagOutsideSla, slaInfo, blockedReason };
