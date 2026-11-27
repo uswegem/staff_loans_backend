@@ -31,7 +31,8 @@ const Staff = require('../models/Staff');
  */
 async function canSee(req, applicationId, { allowLimitedDocuments = false } = {}) {
   const app = await Application.findById(applicationId);
-  if (!app) return null;
+  // D-115: once purged, nothing about the application is shown.
+  if (!app || app.purgedAt) return null;
   if (String(app.applicantUserId) === String(req.auth.user._id)) return { app, as: 'applicant' };
   const access = await workflow.reviewAccess(req.auth, app);
   if (access && !access.limited) return { app, as: access.payHidden ? 'reviewer-without-pay' : 'reviewer' };
@@ -232,7 +233,7 @@ const ApplicationController = {
    */
   async repaymentSchedule(req, res) {
     const app = await Application.findById(req.params.id).lean();
-    if (!app) throw notFound('Application not found.');
+    if (!app || app.purgedAt) throw notFound('Application not found.'); // D-115
     if (String(app.applicantUserId) === String(req.auth.user._id)) {
       throw forbidden('You cannot download the schedule of your own loan here. Ask Operations or the Credit department for it.', 'OWN_SCHEDULE');
     }

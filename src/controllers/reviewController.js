@@ -33,7 +33,7 @@ const ReviewController = {
     if (tab === 'overdue') rows = waiting.filter((r) => r.due?.overdue);
     if (tab === 'handled') {
       const ids = await Decision.distinct('applicationId', { actorId: req.auth.user._id, stage: { $ne: null } });
-      const apps = await Application.find({ _id: { $in: ids } }).sort({ updatedAt: -1 }).limit(100);
+      const apps = await Application.find({ _id: { $in: ids }, purgedAt: null }).sort({ updatedAt: -1 }).limit(100); // D-115
       rows = await Promise.all(apps.map((app) => queueRow(app, { limited: workflow.isLimited(app, perms), actor: null })));
     }
     const delegatedToMe = await workflow.delegatedTo(req.auth.user._id);

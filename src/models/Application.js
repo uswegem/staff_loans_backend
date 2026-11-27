@@ -129,6 +129,11 @@ const applicationSchema = new Schema(
     closedAtStage: String,
     closedReason: String,
     closedAt: Date,
+    // D-115: a legal hold stops the retention purge; purgedAt is set when the purge ran, and
+    // retention keeps what statistics need once the link to the staff member is removed.
+    legalHold: { on: Boolean, reason: String, by: { type: Schema.Types.ObjectId, ref: 'User' }, at: Date, releasedBy: { type: Schema.Types.ObjectId, ref: 'User' }, releasedAt: Date },
+    purgedAt: Date,
+    retention: { department: String, station: String, category: String, endedAt: Date, purgedBy: { type: Schema.Types.ObjectId, ref: 'User' } },
   },
   { timestamps: true }
 );
