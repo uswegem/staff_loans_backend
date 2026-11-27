@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased – export uploaded files
+
+- `npm run files:export`: lists, then with `--out` copies, the uploaded files of an application or a date range (optionally one kind, optionally including files removed in the app) under their original names, checked against their SHA-256, with a `manifest.csv`. Audited as `file.export` with who ran it (`--by`). Exit code 2 when a file is missing or changed on disk.
+
 ## Unreleased – uploaded dates of birth need no verification (D-114)
 
 - Staff upload: a date of birth in the file is stored as verified when the upload is applied (approved DobChange, audited `dob.upload`) and replaces one waiting for verification. Profile and single-record dates of birth are still verified by someone else. The template instructions say so.

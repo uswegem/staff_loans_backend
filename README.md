@@ -60,6 +60,7 @@ The fictional sample people of the prototype (LFB0412 and others) are now only i
 | `npm run reset:staff` | Replaces staff and products with the staff table (D-92). `-- --dry-run` lists the counts only. Refuses production or a remote database; backs up first to `<upload dir>/../backups/reset-<time>`. Needs `RESET_TEMP_PASSWORD`. Safe to run again. |
 | `npm run upgrade` | Brings an existing database up to this release (names, templates, product approvals, roles, date of birth setup, location list, profile formats). `-- --fix-phone <as stored>=<correct>` corrects a confirmed wrong number. Safe to run again. |
 | `npm run staff:load` | Adds new staff from the staff table without deleting anything (D-95). `-- --dry-run` lists them. Needs `RESET_TEMP_PASSWORD`. Safe to run again. |
+| `npm run files:export` | Exports uploaded files with their original names, for audit or records requests. `-- --by <username> --application <SL-ref>` (or `--from`/`--to YYYY-MM-DD`, optional `--kind`, `--include-removed`) lists them; add `--out <folder>` to copy them to `<folder>/<ref>/<kind>/` with a `manifest.csv`. Each file is checked against its stored SHA-256; nothing is overwritten. Each export is audited (`file.export`). Server administrators only: it reads `UPLOAD_DIR` directly. |
 | `node scripts/e2e-server.js` | API for the Playwright runs: in-memory replica set, sample data, port 4100. The web app's `npm run e2e` starts it for you. |
 
 ## Upgrading an existing installation
