@@ -57,6 +57,12 @@ const OUT_DIR = '/root/slas-prod';
 const ACTOR_NO = 'AT656'; // System Administrator: recorded as verifier of uploaded dates of birth
 // Production role holders by staff number (agreed with the Head of Operations, 27 Nov 2026).
 // Everyone in the file also gets Staff. Nothing from testing is carried over.
+// Dates joined given by the Head of Operations where the HR file is blank (#N/A), 27 Nov 2026.
+const DATE_JOINED_SET = {
+  AT648: '2023-07-01', // Baraka Munisi
+  AT663: '2023-07-01', // Rashid Said
+};
+
 const PROD_ROLES = {
   sys_admin: ['AT656', 'AT623', 'AT664', 'AT603', 'AT637'], // Ramadhani, Agias, Iddi, Nurdin, Uswege
   ceo: ['AT648'], // Baraka Munisi
@@ -173,7 +179,8 @@ function readFile(file, ctx) {
     const doc = { staffNo: no, userName, firstName, lastName, title: t(r['Job Title']) || 'Staff', department: t(r['Department']) || undefined, category, gender, email: email || undefined, status: 'active', personal: {}, nextOfKin: [] };
     if (middleName) doc.middleName = middleName;
 
-    const joined = day(r['Date Joined']);
+    const joined = DATE_JOINED_SET[no] || day(r['Date Joined']);
+    if (DATE_JOINED_SET[no]) note(`date joined set to ${DATE_JOINED_SET[no]} (given by the Head of Operations; the file has "${t(r['Date Joined'])}")`);
     if (!joined) note(`date joined ${t(r['Date Joined']) ? `"${t(r['Date Joined'])}" is not a date` : 'is empty'}, left for the staff member`);
     else if (joined > ctx.today) err(`date joined ${joined} is in the future`);
     else doc.dateJoined = localMidnight(joined);
