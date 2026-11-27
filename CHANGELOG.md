@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased – uploaded dates of birth need no verification (D-114)
+
+- Staff upload: a date of birth in the file is stored as verified when the upload is applied (approved DobChange, audited `dob.upload`) and replaces one waiting for verification. Profile and single-record dates of birth are still verified by someone else. The template instructions say so.
+
 ## Unreleased – Credit Underwriting (D-113)
 
 Run `npm run upgrade:2026-12c` (dry run) and then `npm run upgrade:2026-12c -- --apply`.

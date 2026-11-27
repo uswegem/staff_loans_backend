@@ -75,6 +75,35 @@ async function propose(req, staff, dob, source, session) {
 }
 
 /**
+ * D-114: a date of birth from a People and Culture staff upload is stored as the verified
+ * date straight away, with no verification step. It is recorded as an approved change by
+ * the uploader (source staff_upload) and audited as dob.upload. A change still waiting for
+ * this staff member (from their profile, for example) is withdrawn: the upload replaces it.
+ * Runs inside the caller's transaction; the caller has checked the date (problemWith).
+ */
+async function setFromUpload(req, staff, dob, session) {
+  const now = new Date();
+  const pendingId = staff.dateOfBirth?.pending?.changeId;
+  if (pendingId) {
+    await DobChange.updateOne({ _id: pendingId, status: 'pending' }, { $set: { status: 'withdrawn', decidedBy: req.auth.user._id, decidedAt: now, reason: 'Replaced by a People and Culture staff upload.' } }, { session });
+  }
+  const [change] = await DobChange.create(
+    [{ staffId: staff._id, proposed: dob, previous: staff.dateOfBirth?.value || null, source: 'staff_upload', submittedBy: req.auth.user._id, submittedAt: now, status: 'approved', decidedBy: req.auth.user._id, decidedAt: now }],
+    { session }
+  );
+  await Staff.updateOne(
+    { _id: staff._id },
+    { $set: { dateOfBirth: { value: dob, verifiedAt: now, verifiedBy: req.auth.user._id, changeId: change._id }, 'personal.dob': localMidnight(dob) } },
+    { session }
+  );
+  await audit.record(
+    { req, action: 'dob.upload', description: `${staff.staffNo}: date of birth ${dob} set from a staff upload, with no verification step${staff.dateOfBirth?.value ? ` (was ${staff.dateOfBirth.value})` : ''}${pendingId ? '; the change waiting for verification was withdrawn' : ''}`, entity: 'Staff', entityId: String(staff._id), before: { dateOfBirth: staff.dateOfBirth?.value || null, pendingChangeId: pendingId ? String(pendingId) : null }, after: { dateOfBirth: dob, changeId: String(change._id) } },
+    { session }
+  );
+  return change;
+}
+
+/**
  * Proposes a date of birth. source: 'profile' (the staff member) or 'staff_record'
  * (People and Culture). Returns the pending change.
  */
@@ -198,4 +227,4 @@ async function notifyStaff(staff, text, href = '/profile') {
   if (user) await notify.notifyUsers([user._id], { type: 'dob.decided', text, href, entity: 'Staff', entityId: String(staff._id) });
 }
 
-module.exports = { submit, propose, list, approve, reject, withdraw, statusOf, problemWith, ageOn };
+module.exports = { submit, propose, setFromUpload, list, approve, reject, withdraw, statusOf, problemWith, ageOn };
