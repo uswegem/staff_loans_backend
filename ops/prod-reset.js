@@ -17,7 +17,7 @@
 //
 // LOADED from the file: every staff member's HR and profile details; date of birth stored
 // as verified (D-114); a unique temporary password each (change forced at first
-// sign-in); roles carried over from the current role holders.
+// sign-in); roles from PROD_ROLES below (test role assignments are dropped).
 //
 // Usage (as root):
 //   cd /opt/slas/api && node /root/slas-tools/prod-reset.js /root/slas-prod/Final_Staff_List_final.xlsx
@@ -55,8 +55,21 @@ const FILE = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const APPLY = process.argv.includes('--apply');
 const OUT_DIR = '/root/slas-prod';
 const ACTOR_NO = 'AT656'; // System Administrator: recorded as verifier of uploaded dates of birth
-// System Administrators agreed for production (Ramadhani, Agias, Iddi, Nurdin, Uswege).
-const SYS_ADMINS = ['AT656', 'AT623', 'AT664', 'AT603', 'AT637'];
+// Production role holders by staff number (agreed with the Head of Operations, 27 Nov 2026).
+// Everyone in the file also gets Staff. Nothing from testing is carried over.
+const PROD_ROLES = {
+  sys_admin: ['AT656', 'AT623', 'AT664', 'AT603', 'AT637'], // Ramadhani, Agias, Iddi, Nurdin, Uswege
+  ceo: ['AT648'], // Baraka Munisi
+  head_pc: ['AT663'], // Rashid Said
+  pc_manager: ['AT676'], // Elizabeth Buberwa
+  head_credit: ['AT697'], // Said Mbaruku
+  credit_manager: ['AT658'], // Elias Marenga
+  credit_analyst: ['AT646', 'AT709'], // Pelagia Ngowi, Ally Mussa
+  head_risk: ['AT727'], // Jackline Muro
+  head_legal: ['AT534'], // Ladislaus Muhagachi
+  legal_officer: ['AT700'], // Benard Charle
+  ops: ['AT144', 'AT118'], // Neema Balozi, Adriano Mwazembe
+};
 
 // Cleared entirely. Raw collection calls, because decisions and the audit log are
 // append-only through the app's models.
@@ -237,26 +250,23 @@ async function main() {
     process.exit(1);
   }
 
-  // Current role holders → carried over by staff number.
+  // Production roles (agreed 27 Nov 2026). Test role assignments are NOT carried over.
   const roles = await Role.find().lean();
-  const roleById = new Map(roles.map((r) => [String(r._id), r]));
   const roleByCode = Object.fromEntries(roles.map((r) => [r.code, r]));
-  if (!roleByCode.staff || !roleByCode.sys_admin) throw new Error('STOP: the Staff or System Administrator role is missing.');
+  const missingRoles = [...new Set(Object.values(PROD_ROLES).flat())].concat('staff').filter((c) => !roleByCode[c]);
+  if (missingRoles.length) throw new Error(`STOP: roles missing in the database: ${missingRoles.join(', ')} (run the 2026-12c upgrade first)`);
   const users = await User.find().select('staffNo').lean();
-  const noByUser = new Map(users.map((u) => [String(u._id), u.staffNo]));
-  const now = new Date();
-  const active = await RoleAssignment.find({ revokedAt: null, $or: [{ endsOn: null }, { endsOn: { $gte: localMidnight(localDay()) } }] }).lean();
   const wanted = new Map([...fileNos].map((n) => [n, new Set(['staff'])]));
-  const lost = [];
-  for (const a of active) {
-    const no = noByUser.get(String(a.userId));
-    const role = roleById.get(String(a.roleId));
-    if (!no || !role || role.code === 'staff') continue;
-    if (wanted.has(no)) wanted.get(no).add(role.code);
-    else lost.push(`${no}: ${role.name}`);
+  const notInFile = [];
+  for (const [code, nos] of Object.entries(PROD_ROLES)) {
+    for (const no of nos) {
+      if (wanted.has(no)) wanted.get(no).add(code);
+      else notInFile.push(`${no} (${code})`);
+    }
   }
-  SYS_ADMINS.forEach((no) => wanted.get(no)?.add('sys_admin'));
-  const missingAdmins = SYS_ADMINS.filter((no) => !fileNos.has(no));
+  if (notInFile.length) throw new Error(`STOP: role holders not in the file: ${notInFile.join(', ')}`);
+  const now = new Date();
+  const missingAdmins = PROD_ROLES.sys_admin.filter((no) => !fileNos.has(no));
   if (missingAdmins.length) throw new Error(`STOP: System Administrators not in the file: ${missingAdmins.join(', ')}`);
   const sod = [];
   for (const [no, codes] of wanted) {
@@ -295,7 +305,6 @@ async function main() {
       console.log(`  ${no} ${r.fullName}: ${extra.map((c) => roleByCode[c].name).join(', ')}`);
     }
   }
-  if (lost.length) console.log(`\nRoles held by people NOT in the file (will go):\n  ${lost.join('\n  ')}`);
   const dobs = rows.filter((r) => r.doc.dob).length;
   console.log(`\nDates of birth stored as verified: ${dobs} of ${rows.length}`);
   console.log(`Notes (${notes.length}): fields left for the staff member to complete in My profile`);
