@@ -106,7 +106,9 @@ async function limitedView(auth, app, actor) {
     StoredFile.find({ _id: { $in: [...app.documentIds, ...crbIdsOf(app)] }, applicationId: app._id, kind: { $in: ['document', 'crb_report'] }, removedAt: null }).lean(),
     ProductVersion.findById(app.productVersionId).select('name requiredDocuments').lean(),
   ]);
-  const uploaders = await namesOf(docs.map((d) => d.uploadedBy).filter(Boolean));
+  const rec = app.creditRecommendation?.outcome && app.creditRecommendation.cycle === app.cycle ? app.creditRecommendation : null;
+  const ownRec = rec && String(rec.by) === String(auth.user._id) ? rec : null;
+  const uploaders = await namesOf([...docs.map((d) => d.uploadedBy), ownRec?.by].filter(Boolean));
   return {
     id: String(app._id),
     ref: app.ref,
@@ -114,6 +116,8 @@ async function limitedView(auth, app, actor) {
     status: app.status,
     statusLabel: STATUS[app.status],
     currentStage: app.currentStage,
+    // The current stage's name, so the screen never needs the route (not in this allow-list).
+    currentStageLabel: app.currentStage ? stageName(app.currentStage) : null,
     stageEnteredAt: app.stageEnteredAt,
     due: await due(app),
     submittedAt: app.submittedAt,
@@ -134,6 +138,9 @@ async function limitedView(auth, app, actor) {
     crbReports: crbIdsOf(app).map((id) => docs.find((d) => String(d._id) === id && d.kind === 'crb_report')).filter(Boolean).map((d) => ({ ...appSvc.DOC_VIEW(d), uploadedBy: uploaders.get(String(d.uploadedBy))?.name || null, uploadedById: String(d.uploadedBy) })),
     crb: app.crb?.outcome ? { outcome: app.crb.outcome, reportDate: app.crb.reportDate ? localDay(app.crb.reportDate) : null } : null,
     myDecisions: mine.map((d) => ({ action: d.action, stage: d.stage, comment: d.comment, at: d.at })),
+    // D-113: the viewer's own Credit Underwriting recommendation (this cycle), for the read-only
+    // state once the application has moved on. Nobody else's.
+    creditRecommendation: ownRec ? { outcome: ownRec.outcome, reason: ownRec.reason || null, crbOutcome: ownRec.crbOutcome || null, by: uploaders.get(String(ownRec.by))?.name || null, onBehalfOf: null, at: ownRec.at } : null,
     panel: panelFor(app, actor),
   };
 }
@@ -169,6 +176,7 @@ async function fullView(req, app, actor, { payHidden = false } = {}) {
     status: app.status,
     statusLabel: STATUS[app.status],
     currentStage: app.currentStage,
+    currentStageLabel: app.currentStage ? stageName(app.currentStage) : null,
     stageEnteredAt: app.stageEnteredAt,
     due: await due(app),
     route: routeInfo(app),
