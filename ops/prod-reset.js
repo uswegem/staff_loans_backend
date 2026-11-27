@@ -253,7 +253,7 @@ async function main() {
   // Production roles (agreed 27 Nov 2026). Test role assignments are NOT carried over.
   const roles = await Role.find().lean();
   const roleByCode = Object.fromEntries(roles.map((r) => [r.code, r]));
-  const missingRoles = [...new Set(Object.values(PROD_ROLES).flat())].concat('staff').filter((c) => !roleByCode[c]);
+  const missingRoles = Object.keys(PROD_ROLES).concat('staff').filter((c) => !roleByCode[c]);
   if (missingRoles.length) throw new Error(`STOP: roles missing in the database: ${missingRoles.join(', ')} (run the 2026-12c upgrade first)`);
   const users = await User.find().select('staffNo').lean();
   const wanted = new Map([...fileNos].map((n) => [n, new Set(['staff'])]));
