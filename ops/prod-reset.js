@@ -10,6 +10,8 @@
 // holidays, location regions. Staff and user records that are in the file keep their
 // database ids, so the product and template approval records still name the right people.
 //
+// CORRECTED: live pricing (all products): processing fee 0%, insurance 0.55% a year.
+//
 // CLEARED (testing): applications, agreements, approval decisions, uploaded files (except
 // the agreement logo), notifications, date-of-birth changes, delegations, staff imports,
 // salaries, sessions, refresh tokens, reference counters (SL-/MKT-), and the audit log
@@ -42,6 +44,7 @@ const Role = req('src/models/Role');
 const RoleAssignment = req('src/models/RoleAssignment');
 const Settings = req('src/models/Settings');
 const LocationRegion = req('src/models/LocationRegion');
+const { livePricing } = req('src/services/products/productService');
 const AuditLog = req('src/models/AuditLog');
 const rbac = req('src/services/rbac/rbacService');
 const passwordPolicy = req('src/services/auth/passwordPolicy');
@@ -62,6 +65,10 @@ const DATE_JOINED_SET = {
   AT648: '2023-07-01', // Baraka Munisi
   AT663: '2023-07-01', // Rashid Said
 };
+
+// Pricing corrected before go-live (Head of Operations, 27 Nov 2026): no processing fee,
+// insurance 0.55% a year. Applies to every product. Basis points: 0.55% = 55.
+const PRICING_SET = { processingFeeBps: 0, processingFeeTopUpBps: 0, insuranceBps: 55 };
 
 const PROD_ROLES = {
   sys_admin: ['AT656', 'AT623', 'AT664', 'AT603', 'AT637'], // Ramadhani, Agias, Iddi, Nurdin, Uswege
@@ -304,6 +311,12 @@ async function main() {
   console.log('\nKept:');
   Object.entries(kept).forEach(([k, n]) => console.log(`  ${k.padEnd(18)} ${n}`));
   console.log(`  agreement logo     ${logoId ? 'custom logo kept' : 'default logo'}`);
+  const pricing = await livePricing();
+  if (!pricing) throw new Error('STOP: no live pricing version found.');
+  const pct = (b) => `${(b / 100).toFixed(2)}%`;
+  console.log(`\nPricing (live version ${pricing.version}, all products), corrected in place:`);
+  Object.entries(PRICING_SET).forEach(([k, v]) => console.log(`  ${k.padEnd(22)} ${pct(pricing[k])} -> ${pct(v)}`));
+  console.log(`  interest (unchanged)   ${pct(pricing.interestBps)}`);
   console.log('\nRoles beyond Staff:');
   for (const [no, codes] of wanted) {
     const extra = [...codes].filter((c) => c !== 'staff');
@@ -386,6 +399,20 @@ async function main() {
         done.roles += 1;
       }
     }
+    await db.collection('pricingversions').updateOne({ _id: pricing._id }, { $set: { ...PRICING_SET, updatedAt: now } }, { session });
+    await AuditLog.create(
+      [{
+        action: 'pricing.corrected',
+        description: `Pricing version ${pricing.version} corrected before go-live by the server administrator on the Head of Operations' instruction: processing fee (new loan and top-up) 0%, insurance 0.55% a year. Applies to all products. No loans had been made.`,
+        actorId: actorUser?._id,
+        actorStaffNo: ACTOR_NO,
+        entity: 'PricingVersion',
+        entityId: String(pricing._id),
+        before: { processingFeeBps: pricing.processingFeeBps, processingFeeTopUpBps: pricing.processingFeeTopUpBps, insuranceBps: pricing.insuranceBps },
+        after: PRICING_SET,
+      }],
+      { session }
+    );
     await AuditLog.create(
       [{
         action: 'system.production_baseline',
