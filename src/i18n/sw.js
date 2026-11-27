@@ -646,4 +646,8 @@ module.exports = [
   ['FINAL_AGAINST_RECOMMENDATION', 'Final decision against recommendation', 'Uamuzi wa mwisho kinyume na pendekezo'],
   // ---------- D-114: an uploaded date of birth needs no verification ----------
   ['DOB_REPLACED_BY_UPLOAD', 'Replaced by a People and Culture staff upload.', 'Imebadilishwa na upakiaji wa kumbukumbu za wafanyakazi wa Rasilimali Watu.'],
+  // ---------- D-115: ten-year retention ----------
+  ['RETENTION_NO_APPLICATION', 'No application "{ref}".', 'Hakuna maombi "{ref}".'],
+  ['RETENTION_ALREADY_PURGED', '{ref} was already purged on {date}.', '{ref} tayari yalifutwa tarehe {date}.'],
+  ['RETENTION_HOLD_REASON', 'Give the reason for the legal hold: --reason "<text>".', 'Toa sababu ya kuzuia kisheria: --reason "<maandishi>".'],
 ];
