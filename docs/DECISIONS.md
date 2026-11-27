@@ -238,3 +238,18 @@ gain "Credit recommendation" and "Final decision against recommendation (Yes/No)
 No migration: applications waiting at Credit get the new actions; an earlier Credit approval
 stays "Approved" in the history, has no `creditRecommendation`, and the deciding stages then
 show no recommendation and need no "against" reason.
+
+## D-114 – An uploaded date of birth needs no verification (Nov 2026)
+
+Changes D-82 and D-100 for the staff upload only. A date of birth in a People and Culture
+staff upload (`staff.manage`) is stored as the verified date of birth when the upload is
+applied, with no verification step, and is used at once for the retirement cutoff and loan
+eligibility. It is recorded as an approved DobChange (source `staff_upload`, submitted and
+decided by the uploader) and audited as `dob.upload`; the commit no longer notifies the
+verifiers. A date of birth waiting for verification for that staff member is withdrawn
+("Replaced by a People and Culture staff upload.") and the uploaded one takes its place.
+
+Dates of birth entered by a staff member in their profile, or by People and Culture on a
+single staff record, still go to Date of birth checks and are verified by someone else
+(D-82). The backend staff loader (`npm run staff:load`) has no date-of-birth column and sets
+none.
