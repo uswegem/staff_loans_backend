@@ -220,3 +220,20 @@ describe('reports and the Loan Summary name the recommendation (D-113)', () => {
     expect(text).toContain('Imeidhinishwa kinyume na pendekezo');
   });
 });
+
+describe('the Credit Analyst reopens an application that has moved on (D-113 fix)', () => {
+  it('the limited view names the current stage and their own recommendation, without the route or pay', async () => {
+    const { id, juma } = await atCredit();
+    await post(juma, id, { action: 'recommend_rejection', crb: CRB, comment: REASON });
+    const res = await api(juma.token).get(`/review/${id}`);
+    expect(res.status).toBe(200);
+    const v = res.body.data;
+    expect(v).toMatchObject({ limited: true, currentStage: 'pc', currentStageLabel: 'People and Culture', panel: null });
+    expect(v.creditRecommendation).toMatchObject({ outcome: 'reject', reason: REASON, crbOutcome: CRB.outcome, by: 'Juma Kassim' });
+    expect(v.myDecisions.map((d) => d.action)).toEqual(['recommend_rejection']);
+    for (const key of ['route', 'payslip', 'salary', 'basic', 'history', 'calcAtSubmission']) expect(v).not.toHaveProperty(key);
+    // The full view names the stage too.
+    const grace = await signIn('LFB0051');
+    expect((await api(grace.token).get(`/review/${id}`)).body.data.currentStageLabel).toBe('People and Culture');
+  });
+});
