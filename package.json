@@ -26,7 +26,8 @@
     "staff:load": "node scripts/load-staff.js",
     "test-staff": "node scripts/test-staff.js",
     "agreements:load": "node scripts/load-agreement-templates.js",
-    "files:export": "node scripts/export-files.js"
+    "files:export": "node scripts/export-files.js",
+    "retention": "node scripts/retention.js"
   },
   "jest": {
     "testEnvironment": "node",

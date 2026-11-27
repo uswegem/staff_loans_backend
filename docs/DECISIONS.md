@@ -253,3 +253,31 @@ Dates of birth entered by a staff member in their profile, or by People and Cult
 single staff record, still go to Date of birth checks and are verified by someone else
 (D-82). The backend staff loader (`npm run staff:load`) has no date-of-birth column and sets
 none.
+
+## D-115 – Loan data is kept for ten years after the loan ends (Nov 2026)
+
+Every application, its documents and its record are kept for ten years from the day the loan
+ends, then the uploaded files are deleted and the record is anonymised. The loan ends:
+
+- rejected, withdrawn or declined: on the day it was closed;
+- disbursed: on the last repayment due date in its schedule, or on the day a top-up settled it;
+- any other status (still open): never; nothing is purged while an application is open.
+
+When the ten years are over (`npm run retention -- --apply`, or the nightly `retention-purge`
+job) the uploaded files of the application are deleted from `UPLOAD_DIR`. The application keeps
+its reference, product, amounts, dates, statuses and decisions for statistics, and its
+department, station and category for reports. The applicant's link, names, NIDA, mobile,
+payslip figures, bank details, purpose, comments and reasons, the agreement text and its
+acceptance details, and the application's notifications are removed. Decisions keep their
+action and date, without comment or IP address. The audit log is kept unchanged. Each purge
+is audited (`retention.purge`). A purged application is no longer found in the app; reports
+show it as "Anonymised".
+
+A legal hold (`npm run retention -- --hold <ref> --reason "<text>" --by <user>`, released with
+`--release`) stops the purge of one application until released; both are audited. Staff upload
+files older than ten years are deleted too.
+
+`RETENTION_YEARS` cannot be set below ten. `RETENTION_PURGE_ENABLED=false` stops the nightly
+job (the script still works). Staff records of people who have left and the audit log are not
+purged; the data protection notice wording ("kept for as long as the law requires") is
+unchanged.

@@ -67,9 +67,11 @@ async function loadApps(viewer, f, { dateField = 'submittedAt', extra = {} } = {
   if (f.status) q.status = f.status;
   let apps = await Application.find(q).sort({ submittedAt: -1 }).lean();
 
-  const staffIds = [...new Set(apps.map((a) => String(a.applicantStaffId)))];
+  const staffIds = [...new Set(apps.map((a) => a.applicantStaffId).filter(Boolean).map(String))]; // none once anonymised (D-115)
   const staff = new Map((await Staff.find({ _id: { $in: staffIds } }).lean()).map((s) => [String(s._id), s]));
-  const staffOf = (a) => staff.get(String(a.applicantStaffId)) || {};
+  // D-115: an application anonymised after the retention period keeps only its department,
+  // branch and category for statistics.
+  const staffOf = (a) => staff.get(String(a.applicantStaffId)) || (a.purgedAt ? { firstName: 'Anonymised', department: a.retention?.department, station: a.retention?.station, category: a.retention?.category } : {});
   if (f.department) apps = apps.filter((a) => staffOf(a).department === f.department);
   if (f.station) apps = apps.filter((a) => staffOf(a).station === f.station);
   if (f.category) apps = apps.filter((a) => staffOf(a).category === f.category);

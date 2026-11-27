@@ -46,6 +46,10 @@ function load() {
     trustProxy: process.env.TRUST_PROXY || 'loopback',
     // Outside any web root (NFR-07). The API serves no static files; storage/ is gitignored.
     uploadDir: process.env.UPLOAD_DIR || require('path').resolve(__dirname, '../../storage/uploads'),
+    // D-115: data is kept for ten years after the loan ends, then files are deleted and records
+    // anonymised. Never less than ten. RETENTION_PURGE_ENABLED=false stops the nightly job.
+    retentionYears: Math.max(10, int('RETENTION_YEARS', 10)),
+    retentionPurgeEnabled: bool('RETENTION_PURGE_ENABLED', true),
     logLevel: process.env.LOG_LEVEL || 'info',
     loginRateLimitPerMin: int('LOGIN_RATE_LIMIT_PER_MIN', 20),
     bcryptRounds: int('BCRYPT_ROUNDS', 12),

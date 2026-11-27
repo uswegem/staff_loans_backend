@@ -123,7 +123,7 @@ async function list(req, { tab, q } = {}) {
   const chosen = tab || 'ready';
   const [ready, done] = await Promise.all([
     Application.find({ status: 'pending_disbursement' }).sort({ stageEnteredAt: 1 }).lean(),
-    Application.find({ status: 'disbursed' }).sort({ 'disbursement.date': -1, 'disbursement.confirmedAt': -1 }).limit(500).lean(),
+    Application.find({ status: 'disbursed', purgedAt: null }).sort({ 'disbursement.date': -1, 'disbursement.confirmedAt': -1 }).limit(500).lean(),
   ]);
   const apps = { ready, done }[chosen];
   const maps = await loadAll(apps);
@@ -151,7 +151,7 @@ const finalApprovalOf = (app) => app.finalApprovedAt || app.stageEnteredAt;
 
 async function load(id) {
   const app = await Application.findById(id);
-  if (!app || !APPROVED_LOAN.includes(app.status)) throw notFound('This loan is not in Disbursement.');
+  if (!app || app.purgedAt || !APPROVED_LOAN.includes(app.status)) throw notFound('This loan is not in Disbursement.');
   return app;
 }
 
@@ -277,7 +277,7 @@ async function flagOutsideSla(now = new Date()) {
  */
 async function summary(req, id) {
   const app = await Application.findById(id);
-  if (!app) throw notFound('Application not found.');
+  if (!app || app.purgedAt) throw notFound('Application not found.');
   if (!APPROVED_LOAN.includes(app.status)) throw forbidden('A loan summary is available once the loan has final approval.', 'NOT_APPROVED');
   if (String(app.applicantUserId) === String(req.auth.user._id)) throw forbidden('You cannot download the papers of your own loan here.', 'OWN_LOAN');
   const AgreementTemplate = require('../../models/AgreementTemplate');

@@ -58,6 +58,7 @@ const agreementSchema = new Schema(
     voidReason: String,
     replacedById: { type: Schema.Types.ObjectId, ref: 'Agreement' },
     expiresAt: Date, // revised agreements only (FR-39)
+    purgedAt: Date, // D-115: text and signing evidence removed after the retention period
   },
   { timestamps: true }
 );

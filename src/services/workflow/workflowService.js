@@ -103,6 +103,7 @@ function isLimited(app, perms) {
  * (BRD 4 access table); others see what they can act on or acted on before.
  */
 async function reviewAccess(auth, app, { perms } = {}) {
+  if (app.purgedAt) return null; // D-115: anonymised after the retention period
   if (String(app.applicantUserId) === String(auth.user._id)) return null;
   if (!app.cycle) return null; // never submitted
   const p = perms || (await reviewPermissions(auth));

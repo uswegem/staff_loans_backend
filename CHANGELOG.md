@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased – ten-year retention (D-115)
+
+- Applications are kept for ten years after the loan ends (closed; last repayment due date; or top-up settlement), then their uploaded files are deleted and the record anonymised (statistics, department, station and category kept; names, staff link, bank, payslip, comments, agreement text and notifications removed). Audit log unchanged. Audited `retention.purge`.
+- Nightly job `retention-purge` (off with `RETENTION_PURGE_ENABLED=false`); `RETENTION_YEARS` (minimum and default 10).
+- `npm run retention`: dry run listing what is due; `--apply --by <user>` purges; `--hold <ref> --reason "<text>" --by <user>` and `--release <ref> --by <user>` for a legal hold (audited `retention.hold` / `retention.release`).
+- Purged applications are not found in the app; reports show them as "Anonymised". Staff upload files older than ten years are deleted.
+
 ## Unreleased – export uploaded files
 
 - `npm run files:export`: lists, then with `--out` copies, the uploaded files of an application or a date range (optionally one kind, optionally including files removed in the app) under their original names, checked against their SHA-256, with a `manifest.csv`. Audited as `file.export` with who ran it (`--by`). Exit code 2 when a file is missing or changed on disk.
