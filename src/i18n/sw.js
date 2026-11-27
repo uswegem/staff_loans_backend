@@ -644,4 +644,6 @@ module.exports = [
   ['RECOMMENDED_REJECTION', 'Recommended rejection', 'Imependekezwa kukataliwa'],
   ['CREDIT_RECOMMENDATION', 'Credit recommendation', 'Pendekezo la Tathmini ya Mikopo'],
   ['FINAL_AGAINST_RECOMMENDATION', 'Final decision against recommendation', 'Uamuzi wa mwisho kinyume na pendekezo'],
+  // ---------- D-114: an uploaded date of birth needs no verification ----------
+  ['DOB_REPLACED_BY_UPLOAD', 'Replaced by a People and Culture staff upload.', 'Imebadilishwa na upakiaji wa kumbukumbu za wafanyakazi wa Rasilimali Watu.'],
 ];

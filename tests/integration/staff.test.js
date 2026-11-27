@@ -191,7 +191,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(res.body.data.summary).toEqual({ new: 2, update: 1, unchanged: 1, error: 1 });
     const byNo = Object.fromEntries(res.body.data.rows.map((r) => [r.staffNo, r]));
     expect(byNo.LFB0412).toMatchObject({ outcome: 'update', changes: ['title'] });
-    expect(byNo.LFB0612.changes.join()).toMatch(/date of birth 1990-05-14 sent for verification/);
+    expect(byNo.LFB0612.changes.join()).toMatch(/date of birth set to 1990-05-14/);
     expect(byNo.LFB0188.outcome).toBe('unchanged');
     expect(byNo['06-LFB2'].problems).toEqual(
       expect.arrayContaining([
@@ -222,7 +222,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(young.problems.join()).toMatch(/^Date of Birth: This date of birth gives an age of \d+\. It must be between 18 and/);
     expect(taken.problems).toContain(`NIDA ${neemaNida} is already on file for LFB0412`);
     expect(same.outcome).toBe('unchanged');
-    expect(changed).toMatchObject({ outcome: 'update', changes: ['date of birth 1975-02-01 sent for verification'] });
+    expect(changed).toMatchObject({ outcome: 'update', changes: ['date of birth set to 1975-02-01'] });
   });
 
   it('downloads the error rows as Excel in the template columns, to fix and upload again', async () => {
@@ -248,7 +248,7 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(again.body.data.summary).toMatchObject({ new: 1, error: 0 });
   });
 
-  it('applies valid rows only, in one go, sends dates of birth for verification and touches nothing else', async () => {
+  it('applies valid rows only, in one go, sets dates of birth as verified and touches nothing else', async () => {
     const neemaBefore = await Staff.findOne({ staffNo: 'LFB0412' }).lean();
     await Salary.create({ staffId: neemaBefore._id, basic: 1850000, effectiveFrom: new Date('2026-01-01T00:00:00+03:00'), source: 'manual' });
     const up = await upload(sample());
@@ -260,13 +260,15 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
     expect(baraka).toMatchObject({ firstName: 'Baraka', lastName: 'Mwakyusa', title: 'Teller', category: 'Non-management', personal: { nida: '19900514-12345-00001-23' } });
     expect(localDay(baraka.dateJoined)).toBe('2026-09-03');
     expect(baraka.employmentType).toBeUndefined();
-    // D-82: waiting for verification, not in force.
-    expect(baraka.dateOfBirth.value).toBeUndefined();
-    expect(baraka.dateOfBirth.pending.proposed).toBe('1990-05-14');
+    // D-114: an uploaded date of birth is in force straight away, with no verification step.
+    const graceId = (await User.findOne({ staffNo: 'LFB0051' }))._id;
+    expect(baraka.dateOfBirth).toMatchObject({ value: '1990-05-14', verifiedBy: graceId });
+    expect(baraka.dateOfBirth.pending?.changeId).toBeFalsy();
     const change = await DobChange.findOne({ staffId: baraka._id }).lean();
-    expect(change).toMatchObject({ status: 'pending', source: 'staff_upload', submittedBy: (await User.findOne({ staffNo: 'LFB0051' }))._id });
-    // Only the verification stands between Baraka's record and applying: no employment type or salary is needed.
-    expect(applyBlockers(baraka)).toEqual(['Your date of birth (1990-05-14) is waiting for People and Culture to verify it. You can apply once it is verified.']);
+    expect(change).toMatchObject({ status: 'approved', source: 'staff_upload', submittedBy: graceId, decidedBy: graceId });
+    expect(await DobChange.countDocuments({ status: 'pending' })).toBe(0);
+    // Nothing stands between Baraka's record and applying: no employment type, salary or verification is needed.
+    expect(applyBlockers(baraka)).toEqual([]);
 
     // Neema: only the title changed; everything else, including what the template does not hold, is as it was.
     const neema = await Staff.findOne({ staffNo: 'LFB0412' }).lean();
@@ -278,29 +280,35 @@ describe('Excel bulk upload (FR-02, D-100)', () => {
 
     expect(await AuditLog.countDocuments({ action: 'staff.import_commit' })).toBe(1);
     expect(await AuditLog.countDocuments({ action: { $in: ['staff.create', 'staff.update'] } })).toBe(3);
-    expect(await AuditLog.countDocuments({ action: 'dob.submit' })).toBe(1);
+    expect(await AuditLog.countDocuments({ action: 'dob.upload', description: /1990-05-14 set from a staff upload, with no verification step/ })).toBe(1);
+    expect(await AuditLog.countDocuments({ action: 'dob.submit' })).toBe(0);
     // A committed upload cannot be applied twice.
     expect((await commit(up.body.data.id)).status).toBe(409);
   });
 
-  it('the uploader cannot verify an uploaded date of birth; another verifier can', async () => {
+  it('an uploaded date of birth needs no verification; one entered on a staff record still does (D-114)', async () => {
     const up = await upload(sheet([row(BARAKA)]));
     await commit(up.body.data.id);
-    const change = await DobChange.findOne({ status: 'pending', source: 'staff_upload' }).lean();
-    const mine = await api(grace.token).post(`/dob-verifications/${change._id}/approve`);
-    expect(mine.status).toBe(403);
-    expect(mine.body.code).toBe('SOD_SELF_VERIFY');
-    const upendo = await signIn('LFB0129');
-    expect((await api(upendo.token).post(`/dob-verifications/${change._id}/approve`)).status).toBe(200);
     expect((await Staff.findOne({ staffNo: 'LFB0612' }).lean()).dateOfBirth.value).toBe('1990-05-14');
+    expect((await api(grace.token).get('/dob-verifications')).body.data.items ?? []).toEqual([]);
+    // A date entered on one staff record goes to verification as before (D-82).
+    const faraji = await Staff.findOne({ staffNo: 'LFB0188' }).lean();
+    expect((await api(grace.token).post(`/staff/${faraji._id}/date-of-birth`, { dob: '1975-02-01' })).status).toBeLessThan(300);
+    expect(await DobChange.exists({ staffId: faraji._id, status: 'pending', source: 'staff_record' })).toBeTruthy();
   });
 
-  it('a different date of birth already waiting stops the row; the same one changes nothing', async () => {
-    const up = await upload(sheet([row({ 'Staff Number/Code': 'LFB0188', 'Date of Birth': '01/02/1975' })]));
+  it('an uploaded date of birth replaces one waiting for verification (D-114)', async () => {
+    const faraji = await Staff.findOne({ staffNo: 'LFB0188' }).lean();
+    await api(grace.token).post(`/staff/${faraji._id}/date-of-birth`, { dob: '1975-02-01' });
+    const up = await upload(sheet([row({ 'Staff Number/Code': 'LFB0188', 'Date of Birth': '02/02/1975' })]));
+    expect(up.body.data.rows[0]).toMatchObject({ outcome: 'update', changes: ['date of birth set to 1975-02-02 (replaces 1975-02-01, waiting for verification)'] });
     await commit(up.body.data.id);
-    const again = await upload(sheet([row({ 'Staff Number/Code': 'LFB0188', 'Date of Birth': '02/02/1975' })]));
-    expect(again.body.data.rows[0].problems).toEqual(['A different date of birth (1975-02-01) is already waiting for verification. Decide or withdraw it first, or leave Date of Birth blank']);
-    const same = await upload(sheet([row({ 'Staff Number/Code': 'LFB0188', 'Date of Birth': '01/02/1975' })]));
+    const after = await Staff.findOne({ staffNo: 'LFB0188' }).lean();
+    expect(after.dateOfBirth.value).toBe('1975-02-02');
+    expect(await DobChange.exists({ staffId: faraji._id, status: 'withdrawn', proposed: '1975-02-01' })).toBeTruthy();
+    expect(await DobChange.countDocuments({ staffId: faraji._id, status: 'pending' })).toBe(0);
+    // The same date again changes nothing.
+    const same = await upload(sheet([row({ 'Staff Number/Code': 'LFB0188', 'Date of Birth': '02/02/1975' })]));
     expect(same.body.data.rows[0].outcome).toBe('unchanged');
   });
 

@@ -8,8 +8,9 @@
 //
 // D-100: the template has core identity and employment columns. No salary (affordability comes from the payslip
 // attached to each application), no probation end date (worked out from the date joined)
-// and no retirement date (worked out from the verified date of birth). A date of birth
-// goes to People and Culture's verification queue (D-82): the uploader cannot verify it.
+// and no retirement date (worked out from the date of birth). D-114: a date of birth in the
+// upload is stored as verified straight away, with no verification step; dates entered in a
+// profile or on one staff record still go to People and Culture's verification (D-82).
 // Titles are stored as text; the upload never assigns roles.
 
 const XLSX = require('xlsx');
@@ -35,7 +36,7 @@ const COLUMNS = Object.freeze([
   ['nida', 'NIDA', 'Optional at import; required before eligible credit checks. Used by Credit for CRB checks. Format 19800630-13140-00004-20.'],
   ['title', 'Title', 'Optional at import; incomplete until provided. Used for assigning roles and permissions.'],
   ['staffNo', 'Staff Number/Code', 'Required. Used to authenticate staff against the payslip uploaded during a loan application.'],
-  ['dob', 'Date of Birth', 'Optional at import; verification required before loan eligibility. Used to work out the retirement date for affordability.'],
+  ['dob', 'Date of Birth', 'Optional at import; stored as verified, with no verification step. Used to work out the retirement date for affordability.'],
   ['dateJoined', 'Date Joined', 'Optional at import; staff must enter it in their profile before applying. No HR verification required. Used for probation eligibility.'],
   ['category', 'Category', 'Required. Management or Non-management. Decides the approval route.'],
 ]);
@@ -61,7 +62,7 @@ function templateWorkbook() {
     ...COLUMNS.map((c) => [c[1], c[2]]),
     [],
     ['How it works', 'One row per staff member, matched by Staff Number/Code. New staff numbers are added with an incomplete profile, which the staff member completes. For staff already on file a blank cell keeps what is on file, and details that are not in this template are not changed. Rows are checked first and nothing changes until you confirm. Delete the example row before uploading.'],
-    ['Date of Birth', "Sent to People and Culture's date of birth verification queue. It is used for loans only after another verifier approves it; you cannot verify a date you uploaded."],
+    ['Date of Birth', 'Stored as the verified date of birth straight away and used for loans; there is no verification step. It replaces any date of birth waiting for verification for that staff member. Check it against the source record before uploading.'],
     ['Title', 'Stored on the staff record. Uploading does not give anyone a role: a System Administrator assigns roles in Users and roles.'],
     ['Sign-in', 'Uploading a staff record does not create a sign-in. A System Administrator adds it in Users and roles. Username is unique and is used for login, while staff number remains the payroll identifier.'],
     ['Dates', 'Use day/month/year (15/01/2024), year-month-day (2024-01-15) or an Excel date.'],
@@ -212,7 +213,8 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userN
     else if (seenNidas.has(nida)) problems.push(`NIDA repeats row ${seenNidas.get(nida)}`);
   }
 
-  // Date of birth (D-82): proposed for verification, never set directly.
+  // Date of birth (D-114): stored as verified on commit, with no verification step. It
+  // replaces a date waiting for verification.
   const dobCell = cellDate(raw.dob);
   let dob = null;
   const verified = ex.dateOfBirth?.value || null;
@@ -221,16 +223,13 @@ function checkRow(raw, { existing, seenStaffNos, seenNidas, seenUserNames, userN
   else if (dobCell) {
     const wrong = problemWith(dobCell, settings, today);
     if (wrong) problems.push(`Date of Birth: ${wrong}`);
-    else if (dobCell !== verified && dobCell !== pending) {
-      if (pending) problems.push(`A different date of birth (${pending}) is already waiting for verification. Decide or withdraw it first, or leave Date of Birth blank`);
-      else dob = dobCell;
-    }
+    else if (dobCell !== verified || pending) dob = dobCell;
   }
 
   const name = [rec.firstName, rec.middleName, rec.lastName].filter(Boolean).join(' ');
   if (problems.length) return { outcome: 'error', problems, changes: [], staffNo, name };
 
-  const sentForCheck = dob ? `date of birth ${dob} sent for verification` : null;
+  const sentForCheck = dob ? `date of birth set to ${dob}${pending ? ` (replaces ${pending}, waiting for verification)` : ''}` : null;
   const incomplete = [!rec.title && 'title', !dateJoined && 'date joined', !(nida || ex.personal?.nida) && 'NIDA', !(verified || pending || dob) && 'date of birth'].filter(Boolean);
   const incompleteNote = incomplete.length ? `Incomplete HR profile: ${incomplete.join(', ')}` : null;
   if (isNew) {

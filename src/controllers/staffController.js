@@ -13,7 +13,6 @@ const importSvc = require('../services/staff/staffImportService');
 const { completeness, formatNida } = require('../services/staff/profileService');
 const { retirementDateFor } = require('../services/staff/retirement');
 const dobService = require('../services/staff/dobService');
-const notify = require('../services/notify/notificationService');
 const { withTransaction } = require('../config/db');
 const { localDay, localMidnight } = require('../utils/dates');
 const { badRequest, notFound, conflict } = require('../utils/errors');
@@ -237,9 +236,9 @@ const StaffController = {
         // eslint-disable-next-line no-await-in-loop
         const s = await staffSvc.saveStaff(req, existing, r.staffNo, r.record, { nida: r.nida }, { session, source: `upload ${imp.fileName}` });
         if (r.dob) {
-          // D-82: waits in the verification queue; the uploader cannot verify it.
+          // D-114: an uploaded date of birth is stored as verified, with no verification step.
           // eslint-disable-next-line no-await-in-loop
-          await dobService.propose(req, s, r.dob, 'staff_upload', session);
+          await dobService.setFromUpload(req, await Staff.findById(s._id).session(session), r.dob, session);
           dobs += 1;
         }
       }
@@ -254,9 +253,6 @@ const StaffController = {
       await audit.record({ req, action: 'staff.import_commit', description: `Staff upload applied: ${imp.fileName} (${out.created} new, ${out.updated} updated, ${out.skipped} skipped)`, entity: 'StaffImport', entityId: String(imp._id), after: out }, { session });
       return out;
     });
-    if (result.datesOfBirth) {
-      await notify.notifyPermission('staff.verifyDob', { type: 'dob.pending', text: `Dates of birth from a staff upload are waiting for verification: ${result.datesOfBirth}.`, href: '/staff/dob-verifications' }, { exclude: [req.auth.user._id] });
-    }
     res.json({ success: true, data: { ...importView(imp), result } });
   },
 
