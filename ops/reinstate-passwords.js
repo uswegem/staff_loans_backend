@@ -24,6 +24,8 @@ const XlsxPopulate = require('/root/slas-tools/node_modules/xlsx-populate');
 
 const FILE = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const APPLY = process.argv.includes('--apply');
+// --exclude=AT534,AT637 leaves those accounts untouched (they keep their current password).
+const EXCLUDE = new Set((process.argv.find((a) => a.startsWith('--exclude=')) || '').slice(10).split(',').map((x) => x.trim().toUpperCase()).filter(Boolean));
 
 async function main() {
   if (!FILE) throw new Error('STOP: give the password file path.');
@@ -40,10 +42,11 @@ async function main() {
   const iUser = head.indexOf('Username');
   const iPw = head.indexOf('Temporary password');
   if (iNo < 0 || iUser < 0 || iPw < 0) throw new Error(`STOP: columns Staff No / Username / Temporary password not found (found: ${head.join(', ')})`);
-  const list = rows.slice(1).filter((r) => r[iNo]).map((r) => ({ staffNo: String(r[iNo]).trim().toUpperCase(), userName: String(r[iUser] || '').trim().toLowerCase(), pw: String(r[iPw] ?? '') }));
+  const all = rows.slice(1).filter((r) => r[iNo]).map((r) => ({ staffNo: String(r[iNo]).trim().toUpperCase(), userName: String(r[iUser] || '').trim().toLowerCase(), pw: String(r[iPw] ?? '') }));
 
+  const list = all.filter((x) => !EXCLUDE.has(x.staffNo));
   console.log(`Mode: ${APPLY ? 'APPLY' : 'DRY RUN (nothing is changed)'}`);
-  console.log(`Accounts in file: ${list.length}`);
+  console.log(`Accounts in file: ${all.length}; excluded: ${all.length - list.length}${EXCLUDE.size ? ` (${[...EXCLUDE].join(', ')})` : ''}; to set: ${list.length}`);
   await connect(config.mongoUri);
 
   const plan = [];
